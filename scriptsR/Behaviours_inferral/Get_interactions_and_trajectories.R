@@ -15,7 +15,7 @@ library(parsedate)
 ###### 1. OPENING AN EXPERIMENT #####################
 ##################################################
 ####### navigate to folder containing myrmidon file
-setwd("/home/cf19810/Documents/Postprocessing_training")
+setwd("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/")
 
 #######################
 ### Note 2: if you now want to switch to the read/write because you would like to fill in some information into the metadata file, you will need to delete the object containing the experiment from R and clear the cache using gc()
@@ -29,7 +29,7 @@ setwd("/home/cf19810/Documents/Postprocessing_training")
 ###############################################################################
 ###### 3. QUERYING GENERAL EXPERIMENT/ANT INFORMATION #############################
 ###############################################################################
-e <- fmExperimentOpenReadOnly("training.myrmidon")
+e <- fmExperimentOpenReadOnly("R3SP_13-03-21_Capsule_defined.myrmidon")
 e$getDataInformations()
 
 objectss <- fmQueryComputeMeasurementFor(e,1,1) #blindly acess an element, in this cas: measures taken for the body lenghts
@@ -50,8 +50,8 @@ tag_stats <- fmQueryComputeTagStatistics(e)
 # ###now
 # e$identificationsAt(fmTimeNow(),FALSE)
 # 
-# ###at start of experiment
-# e$identificationsAt(fmTimeCPtrFromAnySEXP(e$getDataInformations()$start),FALSE)
+###at start of experiment
+e$identificationsAt(fmTimeCPtrFromAnySEXP(e$getDataInformations()$start),FALSE)
 # ###at specific time
 # e$identificationsAt(fmTimeParse("2020-02-11T11:53:26.790610Z"),FALSE) 
 # ###at a specific frame
@@ -67,9 +67,9 @@ tag_stats <- fmQueryComputeTagStatistics(e)
 ###we see we have to specify a few arguments.
 ##Those of note are the following:
 ######### start/end: 
-time_start <- parse_iso_8601("2021-03-22T16:35:44.149918831Z")
-time_stop  <- fmTimeCPtrFromAnySEXP(time_start + (3600*24)/48) ####arbitrary time in the correct format + 30mins
-time_start <- fmTimeCPtrFromAnySEXP(time_start)
+time_start_ISO <- parse_iso_8601("2021-03-16T12:13:21.670072093Z")
+time_stop  <- fmTimeCPtrFromAnySEXP(time_start_ISO + ((3600*24)/90)) ####arbitrary time in the correct format + 16min
+time_start <- fmTimeCPtrFromAnySEXP(time_start_ISO)
 
 ######### maximumGap: 
 ######################## A very important parameter to set!
@@ -86,12 +86,19 @@ max_gap <- fmHour(24*365)
 
 ######### So overall:
 positions <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = FALSE) #set true to obtain the zone of the ant
-?fmQueryComputeAntTrajectories
+# ?fmQueryComputeAntTrajectories
+# 
+# positions$trajectory_summary
+# positions$trajectories
 ###Let's have a look at the first element of the trajectories list within positions:
-View(positions$trajectories)
+head(positions$trajectories)
+positions$trajectories[[8]]
+positions$trajectory_summary
 #plot(positions$trajectories[[20]]$x,positions$trajectories[[20]]$y)
 
 ###that is a dataframe with columns "time" (in seconds since start), x, y (coordinates in pixels), angle (orientation of the ant in radians), zone (which zone the ant is)
+
+head(positions)
 
 ###WARNING!!!!!
 ###in this particular example the values in antID are consecutive (1 to 22), and so positions$trajectories[[1]] will correspond to the trajectory of ant 1
@@ -102,22 +109,230 @@ positions$trajectory_summary$antID_str <- paste("ant_",positions$trajectory_summ
 names(positions$trajectories)       <- positions$trajectory_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
 ##and now we can extract each ant trajectory using the character ID stored in antID_str - it's much safer!
 
-
-
-
-
-
-View(positions$trajectories)
-library(data.table)
-trajectories_unlist <- as.data.frame(rbindlist(positions$trajectories,use.names=TRUE,idcol=TRUE))
-#output to send to Henry Reeves
-#
-#
-write.csv(trajectories_unlist, file=paste(e$getDataInformations()[["details"]][["tdd.URI"]],'trajectories_30min.csv'),row.names = FALSE) #specify name of the block better!
-#
-#
+# #unlisting the trajectories 
+# library(data.table)
+# trajectories_unlist <- as.data.frame(rbindlist(positions$trajectories,use.names=TRUE,idcol=TRUE))
+# plot(trajectories_unlist$x,trajectories_unlist$y, type = "p")
+# #unlisted trajetroies file
+# #
+# write.csv(trajectories_unlist, file=paste(e$getDataInformations()[["details"]][["tdd.URI"]],'trajectories_30min.csv'),row.names = FALSE) #specify name of the block better!
+# #
+# #
 
 trajectory_summary <- positions$trajectory_summary
+
+#generate reproducible example
+dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
+#positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
+
+annotations <- read.csv("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_updated.csv", sep = ",")
+annotations$Actor <- as.character(annotations$Actor)
+# annotations$frequency <- 1
+
+#head(annotations)
+
+#convert Zulu time to UTC
+annotations$T_start <- parse_iso_8601(annotations$T_start)
+annotations$T_stop <- parse_iso_8601(annotations$T_stop)
+
+table(annotations$Behaviour)## with(annotations, tapply(frequency, list(Behaviour), sum))
+Counts_by_Actor <- aggregate(treatment_rep ~ Behaviour + Actor, FUN=length, annotations); colnames(Counts_by_Actor) [match("treatment_rep",colnames(Counts_by_Actor))] <- "Count"
+
+
+#keep only encounters and discard non-encounter behaviours (i.e. when there is no receiver)
+enc_annotations <- annotations[complete.cases(annotations[ , "Receiver"]),]
+
+#join annotations table with interactions all table
+library(safejoin)
+
+join <- safe_left_join(interactions_all, enc_annotations,  ~
+                 X("ant1") == Y("Actor") & 
+                 X("ant2") == Y("Receiver") & 
+                 X("start") >= Y("T_start") &
+                 X("end") >= Y("T_stop"),
+               conflict = ~.x) %>% 
+join
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#define capsules in fortstudio, then look at the data
+capsules  <- e$antShapeTypeNames()
+body_id <- capsules[which(capsules$name=="body"),"typeID"]
+
+
+
+
+###############################################################################
+###### 9. READING INTERACTIONS ################################################
+###############################################################################
+###This provides more synthetic and  complete information than collisions, as if the same pair of ants interacts over successive frames, it will be reported as a single interactions with a start and end time
+### The function to extract interactions is fmQueryComputeAntInteractions
+###Let's have a look at the arguments needed:
+?fmQueryComputeAntInteractions
+######### experiment, start, end
+######################## As in trajectories
+
+######### maximumGap
+######################## EXTREMELY IMPORTANT PARAMETER - THE CHOICE WILL BE DIFFERENT FROM THAT MADE FOR THE TRAJECTORY QUERY ABOVE!
+######################## The basic idea is the following:
+######################## Within a single biological, real interaction, there are likely to be gaps
+######################## i.e. frame in which one or both of te ants are not detected, and so no collision is detected between these two ants for that frame
+######################## This is expected because the tracking system is not perfect - or the ants may tilt slightly during the interaction, making their tag undetectable
+######################## Yet it would be a mistake to say that whenever one or both ants disappear, the interaction stops and a new starts
+######################## So we need to define an "allowance", i.e. a maximum period of continuous interruption of the interaction for which we will still be happy to say that it is the same interaction that continues
+######################## If we were to set that at one year, like we did for the trajectories above, then each pair of ant would only ever be as having a single interaction
+######################## In the past we have used something akin to 10 seconds. If the interruption is longer than this, we consider that a new interaction starts - and a new line will be written 
+
+######### reportTrajectories
+######################## Argument taking either T or F value, determining whether trajectories will be output in parallel to the interactions
+######################## Useful if we want to know the x-y coordinates of each ant in each interaction
+######################## At the moment the function only works if this is set as TRUE (in my case I get a segmentation fault otherwise)
+
+###so:
+interactions_all       <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T)
+
+###let's View the object: 
+str(interactions_all)
+###it's a list containing 3 objects: summaryTrajectory, trajectories and interactions
+###let's extract them for simplicity:
+summaryTrajectory_all       <- interactions_all$summaryTrajectory  ## same object as positions$trajectory_summary described above - however here it will have many more rows given that the trajectories will be broken whenever there is a 10 second non-detection gap for an ant.
+## therefore in this case my trick with ant_ID_str won't work - it only works if there's exactly one trajectory as ants in the data
+## so I would NOT use the output of this function to analyse trajectories
+trajectories_all           <- interactions_all$trajectories       ## same object as positions$trajectories described above - but containing more objects for the same reason as stated above
+interacions_all            <- interactions_all$interactions       ## data frame containing all interactions
+
+str(interactions_all)
+###let's have a look at the interactions object
+head(interactions_all)
+####dataframe comtaining the following info:
+######ant1: ID of the first ant in the interaction
+######ant2: ID of the second ant in the interaction
+######start: time at which interaction started
+######end: time at which interaction ended
+######space: space in which the interaction took place
+######types: all types of capsule intersection observed in this interaction. Commas separate different types of intersections, and each intersection type lists which capsule of ant1 interesected with which capsule in at2, separated by a "-"
+###############thus 1-5, 5-1,5-5: means that during this interaction, capsule 1 in ant 1 intersected with capsule 5 in ant 2; capsule 5 in ant 1 intersected with capsule 1 in ant 2, and capsule 5 in ant1 intersected with capsule 5 in ant2
+######ant1.trajectory.row: gives the index to use within summaryTrajectory and trajectories to extract the appropriate trajectory segment for ant1 during this interaction
+######ant1.trajectory.start: within trajectory segment trajectoriessummaryTrajectory[ant1.trajectory.row], ant1.trajectory.start gives the row corresponding to the start of this interaction
+######ant1.trajectory.end: within trajectory segment trajectories[ant1.trajectory.row], ant1.trajectory.end gives the row corresponding to the end of this interaction. BUT THIS SEEMS WRONG IN CURRENT VERSION. NEED TO REPORT BUG
+######ant2.trajectory.row, ant2.trajectory.start, ant2.trajectory.end: same for ant2
+
+####In the example above we have not specified a matcher, i.e. all intersections between all types of capsules have been considered
+####But in many cases we will be interested in a specific type of interactions. 
+#### For example: we may be interested only in interactions involving the intersection between body shapes
+###First we need to figure out the index of the shape corresponding to body shape
+capsules  <- e$antShapeTypeNames()
+body_id <- capsules[which(capsules$name=="body"),"typeID"]
+###Then we will specify a matcher in which we are interested in interactions involving capsule 1 for both anta: fmMatcherInteractionType(body_id,body_id)
+##for more info, type:
+?fmMatcherInteractionType
+
+####################################################
+#################################CONTINUE FROM HERE!
+
+nrow(interactions_all)    
+
+#with this function we do access the trajectories information specifying the interactions parameters
+###so for example, if we wanted to know the x-y coordinates of ant1 (7) and ant2 (9) on the first frame of the first interaction listed int his table:
+coord_ant1_start <- trajectories_all[[   interactions_all[1,"ant1.trajectory.row"]    ]][interactions_all[1,"ant1.trajectory.start"],c("x","y")]
+coord_ant2_start <- trajectories_all[[   interactions_all[1,"ant2.trajectory.row"]    ]][interactions_all[1,"ant2.trajectory.start"],c("x","y")]
+
+###if we wanted to know the mean x-y coordinates of ant1 (7) and ant2 (9) in first interaction listed int his table:
+coord_ant1_mean <- colMeans(trajectories[[   interactions[1,"ant1.trajectory.row"]    ]][interactions[1,"ant1.trajectory.start"]:interactions[1,"ant1.trajectory.end"],c("x","y")])
+coord_ant2_mean <- colMeans(trajectories[[   interactions[1,"ant2.trajectory.row"]    ]][interactions[1,"ant2.trajectory.start"]:interactions[1,"ant2.trajectory.end"],c("x","y")])
+
+###and if you wanted to compute this for all interactions, you could either loop over all interactions or write a function and use apply
+####but that would be a bit more complicated to get to work than the examples I gave above
+####here I don't use match but I need to be sure that trajectories remained non-shuffled
+mean_coord <- function (x,which_ant,trajectories_all){
+  coord_mean <- colMeans(trajectories_all[[as.numeric(x[paste(which_ant,".trajectory.row",sep="")] )]]  [as.numeric(x[paste(which_ant,".trajectory.start",sep="")]):as.numeric(x[paste(which_ant,".trajectory.end",sep="")]),c("x","y")] )
+  return(data.frame(x=coord_mean["x"],y=coord_mean["y"]))
+}
+mean_coordinates <- unlist(apply(interactions_all, 1, FUN=mean_coord,which_ant="ant1",trajectories_all=trajectories_all))
+interactions_all$mean_x_ant1 <- mean_coordinates[grepl("x",names(mean_coordinates))]
+interactions_all$mean_y_ant1 <- mean_coordinates[grepl("y",names(mean_coordinates))]
+
+mean_coordinates <- unlist(apply(interactions_all, 1, FUN=mean_coord,which_ant="ant2",trajectories_all=trajectories_all))
+interactions_all$mean_x_ant2 <- mean_coordinates[grepl("x",names(mean_coordinates))]
+interactions_all$mean_y_ant2 <- mean_coordinates[grepl("y",names(mean_coordinates))]
+
+
+interactions_all
+
+plot(interactions_all$mean_x_ant2,interactions_all$mean_y_ant2 )
+plot(interactions_all$mean_x_ant1,interactions_all$mean_y_ant1 )
+
+#trying to calculate the StDev results in errors but should not bee too hard! 
+#errors: 
+# number 1 - keeping the same structure as for colMeans
+# > StDev_coord <- function (x,which_ant,trajectories_all){
+#   +   coord_StDev <- sd(trajectories_all[[as.numeric(x[paste(which_ant,".trajectory.row",sep="")] )]]  [as.numeric(x[paste(which_ant,".trajectory.start",sep="")]):as.numeric(x[paste(which_ant,".trajectory.end",sep="")]),c("x","y")] )
+#   +   return(data.frame(x=coord_StDev["x"],y=coord_StDev["y"]))
+#   + }
+# > StDev_coordinates <- unlist(apply(interactions_all, 1, FUN=StDev_coord,which_ant="ant1",trajectories_all=trajectories_all))
+# Error in is.data.frame(x) : 
+#   'list' object cannot be coerced to type 'double'
+
+# number 2 - removing as.numeric from StDev_coord function
+#it results into all NAs
+
+
+StDev_coord <- function (x,which_ant,trajectories_all){
+  coord_StDev <- sd(trajectories_all[[as.numeric(x[paste(which_ant,".trajectory.row",sep="")] )]]  [as.numeric(x[paste(which_ant,".trajectory.start",sep="")]):as.numeric(x[paste(which_ant,".trajectory.end",sep="")]),c("x","y")])
+  return(data.frame(x=coord_StDev["x"],y=coord_StDev["y"]))
+}
+StDev_coordinates <- unlist(apply(interactions_all, 1, FUN=StDev_coord,which_ant="ant1",trajectories_all=trajectories_all))
+
+interactions_all$mean_x_ant1 <- StDev_coordinates[grepl("x",names(StDev_coordinates))]
+interactions_all$mean_y_ant1 <- StDev_coordinates[grepl("y",names(StDev_coordinates))]
+
+StDev_coordinates <- unlist(apply(interactions_all, 1, FUN=StDev_coord,which_ant="ant2",trajectories_all=trajectories_all))
+interactions_all$mean_x_ant2 <- StDev_coordinates[grepl("x",names(StDev_coordinates))]
+interactions_all$mean_y_ant2 <- StDev_coordinates[grepl("y",names(StDev_coordinates))]
+
+
+
+
+
+
+#extract first interaction with list of coordinates
+
+
+###so for example, if we wanted to know the x-y coordinates of ant1 (7) and ant2 (9) on the first frame of the first interaction listed int his table:
+coord_ant1_start <- trajectories[[   interactions[1,"ant1.trajectory.row"]    ]][interactions[1,"ant1.trajectory.start"],c("x","y")]
+coord_ant2_start <- trajectories[[   interactions[1,"ant2.trajectory.row"]    ]][interactions[1,"ant2.trajectory.start"],c("x","y")]
+
+###if we wanted to know the x-y coordinates of ant1 (7) and ant2 (9) on the last frame of the first interaction listed int his table:
+coord_ant1_end <- trajectories[[   interactions[1,"ant1.trajectory.row"]    ]][interactions[1,"ant1.trajectory.end"],c("x","y")]
+coord_ant2_end <- trajectories[[   interactions[1,"ant2.trajectory.row"]    ]][interactions[1,"ant2.trajectory.end"],c("x","y")]
+
+
+
+
+
+
+
+
+
+
+
+
 ########################################
 ##################################################################################################################################
 ###### 6. EXAMPLE USE OF TRAJECTORIES: using R libraries to calculate turn angles and home ranges#################################
@@ -132,7 +347,35 @@ trajectory_summary <- positions$trajectory_summary
 
 ######FOR 1 ANT
 ####First let's extract a single ant's trajectory
-trajectory <-  positions$trajectories[["ant_1"]]
+par(mfrow=c(2,3), mai=c(0.3,0.3,0.1,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
+
+for (BEH in c("G","T"))
+  {
+  annot_BEH <- annotations[which(annotations$Behaviour==BEH),]
+  ## remove doubled allo-grooming interactions
+  if (BEH=="G") {annot_BEH <- annot_BEH[!duplicated(annot_BEH),]}  ## leave NOT to catch possible un-matched rows
+  if (BEH=="T") {print("STILL TO DO")}
+  ## loop through each event in annot_BEH
+  for (ROW in 1:nrow(annot_BEH))
+    {
+    ACT <- annot_BEH$Actor[ROW]
+    REC <- annot_BEH$Receiver[ROW]
+    
+    Act_Name <- paste("ant",ACT,sep="_")
+    Rec_Name <- paste("ant",REC,sep="_")
+    print(paste("Behaviour:",BEH,"number",ROW,"Actor:",Act_Name,"Receiver:",Rec_Name))
+
+    ## extract the trajectory for ACT
+    traj_ACT <-  positions$trajectories[[Act_Name]]
+    traj_REC <-  positions$trajectories[[Rec_Name]]
+    
+    
+    ## Plot trajectories of both actor & receiver, show on the same panel
+    plot  (y ~ x, traj_ACT, pch=".", col="blue4", main=paste("Behaviour",BEH,", Actor",ACT))
+    points(y ~ x, traj_REC, pch=".", col="red4")
+    
+    }##ACT
+  }##BEH
 
 ###Second - let's convert the relative time (in seconds since start) into absolute times
 ###For this we need the starting time of that ant's trajectory
@@ -170,155 +413,59 @@ positions$trajectory_summary$nb_coordinates <- unlist(lapply(positions$trajector
 
 ###etc. Generally this will save you time compared to a loop
 
-###############################################################################
-###### 9. READING INTERACTIONS ################################################
-###############################################################################
-###This provides more synthetic and  complete information than collisions, as if the same pair of ants interacts over successive frames, it will be reported as a single interactions with a start and end time
-### The function to extract interactions is fmQueryComputeAntInteractions
-###Let's have a look at the arguments needed:
-?fmQueryComputeAntInteractions
-######### experiment, start, end
-######################## As in trajectories
-
-######### maximumGap
-######################## EXTREMELY IMPORTANT PARAMETER - THE CHOICE WILL BE DIFFERENT FROM THAT MADE FOR THE TRAJECTORY QUERY ABOVE!
-######################## The basic idea is the following:
-######################## Within a single biological, real interaction, there are likely to be gaps
-######################## i.e. frame in which one or both of te ants are not detected, and so no collision is detected between these two ants for that frame
-######################## This is expected because the tracking system is not perfect - or the ants may tilt slightly during the interaction, making their tag undetectable
-######################## Yet it would be a mistake to say that whenever one or both ants disappear, the interaction stops and a new starts
-######################## So we need to define an "allowance", i.e. a maximum period of continuous interruption of the interaction for which we will still be happy to say that it is the same interaction that continues
-######################## If we were to set that at one year, like we did for the trajectories above, then each pair of ant would only ever be as having a single interaction
-######################## In the past we have used something akin to 10 seconds. If the interruption is longer than this, we consider that a new interaction starts - and a new line will be written 
-
-######### reportTrajectories
-######################## Argument taking either T or F value, determining whether trajectories will be output in parallel to the interactions
-######################## Useful if we want to know the x-y coordinates of each ant in each interaction
-######################## At the moment the function only works if this is set as TRUE (in my case I get a segmentation fault otherwise)
-
-###so:
-interactions_all       <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T)
-
-###let's View the object: 
-View(interactions_all)
-###it's a list containing 3 objects: summaryTrajectory, trajectories and interactions
-###let's extract them for simplicity:
-summaryTrajectory_all       <- interactions_all$summaryTrajectory  ## same object as positions$trajectory_summary described above - however here it will have many more rows given that the trajectories will be broken whenever there is a 10 second non-detection gap for an ant.
-## therefore in this case my trick with ant_ID_str won't work - it only works if there's exactly one trajectory as ants in the data
-## so I would NOT use the output of this function to analyse trajectories
-trajectories_all           <- interactions_all$trajectories       ## same object as positions$trajectories described above - but containing more objects for the same reason as stated above
-interactions_all            <- interactions_all$interactions       ## data frame containing all interactions
-
-###let's have a look at the interactions object
-head(interactions_all)
-####dataframe comtaining the following info:
-######ant1: ID of the first ant in the interaction
-######ant2: ID of the second ant in the interaction
-######start: time at which interaction started
-######end: time at which interaction ended
-######space: space in which the interaction took place
-######types: all types of capsule intersection observed in this interaction. Commas separate different types of intersections, and each intersection type lists which capsule of ant1 interesected with which capsule in at2, separated by a "-"
-###############thus 1-5, 5-1,5-5: means that during this interaction, capsule 1 in ant 1 intersected with capsule 5 in ant 2; capsule 5 in ant 1 intersected with capsule 1 in ant 2, and capsule 5 in ant1 intersected with capsule 5 in ant2
-######ant1.trajectory.row: gives the index to use within summaryTrajectory and trajectories to extract the appropriate trajectory segment for ant1 during this interaction
-######ant1.trajectory.start: within trajectory segment trajectoriessummaryTrajectory[ant1.trajectory.row], ant1.trajectory.start gives the row corresponding to the start of this interaction
-######ant1.trajectory.end: within trajectory segment trajectories[ant1.trajectory.row], ant1.trajectory.end gives the row corresponding to the end of this interaction. BUT THIS SEEMS WRONG IN CURRENT VERSION. NEED TO REPORT BUG
-######ant2.trajectory.row, ant2.trajectory.start, ant2.trajectory.end: same for ant2
-
-####In the example above we have not specified a matcher, i.e. all intersections between all types of capsules have been considered
-####But in many cases we will be interested in a specific type of interactions. 
-#### For example: we may be interested only in interactions involving the intersection between body shapes
-###First we need to figure out the index of the shape corresponding to body shape
-capsules  <- e$antShapeTypeNames()
-body_id <- capsules[which(capsules$name=="Body"),"typeID"]
-###Then we will specify a matcher in which we are interested in interactions involving capsule 1 for both anta: fmMatcherInteractionType(body_id,body_id)
-##for more info, type:
-?fmMatcherInteractionType
-
-##Let's re-run interactions with that matcher:
-interactions_body       <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherInteractionType(body_id,body_id))
-summaryTrajectory_body      <- interactions_body$summaryTrajectory  
-trajectories_body            <- interactions_body$trajectories       
-interactions_body            <- interactions_body$interactions     
-
-###we could also be interested in antennations, i.e. interactions where the antenna of one ant touches the body of the others
-antenna_id <- capsules[which(capsules$name=="Antenna"),"typeID"]
-interactions_antennations            <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherInteractionType(body_id,antenna_id))
-summaryTrajectory_antennations       <- interactions_antennations$summaryTrajectory  
-trajectories_antennations            <- interactions_antennations$trajectories       
-interactions_antennations            <- interactions_antennations$interactions     
-
-###note that the number of interactions produced for these different matcher types is different:
-nrow(interactions_all)          ###60173 interactions of any type
-nrow(interactions_body)         ###29717 interactions body-body
-nrow(interactions_antennations) ###49124 antennations
-
-###we can also combine several matchers
-###for example, if we want interactions that involve either body/body or antenna/body intersections:
-? fmMatcherOr 
-interactions_body_or_antennations           <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherOr(list(fmMatcherInteractionType(body_id,body_id),fmMatcherInteractionType(body_id,antenna_id))))
-summaryTrajectory_body_or_antennations      <- interactions_body_or_antennations$summaryTrajectory  
-trajectories_body_or_antennations           <- interactions_body_or_antennations$trajectories       
-interactions_body_or_antennations           <- interactions_body_or_antennations$interactions     
-nrow(interactions_body_or_antennations) ###49886 antennations or body/body contacts - indicating that most bioy/body interactions were included within the antennations only
 
 
-###for the rest, let's focus on the body-body interactions - for simplicity, I will rename them without suffix
-summaryTrajectory    <- summaryTrajectory_body
-trajectories           <- trajectories_body
-interactions           <- interactions_body
-
-###so for example, if we wanted to know the x-y coordinates of ant1 (7) and ant2 (9) on the first frame of the first interaction listed int his table:
-coord_ant1_start <- trajectories[[   interactions[1,"ant1.trajectory.row"]    ]][interactions[1,"ant1.trajectory.start"],c("x","y")]
-coord_ant2_start <- trajectories[[   interactions[1,"ant2.trajectory.row"]    ]][interactions[1,"ant2.trajectory.start"],c("x","y")]
-
-###if we wanted to know the x-y coordinates of ant1 (7) and ant2 (9) on the last frame of the first interaction listed int his table:
-coord_ant1_end <- trajectories[[   interactions[1,"ant1.trajectory.row"]    ]][interactions[1,"ant1.trajectory.end"],c("x","y")]
-coord_ant2_end <- trajectories[[   interactions[1,"ant2.trajectory.row"]    ]][interactions[1,"ant2.trajectory.end"],c("x","y")]
-
-###if we wanted to know the mean x-y coordinates of ant1 (7) and ant2 (9) in first interaction listed int his table:
-coord_ant1_mean <- colMeans(trajectories[[   interactions[1,"ant1.trajectory.row"]    ]][interactions[1,"ant1.trajectory.start"]:interactions[1,"ant1.trajectory.end"],c("x","y")])
-coord_ant2_mean <- colMeans(trajectories[[   interactions[1,"ant2.trajectory.row"]    ]][interactions[1,"ant2.trajectory.start"]:interactions[1,"ant2.trajectory.end"],c("x","y")])
-
-###and if you wanted to compute this for all interactions, you could either loop over all interactions or write a function and use apply
-####but that would be a bit more complicated to get to work than the examples I gave above
-####here I don't use match but I need to be sure that trajectories remained non-shuffled
-mean_coord <- function (x,which_ant,trajectories){
-  coord_mean <- colMeans(trajectories[[as.numeric(x[paste(which_ant,".trajectory.row",sep="")] )]]  [as.numeric(x[paste(which_ant,".trajectory.start",sep="")]):as.numeric(x[paste(which_ant,".trajectory.end",sep="")]),c("x","y")] )
-  return(data.frame(x=coord_mean["x"],y=coord_mean["y"]))
-}
-mean_coordinates <- unlist(apply(interactions, 1, FUN=mean_coord,which_ant="ant1",trajectories=trajectories))
-interactions$mean_x_ant1 <- mean_coordinates[grepl("x",names(mean_coordinates))]
-interactions$mean_y_ant1 <- mean_coordinates[grepl("y",names(mean_coordinates))]
-
-
-mean_coordinates <- unlist(apply(interactions, 1, FUN=mean_coord,which_ant="ant2",trajectories=trajectories))
-interactions$mean_x_ant2 <- mean_coordinates[grepl("x",names(mean_coordinates))]
-interactions$mean_y_ant2 <- mean_coordinates[grepl("y",names(mean_coordinates))]
-
-###############################################################################
-###### 13. READING COLLISIONS ##################################################
-###############################################################################
-###collisions are FOR EACH FRAME the list of ants whose shapes intersect one another. Normally not used
-collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)
-
-
-###visualise collision object
-View(collisions)
-###collisions contains 3 objects: frames, positions and collisions
-###let's extract them#
-collisions_frames    <- collisions$frames      ###data frames giving detail (time, space, width,height) about each frame
-collisions_positions <- collisions$positions   ###list containing as many objects as there are frames in collisions_frames. For each one, lists the positions of all detected ants on that frame
-###(those two are the exactly the same as the output from fmQueryIdentifyFrames)
-collisions_collisions <- collisions$collisions            #### dataframe containing all detected collisions
-
-collisions_positions[[1200]] #all the collisions taking place in a specific frame 
-
-###let's view the first few lines of collisions
-head(collisions_collisions) ###columns giving the ID of the two colliding ants, the zone where they are, the types of collisions (all types), and the frames_row_index referring to which frame that collision was detected in (matches the list indices in collisions_positions)
-head(collisions_collisions)
+##########################################################################################################################  
+##########considerations about interactions from fmQueryComputeAntInteractions reported here for convenience:#############
+##########################################################################################################################  
+# ####.....
+# ####But in many cases we will be interested in a specific type of interactions.
+# #### For example: we may be interested only in interactions involving the intersection between body shapes
+# ###First we need to figure out the index of the shape corresponding to body shape
+# capsules  <- e$antShapeTypeNames()
+# body_id <- capsules[which(capsules$name=="Body"),"typeID"]
+# ###Then we will specify a matcher in which we are interested in interactions involving capsule 1 for both anta: fmMatcherInteractionType(body_id,body_id)
+# ##Let's re-run interactions with that matcher:
+# interactions_body       <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherInteractionType(body_id,body_id))
+# summaryTrajectory_body      <- interactions_body$summaryTrajectory
+# trajectories_body            <- interactions_body$trajectories
+# interactions_body            <- interactions_body$interactions
+# ###we could also be interested in antennations, i.e. interactions where the antenna of one ant touches the body of the others
+# antenna_id <- capsules[which(capsules$name=="Antenna"),"typeID"]
+# interactions_antennations            <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherInteractionType(body_id,antenna_id))
+# 
+# ###we can also combine several matchers
+# ###for example, if we want interactions that involve either body/body or antenna/body intersections:
+# ? fmMatcherOr
+# interactions_body_or_antennations           <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherOr(list(fmMatcherInteractionType(body_id,body_id),fmMatcherInteractionType(body_id,antenna_id))))
+# summaryTrajectory_body_or_antennations      <- interactions_body_or_antennations$summaryTrajectory
+# trajectories_body_or_antennations           <- interactions_body_or_antennations$trajectories
+# interactions_body_or_antennations           <- interactions_body_or_antennations$interactions
+# nrow(interactions_body_or_antennations) ###49886 antennations or body/body contacts - indicating that most bioy/body interactions were included within the antennations only
+# 
+# 
+# ###for the rest, let's focus on the body-body interactions - for simplicity, I will rename them without suffix
+# summaryTrajectory    <- summaryTrajectory_body
+# trajectories           <- trajectories_body
+# interactions           <- interactions_body
+# 
+# 
+# ###if we wanted to know the mean x-y coordinates of all interactions, you could either loop over all interactions or write a function and use apply
+# ####here I don't use match but I need to be sure that trajectories remained non-shuffled
+# mean_coord <- function (x,which_ant,trajectories){
+#   coord_mean <- colMeans(trajectories[[as.numeric(x[paste(which_ant,".trajectory.row",sep="")] )]]  [as.numeric(x[paste(which_ant,".trajectory.start",sep="")]):as.numeric(x[paste(which_ant,".trajectory.end",sep="")]),c("x","y")] )
+#   return(data.frame(x=coord_mean["x"],y=coord_mean["y"]))
+# }
+# mean_coordinates <- unlist(apply(interactions, 1, FUN=mean_coord,which_ant="ant1",trajectories=trajectories))
+# interactions$mean_x_ant1 <- mean_coordinates[grepl("x",names(mean_coordinates))]
+# interactions$mean_y_ant1 <- mean_coordinates[grepl("y",names(mean_coordinates))]
+# 
+# 
+# mean_coordinates <- unlist(apply(interactions, 1, FUN=mean_coord,which_ant="ant2",trajectories=trajectories))
+# interactions$mean_x_ant2 <- mean_coordinates[grepl("x",names(mean_coordinates))]
+# interactions$mean_y_ant2 <- mean_coordinates[grepl("y",names(mean_coordinates))]
 
 
-
-
-# rm(list=(c("e")))
-# gc() 
+rm(list=(c("e")))
+gc()
+e <- fmExperimentOpenReadOnly("training.myrmidon")
