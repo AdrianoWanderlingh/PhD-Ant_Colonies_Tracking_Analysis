@@ -2,9 +2,6 @@ rm(list=ls())
 
 #"https://formicidae-tracker.github.io/myrmidon/docs/latest/api/index.html"
 
-#install.packages("adehabitatHR")
-#install.packages("igraph")
-
 ######load necessary libraries
 library(adehabitatHR) ####for home range and trajectory analyses
 library(FortMyrmidon) ####R bindings
@@ -12,27 +9,19 @@ library(igraph)       ####for network analysis
 library(parsedate)
 
 ##################################################
-###### 1. OPENING AN EXPERIMENT #####################
+###### 1. OPENING AN EXPERIMENT ##################
 ##################################################
 ####### navigate to folder containing myrmidon file
-setwd("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/")
+setwd("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/Subset_for_Tom/Data/")
 
 #######################
-### Note 2: if you now want to switch to the read/write because you would like to fill in some information into the metadata file, you will need to delete the object containing the experiment from R and clear the cache using gc()
-# rm(list=(c("e")))
-# gc()
-# e <- fmExperimentOpen("training.myrmidon")
-# rm(list=(c("e")))
-# gc()
-
+### Note: if you now want to switch to the read/write because you would like to fill in some information into the metadata file, you will need to delete the object containing the experiment from R and clear the cache using gc()
 
 ###############################################################################
-###### 3. QUERYING GENERAL EXPERIMENT/ANT INFORMATION #############################
+###### 3. QUERYING GENERAL EXPERIMENT/ANT INFORMATION #########################
 ###############################################################################
 e <- fmExperimentOpenReadOnly("R3SP_13-03-21_Capsule_defined.myrmidon")
 e$getDataInformations()
-
-objectss <- fmQueryComputeMeasurementFor(e,1,1) #blindly acess an element, in this cas: measures taken for the body lenghts
 
 ###tag statistics
 tag_stats <- fmQueryComputeTagStatistics(e)
@@ -91,14 +80,11 @@ positions <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,
 # positions$trajectory_summary
 # positions$trajectories
 ###Let's have a look at the first element of the trajectories list within positions:
-head(positions$trajectories)
-positions$trajectories[[8]]
-positions$trajectory_summary
+str(positions$trajectories)
+str(positions$trajectory_summary)
 #plot(positions$trajectories[[20]]$x,positions$trajectories[[20]]$y)
 
 ###that is a dataframe with columns "time" (in seconds since start), x, y (coordinates in pixels), angle (orientation of the ant in radians), zone (which zone the ant is)
-
-head(positions)
 
 ###WARNING!!!!!
 ###in this particular example the values in antID are consecutive (1 to 22), and so positions$trajectories[[1]] will correspond to the trajectory of ant 1
@@ -117,66 +103,114 @@ names(positions$trajectories)       <- positions$trajectory_summary$antID_str ##
 # #
 # write.csv(trajectories_unlist, file=paste(e$getDataInformations()[["details"]][["tdd.URI"]],'trajectories_30min.csv'),row.names = FALSE) #specify name of the block better!
 # #
-# #
+
 
 trajectory_summary <- positions$trajectory_summary
 
 #generate reproducible example
-dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
+#dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
 #positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
 
-annotations <- read.csv("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_updated.csv", sep = ",")
+
+## Add times to the positions to convert from time since the start of the experiment, to UNIX time
+for (A in positions$trajectory_summary$antID)
+{
+  AntID <- paste("ant_",A,sep="") 
+  First_Obs_Time <- positions$trajectory_summary$start [which(positions$trajectory_summary$antID_str==AntID)] ## find the first time after the user defined time_start_ISO that this ant was seen
+  print(paste("Adding first obs time", First_Obs_Time, "to the time-zeroed trajectory of ant", AntID))
+  positions$trajectories[[AntID]] $UNIX_time <- positions$trajectories[[AntID]] $time + First_Obs_Time ##convert back to UNIX time  
+}
+
+#check that milliseconds are preserved after adding the ant's time_start_ISO
+positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
+
+########################  LOAD MANUAL-ANNOTATIONS
+#Behavioural codes explanation
+# Grooming worker	G
+# Trophallaxis	T
+# Aggression	A
+# Cross Rest (90° angle to another ant)	CR
+# Front Rest (180° angle facing another ant)	FR
+# Trophallaxis Queen	TQ
+# Grooming Queen (different body shape)	GQ
+# Tending brood (feeding / grooming)	TB
+# Self-grooming	SG
+# Carrying brood	CB
+# Carrying adults	CA
+
+annotations <- read.csv("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/Subset_for_Tom/Data/R3SP_Post1_updated.csv", sep = ",")
 annotations$Actor <- as.character(annotations$Actor)
-# annotations$frequency <- 1
+annotations$Receiver <- as.character(annotations$Receiver)
 
-#head(annotations)
+#convert Zulu time to GMT
+annotations$T_start <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ") 
+annotations$T_stop <- as.POSIXct(annotations$T_stop, format = "%Y-%m-%dT%H:%M:%OSZ")
 
-#convert Zulu time to UTC
-annotations$T_start <- parse_iso_8601(annotations$T_start)
-annotations$T_stop <- parse_iso_8601(annotations$T_stop)
+#see if milliseconds are shown (number of decimals represented by the number after %OS)
+format(annotations$T_start[3], "%Y-%m-%d %H:%M:%OS6")
 
-table(annotations$Behaviour)## with(annotations, tapply(frequency, list(Behaviour), sum))
+table(annotations$Behaviour)
 Counts_by_Actor <- aggregate(treatment_rep ~ Behaviour + Actor, FUN=length, annotations); colnames(Counts_by_Actor) [match("treatment_rep",colnames(Counts_by_Actor))] <- "Count"
 
+#remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
+#this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
+annotations_nodup <- annotations[which(annotations$Actor==annotations$Focal),]
 
-#keep only encounters and discard non-encounter behaviours (i.e. when there is no receiver)
-enc_annotations <- annotations[complete.cases(annotations[ , "Receiver"]),]
+Counts_by_Behaviour <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
+Counts_by_Behaviour_nodups <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_nodup); colnames(Counts_by_Behaviour_nodups) [match("treatment_rep",colnames(Counts_by_Behaviour_nodups))] <- "Count_nodups"
 
-#join annotations table with interactions all table
-library(safejoin)
-
-join <- safe_left_join(interactions_all, enc_annotations,  ~
-                 X("ant1") == Y("Actor") & 
-                 X("ant2") == Y("Receiver") & 
-                 X("start") >= Y("T_start") &
-                 X("end") >= Y("T_stop"),
-               conflict = ~.x) %>% 
-join
+#check how many cases have been removed
+Counts_by_Behaviour <- cbind(Counts_by_Behaviour, count_nodups = Counts_by_Behaviour_nodups$Count_nodups)
 
 
+####First let's extract a single ant's trajectory
+par(mfrow=c(2,3), mai=c(0.3,0.3,0.1,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
+
+for (BEH in c("G","T"))
+{
+  annot_BEH <- annotations[which(annotations$Behaviour==BEH),]
+  ## remove doubled allo-grooming interactions
+  if (BEH=="G") {annot_BEH <- annot_BEH[!duplicated(annot_BEH),]}  ## leave NOT to catch possible un-matched rows
+  if (BEH=="T") {print("FIND A WAY TO REMOVE DUPLICATES, MAY THAT BE USING THE FOCAL INDIVIDUAL?")}
+  ## loop through each event in annot_BEH
+  for (ROW in 1:nrow(annot_BEH))
+  {
+    ## extract actor, receiver IDs & start & end times from the hand-annotated data
+    ACT <- annot_BEH$Actor[ROW]
+    REC <- annot_BEH$Receiver[ROW]
+    ENC_TIME_start <- annot_BEH$T_start[ROW]
+    ENC_TIME_stop  <- annot_BEH$T_stop[ROW]
+    
+    Act_Name <- paste("ant",ACT,sep="_")
+    Rec_Name <- paste("ant",REC,sep="_")
+    print(paste("Behaviour:",BEH,"number",ROW,"Actor:",Act_Name,"Receiver:",Rec_Name))
+    
+    ## extract the trajectory for ACT
+    traj_ACT <-  positions$trajectories[[Act_Name]]
+    traj_REC <-  positions$trajectories[[Rec_Name]]
+    
+    ## Plot trajectories of both actor & receiver, show on the same panel
+    plot  (y ~ x, traj_ACT, pch=".", col=rgb(0,0,1,0.2,1), main=paste("Beh",BEH,", Act:",ACT, "Rec:",REC, ENC_TIME_start, "-", ENC_TIME_stop))#, xlim=c(2500,8000),ylim=c(500,5500))
+    points(y ~ x, traj_REC, pch=".", col=rgb(1,0,0,0.2,1))
+    
+    ## subset the trajectories of both actor & receiver using the start & end times
+    traj_ACT <- traj_ACT [ which(traj_ACT$UNIX_time >= ENC_TIME_start & traj_ACT$UNIX_time <= ENC_TIME_stop),]
+    traj_REC <- traj_REC [ which(traj_REC$UNIX_time >= ENC_TIME_start & traj_REC$UNIX_time <= ENC_TIME_stop),]
+    
+    ## Plot trajectories of both actor & receiver, show on the same panel
+    points  (y ~ x, traj_ACT, type="l", lwd=3, col="blue4")
+    points(y ~ x, traj_REC, type="l", lwd=3,  col="red4")
+    
+  }##ACT
+}##BEH
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+######################################################
 
 #define capsules in fortstudio, then look at the data
 capsules  <- e$antShapeTypeNames()
 body_id <- capsules[which(capsules$name=="body"),"typeID"]
-
-
-
 
 ###############################################################################
 ###### 9. READING INTERACTIONS ################################################
@@ -468,4 +502,3 @@ positions$trajectory_summary$nb_coordinates <- unlist(lapply(positions$trajector
 
 rm(list=(c("e")))
 gc()
-e <- fmExperimentOpenReadOnly("training.myrmidon")
