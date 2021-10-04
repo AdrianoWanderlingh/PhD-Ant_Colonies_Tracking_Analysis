@@ -7,6 +7,12 @@ library(adehabitatHR) ####for home range and trajectory analyses
 library(FortMyrmidon) ####R bindings
 library(igraph)       ####for network analysis
 library(parsedate)
+library (trajr)
+
+lenght_in_pixel <- 7920	
+height_in_pixel <- 6004
+
+desired_step_length_time    <- 0.125 ###in seconds, the desired step length for the analysis
 
 ##################################################
 ###### 1. OPENING AN EXPERIMENT ##################
@@ -38,13 +44,6 @@ tag_stats <- fmQueryComputeTagStatistics(e)
 # ###equivalence between tagID and antID at a certain time
 # ###now
 # e$identificationsAt(fmTimeNow(),FALSE)
-# 
-###at start of experiment
-e$identificationsAt(fmTimeCPtrFromAnySEXP(e$getDataInformations()$start),FALSE)
-# ###at specific time
-# e$identificationsAt(fmTimeParse("2020-02-11T11:53:26.790610Z"),FALSE) 
-# ###at a specific frame
-# e$identificationsAt(fmTimeCPtrFromAnySEXP(Frames_summary[2,"time"]),FALSE)
 
 
 ###############################################################################
@@ -57,7 +56,7 @@ e$identificationsAt(fmTimeCPtrFromAnySEXP(e$getDataInformations()$start),FALSE)
 ##Those of note are the following:
 ######### start/end: 
 time_start_ISO <- parse_iso_8601("2021-03-16T12:13:21.670072093Z")
-time_stop  <- fmTimeCPtrFromAnySEXP(time_start_ISO + ((3600*24)/90)) ####arbitrary time in the correct format + 16min
+time_stop  <- fmTimeCPtrFromAnySEXP(time_start_ISO + ((3600*24)/180)) ####arbitrary time in the correct format + 16min (if 90 not 180)
 time_start <- fmTimeCPtrFromAnySEXP(time_start_ISO)
 
 ######### maximumGap: 
@@ -98,12 +97,7 @@ names(positions$trajectories)       <- positions$trajectory_summary$antID_str ##
 # #unlisting the trajectories 
 # library(data.table)
 # trajectories_unlist <- as.data.frame(rbindlist(positions$trajectories,use.names=TRUE,idcol=TRUE))
-# plot(trajectories_unlist$x,trajectories_unlist$y, type = "p")
-# #unlisted trajetroies file
-# #
 # write.csv(trajectories_unlist, file=paste(e$getDataInformations()[["details"]][["tdd.URI"]],'trajectories_30min.csv'),row.names = FALSE) #specify name of the block better!
-# #
-
 
 trajectory_summary <- positions$trajectory_summary
 
@@ -124,21 +118,18 @@ for (A in positions$trajectory_summary$antID)
 #check that milliseconds are preserved after adding the ant's time_start_ISO
 positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
 
-########################  LOAD MANUAL-ANNOTATIONS
-#Behavioural codes explanation
-# Grooming worker	G
-# Trophallaxis	T
-# Aggression	A
-# Cross Rest (90° angle to another ant)	CR
-# Front Rest (180° angle facing another ant)	FR
-# Trophallaxis Queen	TQ
-# Grooming Queen (different body shape)	GQ
-# Tending brood (feeding / grooming)	TB
-# Self-grooming	SG
-# Carrying brood	CB
-# Carrying adults	CA
+#Conversion of data in mm, probably takes ages over the full dataset
+# reuse this and tags size in pixel/mm as point of reference - traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] <-   traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] * petridish_diameter / range 
 
-annotations <- read.csv("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/Subset_for_Tom/Data/R3SP_Post1_updated.csv", sep = ",")
+
+###############################################################################
+###### LOAD MANUAL ANNOTATIONS ################################################
+###############################################################################
+#Behavioural codes explanation
+beh_codes <- read.csv("behavioural_codes.csv", sep= ",")
+
+annotations <- read.csv("R3SP_R9SP_All_data_dropped_useless_cols.csv", sep = ",")
+annotations$Behaviour <- as.character(annotations$Behaviour)
 annotations$Actor <- as.character(annotations$Actor)
 annotations$Receiver <- as.character(annotations$Receiver)
 
@@ -149,29 +140,40 @@ annotations$T_stop <- as.POSIXct(annotations$T_stop, format = "%Y-%m-%dT%H:%M:%O
 #see if milliseconds are shown (number of decimals represented by the number after %OS)
 format(annotations$T_start[3], "%Y-%m-%d %H:%M:%OS6")
 
-table(annotations$Behaviour)
-Counts_by_Actor <- aggregate(treatment_rep ~ Behaviour + Actor, FUN=length, annotations); colnames(Counts_by_Actor) [match("treatment_rep",colnames(Counts_by_Actor))] <- "Count"
-
 #remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
 #this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
-annotations_nodup <- annotations[which(annotations$Actor==annotations$Focal),]
+annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
 
+#remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
+annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start","T_stop","Behaviour","treatment_rep")]),]
+
+#Summary counts of behaviour frequency
 Counts_by_Behaviour <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
-Counts_by_Behaviour_nodups <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_nodup); colnames(Counts_by_Behaviour_nodups) [match("treatment_rep",colnames(Counts_by_Behaviour_nodups))] <- "Count_nodups"
+Counts_by_Behaviour_drop_G_A <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
+Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
 
 #check how many cases have been removed
-Counts_by_Behaviour <- cbind(Counts_by_Behaviour, count_nodups = Counts_by_Behaviour_nodups$Count_nodups)
+Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
+Counts_by_Behaviour
 
+#Over-write cleaned dataset
+annotations <- annotations_drop_all_dup
 
-####First let's extract a single ant's trajectory
+#subset of annotations to run tests
+annotations <- annotations[which(annotations$treatment=="post" & annotations$treatment_rep == "R3SP"),]
+
+############Prepare overall data object
+summary_data <- NULL
+
+####First let's extract ant's trajectories
 par(mfrow=c(2,3), mai=c(0.3,0.3,0.1,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
 
 for (BEH in c("G","T"))
 {
   annot_BEH <- annotations[which(annotations$Behaviour==BEH),]
   ## remove doubled allo-grooming interactions
-  if (BEH=="G") {annot_BEH <- annot_BEH[!duplicated(annot_BEH),]}  ## leave NOT to catch possible un-matched rows
-  if (BEH=="T") {print("FIND A WAY TO REMOVE DUPLICATES, MAY THAT BE USING THE FOCAL INDIVIDUAL?")}
+  if (BEH=="G") {print("duplicates removed")}#{annot_BEH <- annot_BEH[!duplicated(annot_BEH),]}  ## leave NOT to catch possible un-matched rows
+  if (BEH=="T") {print("duplicates removed")}
   ## loop through each event in annot_BEH
   for (ROW in 1:nrow(annot_BEH))
   {
@@ -190,8 +192,8 @@ for (BEH in c("G","T"))
     traj_REC <-  positions$trajectories[[Rec_Name]]
     
     ## Plot trajectories of both actor & receiver, show on the same panel
-    plot  (y ~ x, traj_ACT, pch=".", col=rgb(0,0,1,0.2,1), main=paste("Beh",BEH,", Act:",ACT, "Rec:",REC, ENC_TIME_start, "-", ENC_TIME_stop))#, xlim=c(2500,8000),ylim=c(500,5500))
-    points(y ~ x, traj_REC, pch=".", col=rgb(1,0,0,0.2,1))
+    plot  (y ~ x, traj_ACT, pch=".", col=rgb(0,0,1,0.3,1), main=paste("Beh",BEH,", Act:",ACT, "Rec:",REC, ENC_TIME_start, "-", ENC_TIME_stop))#, xlim=c(0,lenght_in_pixel),ylim=c(0,height_in_pixel))
+    points(y ~ x, traj_REC, pch=".", col=rgb(1,0,0,0.3,1))
     
     ## subset the trajectories of both actor & receiver using the start & end times
     traj_ACT <- traj_ACT [ which(traj_ACT$UNIX_time >= ENC_TIME_start & traj_ACT$UNIX_time <= ENC_TIME_stop),]
@@ -201,8 +203,75 @@ for (BEH in c("G","T"))
     points  (y ~ x, traj_ACT, type="l", lwd=3, col="blue4")
     points(y ~ x, traj_REC, type="l", lwd=3,  col="red4")
     
+    print(sum(traj_ACT$x))
+    #traj_ACTz <- write.csv(traj_ACT)
+    
+    ########################################################
+    ##define trajectory
+    trajectory_ACT                 <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y,time=as.numeric(traj_ACT$UNIX_time)), spatialUnits = "px",timeUnits="s")
+    #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
+
+    ###1. total distance moved 
+    distance_ACT                   <- TrajLength(trajectory_ACT)
+    
+   ###2. Mean and median speed
+   deriv_traj                      <- TrajDerivatives(trajectory_ACT)
+   mean_speed_mmpersec_ACT             <- mean(deriv_traj$speed,na.rm=T)
+   #  median_speed_mmpersec           <- median(deriv_traj$speed,na.rm=T)
+   #  ###3. Mean and median acceleration
+   #  mean_acceleration_mmpersec2     <- mean(deriv_traj$acceleration,na.rm=T)
+   #  median_acceleration_mmpersec2   <- median(deriv_traj$acceleration,na.rm=T)
+   #  ###4. Mean and median turn angle, in radians
+   #  mean_turnangle_radians          <- mean(abs( TrajAngles(trajectory)),na.rm=T)
+   #  median_turnangle_radians        <- median(abs( TrajAngles(trajectory)),na.rm=T)
+   #  ###5. Straightness
+   #  straightness_index              <- Mod(TrajMeanVectorOfTurningAngles(trajectory))
+   #  sinuosity                       <- TrajSinuosity(trajectory)
+   #  sinuosity_corrected             <- TrajSinuosity2(trajectory)
+   #  ###6. Expected Displacement
+   #  expected_displacement_mm        <- TrajEmax(trajectory,eMaxB =T)
+   #  ###7. Autocorrelations
+   #  all_Acs                         <- TrajDirectionAutocorrelations(trajectory)
+   #  periodicity_sec                 <- TrajDAFindFirstMinimum(all_Acs)["deltaS"]*desired_step_length_time
+   #  ###8. root mean square displacement
+   # # rmse_mm                            <-  sqrt(sum( (traj[,c(paste("x",ACT,sep=""))]-mean(traj[,c(paste("x",ACT,sep=""))]))^2 + (traj[,c(paste("y",ACT,sep=""))]-mean(traj[,c(paste("y",ACT,sep=""))]))^2 )/length(na.omit(traj[,c(paste("x",ACT,sep=""))])))
+
+   # summary_data <- rbind(summary_data,data.frame(BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,distance_mm=distance_mm,mean_speed_mmpersec=mean_speed_mmpersec,median_speed_mmpersec=median_speed_mmpersec,mean_acceleration_mmpersec2=mean_acceleration_mmpersec2,median_acceleration_mmpersec2=median_acceleration_mmpersec2,mean_turnangle_radians=mean_turnangle_radians,median_turnangle_radians=median_turnangle_radians,straightness_index=straightness_index,sinuosity=sinuosity,sinuosity_corrected=sinuosity_corrected,expected_displacement_mm=expected_displacement_mm,periodicity_sec=periodicity_sec,stringsAsFactors = F))
+    summary_data <- rbind(summary_data,data.frame(BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,distance_ACT=distance_ACT,mean_speed_mmpersec_ACT=mean_speed_mmpersec_ACT, stringsAsFactors = F))
+    
+    
+    
   }##ACT
 }##BEH
+
+    for (variable in names( summary_data)[!names(summary_data)%in%c("BEH","Act_Name","Rec_Name")]){
+      summary_data[,"variable"] <- summary_data[,variable]
+      boxplot(variable~BEH,ylab=variable,data=summary_data)
+    }##var_PLOT
+    
+    ########################################################
+
+
+
+
+
+
+
+
+
+
+
+
+rm(list=(c("e")))
+gc()
+
+
+
+
+
+
+
+
 
 
 
