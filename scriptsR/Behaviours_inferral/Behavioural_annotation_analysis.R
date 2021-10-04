@@ -12,6 +12,7 @@ library(RColorBrewer)
 library(gridExtra)
 library(parsedate)
 library(forcats) #what's it for?
+library(plyr)
 
 annotations <- read.csv("R3SP_R9SP_All_data_dropped_useless_cols.csv", sep = ",")
 annotations$Behaviour <- as.character(annotations$Behaviour)
@@ -27,15 +28,22 @@ format(annotations$T_start[3], "%Y-%m-%d %H:%M:%OS6")
 
 #remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
 #this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
-annotations_nodup <- annotations[which(annotations$Actor==annotations$Focal),]
+annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
 
+#remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
+annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start","T_stop","Behaviour","treatment_rep")]),]
+
+#Summary counts of behaviour frequency
 Counts_by_Behaviour <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
-Counts_by_Behaviour_nodups <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_nodup); colnames(Counts_by_Behaviour_nodups) [match("treatment_rep",colnames(Counts_by_Behaviour_nodups))] <- "Count_nodups"
+Counts_by_Behaviour_drop_G_A <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
+Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
 
 #check how many cases have been removed
-Counts_by_Behaviour <- cbind(Counts_by_Behaviour, count_nodups = Counts_by_Behaviour_nodups$Count_nodups)
+Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
+Counts_by_Behaviour
 
-#data<-basedata[!(basedata$Behaviour=="CB" | basedata$Behaviour=="TQ" | basedata$Behaviour=="GQ" | basedata$Behaviour=="FR" | basedata$Behaviour=="CR"),]
+#Over-write cleaned dataset
+annotations <- annotations_drop_all_dup
 
 ############################################
 #######DATA PREPARATION#####################
@@ -80,7 +88,7 @@ Counts_by_Behaviour <- cbind(Counts_by_Behaviour, count_nodups = Counts_by_Behav
 #######CALCULATE DURATION###################
 ############################################
 
-annotations$duration  <- as.numeric(annotations$T_stop - annotations$T_start, units.difftime= "seconds")
+annotations$duration_sec  <- as.numeric(annotations$T_stop - annotations$T_start, units.difftime= "seconds")
 
 ############################################
 #######SOME PLOTTING########################
@@ -96,17 +104,17 @@ unique(annotations$Behaviour)
 #annotationz<-annotations[which(annotations$Behaviour== "SG"),]
 
 #MEAN BEHAVIOUR DURATION plot
-mean_dur_plot<- ggplot(data = annotations , aes(x=Behaviour, y=duration, fill=fct_rev(treatment))) + 
+mean_dur_plot<- ggplot(data = annotations , aes(x=Behaviour, y=duration_sec, fill=fct_rev(treatment))) + 
   geom_point(aes(colour=treatment)) + #how the hell can I show the datapoints by treatment??
   scale_fill_manual(values=c("skyblue2","tomato1")) +
   theme(legend.position = c(0.85, 0.85),legend.title = element_blank()) +
-  ggtitle("Mean behaviour duration \n before and after pathogen exposure")
+  ggtitle("Mean behaviour duration_sec \n before and after pathogen exposure")
 
 #boxplot
 mean_dur_boxplot <- mean_dur_plot + geom_boxplot()
 
 #violinplot
-mean_dur_plot + geom_violin() 
+#mean_dur_plot + geom_violin() 
 
 #data_agg <- aggregate(frequency~Behaviour+treatment, annotations, sum)
 
@@ -145,26 +153,15 @@ grid.arrange(mean_dur_boxplot, freq_plot,
 #######DATA SUMMARY#########################
 ############################################
 
-###summary with different tools:
-
-###FREQUENCY summary with tapply
-with(annotations, tapply(occurrence, list(Behaviour,treatment), sum))
-
 ###DURATION summary with aggregate (nice but doesn't save correctly, needs correction)
-duration_summary <- with(annotations, aggregate(duration ~ Behaviour + treatment, FUN =  function(x) c( SD = sd(x), MN= mean(x), MAX= max(x) )))
+duration_summary <- with(annotations, aggregate(duration_sec ~ Behaviour + treatment, FUN =  function(x) c( SD = sd(x), MN= mean(x), MAX= max(x) )))
 duration_summary #the function of aggregate works but the object doesn't save correctly!
 #check for outliers, may be not relevant to select them if the test is roust for outliers
-with(annotations, aggregate(duration ~ Behaviour + treatment, FUN =  function(x) c( out = boxplot.stats(x)$out )))
-
-###FREQUENCY summary with plyr
-library(plyr)
-
-freq_summary <- ddply(annotations, c("Behaviour","treatment"), summarise, grp.tot=sum(occurrence))
-freq_summary
+outliers <- with(annotations, aggregate(duration_sec ~ Behaviour + treatment, FUN =  function(x) c( out = boxplot.stats(x)$out )))
 
 ###DURATION summary with plyr, used for the following histograms
 #all values
-dur_summary <- ddply(annotations, c("Behaviour","treatment"), summarise, grp.mean=mean(duration))
+dur_summary <- ddply(annotations, c("Behaviour","treatment"), summarise, grp.mean=mean(duration_sec))
 dur_summary
 
 ########################################################################################
@@ -174,8 +171,8 @@ dur_summary
 #values excluding those 6 times larger than the mean (value chosen to exclude the larger ones and
 #visualise graphs more easily. outliers should not be excluded, especially in non-parametric tests).
 #If dropping them in parametric tests helps, it may be done if reasonably executed (truncate them instead of elimination?)
-data_without_outliers <- annotations[!annotations$duration>6*mean(annotations$duration),]
-dur_summary_nolarge <- ddply(data_without_outliers, c("Behaviour","treatment"), summarise, grp.mean=mean(duration))
+data_without_outliers <- annotations[!annotations$duration_sec>6*mean(annotations$duration_sec),]
+dur_summary_nolarge <- ddply(data_without_outliers, c("Behaviour","treatment"), summarise, grp.mean=mean(duration_sec))
 dur_summary_nolarge
 
 ############################################
@@ -184,26 +181,31 @@ dur_summary_nolarge
 
 #check for normality visually first
 #look at the data histograms
-ggplot(annotations,aes(x=duration))+geom_histogram()+facet_grid(~Behaviour)+theme_bw()
+beh_dist_hist <- ggplot(annotations,aes(x=duration_sec))+geom_histogram()+facet_grid(~Behaviour)+theme_bw() +
+  ggtitle("Behaviour duration distribution")
 
 ###plot divided by behaviour and showing treatment with the mean per group 
 #with large values
-ggplot(annotations,aes(x=duration, color=treatment))+
+beh_dist_hist_by_treat <- ggplot(annotations,aes(x=duration_sec, color=treatment))+
   geom_histogram(fill="white",alpha=0.5, position="identity")+
   facet_grid(~Behaviour)+
   geom_vline(data=dur_summary, aes(xintercept=grp.mean, color=treatment),
              linetype="dashed")+
-  theme_bw() + theme(legend.position="top")
+  theme_bw() + theme(legend.position= c(0.95, 0.65))+
+  ggtitle("behaviour duration distribution before and after pathogen exposure")
 
 
 #large values removed
-ggplot(data_without_outliers,aes(x=duration, color=treatment))+
+beh_dist_hist_by_treat_no_out <-ggplot(data_without_outliers,aes(x=duration_sec, color=treatment))+
   geom_histogram(fill="white",alpha=0.5, position="identity")+
   facet_grid(~Behaviour)+
   geom_vline(data=dur_summary_nolarge, aes(xintercept=grp.mean, color=treatment),
              linetype="dashed")+
-  theme_bw() + theme(legend.position="top")
+  theme_bw() + theme(legend.position="none")+
+  ggtitle("behaviour duration distribution before and after pathogen exposure (outliers removed to ease readibility)")
 
+grid.arrange(beh_dist_hist, beh_dist_hist_by_treat, beh_dist_hist_by_treat_no_out,
+             ncol = 1, nrow = 3)
 
 ###check for normality with glm (see Constance Script/summary_data_movement_131219.R from line 133 on)
 # by seeing if the residuals have a normal distribution
@@ -216,8 +218,6 @@ ggplot(data_without_outliers,aes(x=duration, color=treatment))+
 # If we sum up observations by ant (I think it is the most sensible choice):
 #per each behaviour, we will need to compare two paired groups,
 #If data is parametric (normal residuals), use	Paired t test; if data is non-parametric, use	Wilcoxon signed rank test on paired samples
-
-
 
 
 # WILCOXON TEST ASSUMPTIONS:
