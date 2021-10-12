@@ -50,7 +50,7 @@ desired_step_length_time    <- 0.125 ###in seconds, the desired step length for 
 ###### 1. OPENING AN EXPERIMENT ##################
 ##################################################
 ####### navigate to folder containing myrmidon file
-if (USER=="Adriano") {WORKDIR <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/Subset_for_Tom"}
+if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Dropbox/Ants_behaviour_analysis/ScriptsR/Annotations_analysis.R"}
 if (USER=="Tom")     {WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"}
 
 DATADIR <- paste(WORKDIR,"Data",sep="/")
