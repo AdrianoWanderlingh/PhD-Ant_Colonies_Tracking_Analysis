@@ -1,3 +1,7 @@
+# USER            <- "Adriano"
+# if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Dropbox/Ants_behaviour_analysis"}
+# if (USER=="Tom")     {WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"}
+# DATADIR <- paste(WORKDIR,"Data",sep="/")
 
 ###############################################################################
 ###### LOAD MANUAL ANNOTATIONS ################################################
@@ -5,7 +9,9 @@
 #Behavioural codes explanation
 # beh_codes <- read.csv("behavioural_codes.csv", sep= ",")
 
-
+library(ggplot2)
+library(plotrix)
+library(gridExtra)
 
 annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
 annotations$Behaviour <- as.character(annotations$Behaviour)
@@ -41,8 +47,6 @@ Counts_by_Behaviour
 #see total final numer of behaviours
 Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
 
-
-
 #Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below! 
 annotations <- annotations_drop_all_dup
 
@@ -59,16 +63,19 @@ all_combos <- expand.grid ( Behaviour=unique(annotations$Behaviour), period=uniq
 ## add the missing cases
 Counts_by_Behaviour_AllCombos <- plyr::join (x = Counts_by_Behaviour_CLEAN , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
 
-## Focus only ion a few important behaviours
+## Focus only on a few important behaviours
 Counts_by_Behaviour_AllCombos$Behaviour <- as.character(Counts_by_Behaviour_AllCombos$Behaviour)  ## naughty R
 Counts_by_Behaviour_AllCombos <- Counts_by_Behaviour_AllCombos[which(Counts_by_Behaviour_AllCombos$Behaviour %in% c("A","G","SG","T","TB")),]
-
 
 ## replace the NAs with 0 counts            
 Counts_by_Behaviour_AllCombos$Count[which(is.na(Counts_by_Behaviour_AllCombos$Count))] <- 0
 ## finally, get the mean & S.E. for each behav before/after  for barplots
 Counts_by_Behaviour_MEAN  <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
 Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
+
+###############################################################################
+###### PLOTTING  ##############################################################
+###############################################################################
 
 ## show the mean counts for each behav | stage
 pdf(file=paste(DATADIR,"Behaviour_counts_pre-post.pdf", sep = ""), width=5, height=3)
@@ -100,10 +107,74 @@ segments(x0 = Xpos[2,],
          y0 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="post"], 
          y1 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$period=="post"],
          lwd=2)
+
+
+## COUNT BY ACTOR and RECEIVER
+## count the number of observations per actor/receiver and behaviour to find the most interacting indivduals
+
+#Change colname of both Actor and Receiver in the dataframes to "ant" for the loop to work
+Counts_by_Behaviour_Rec <- aggregate(Focal ~ Behaviour + period + Receiver + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Rec) [match("Focal",colnames(Counts_by_Behaviour_Rec))] <- "Count"; colnames(Counts_by_Behaviour_Rec) [match("Receiver",colnames(Counts_by_Behaviour_Rec))] <- "Ant"
+Counts_by_Behaviour_Act <- aggregate(Focal ~ Behaviour + period + Actor + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Act) [match("Focal",colnames(Counts_by_Behaviour_Act))] <- "Count"; colnames(Counts_by_Behaviour_Act) [match("Actor",colnames(Counts_by_Behaviour_Act))] <- "Ant"
+#create place-holder column to have name for plotting
+Counts_by_Behaviour_Rec$Receiver <- "Receiver"
+Counts_by_Behaviour_Act$Actor <- "Actor"
+Rec_Act_Counts_list <- list(Counts_by_Behaviour_Rec=Counts_by_Behaviour_Rec,Counts_by_Behaviour_Act=Counts_by_Behaviour_Act)
+
+ExposedAntsR3SP <- c(5,17)
+ExposedAntsR9SP <- c(23,29,32)
+
+for (SUBJECT in Rec_Act_Counts_list) {
+  #print(deparse(substitute(Rec_Act_Counts_list)[SUBJECT]))
+  #cat(names(Rec_Act_Counts_list)[SUBJECT])
+  ANT_role <- names(SUBJECT)[6]
+  ## add the missing cases
+  SUBJECT_AllCombos <- plyr::join (x = SUBJECT , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )
+  ## Focus only on a few important behaviours
+  SUBJECT_AllCombos$Behaviour <- as.character(SUBJECT_AllCombos$Behaviour)  ## naughty R
+  SUBJECT_AllCombos <- SUBJECT_AllCombos[which(SUBJECT_AllCombos$Behaviour %in% c("A","G","SG","T","TB")),]
+  ## replace the NAs with 0 counts            
+  SUBJECT_AllCombos$Count[which(is.na(SUBJECT_AllCombos$Count))] <- 0
+  
+  SUBJECT_AllCombos_R3SP <- subset(SUBJECT_AllCombos, treatment_rep == "R3SP")
+  # one box per behaviour, showing Receivers and divided by colony (to avoid overlaps of antIDs)
+  #colony R3SP Ant
+  p <- ggplot(SUBJECT_AllCombos_R3SP, aes(x=period, y=Count, fill=period)) + 
+    geom_bar(aes(fill = Ant),stat='identity',colour="black", fill=NA) +
+    geom_text(aes(label=ifelse(Count>6,as.character(Ant),''),color=ifelse(Ant %in% ExposedAntsR3SP,"red","black")), size = 2, position = position_stack(vjust = 0.9)) +
+    scale_colour_manual(values = c("darkgray","black")) +
+    facet_grid(~Behaviour, scale="free") +
+    theme(text=element_text(family="serif",size=7),legend.position="none") +
+    labs(title = paste("Behaviour frequency by",ANT_role, "\n by exposure period (colony:", "R3SP", ")"),
+      subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
+      y ="Behaviour count")
+  
+  SUBJECT_AllCombos_R9SP <- subset(SUBJECT_AllCombos, treatment_rep == "R9SP")
+  # one box per behaviour, showing Receivers and divided by colony (to avoid overlaps of antIDs)
+  #colony R3SP Ant
+  p1 <- ggplot(SUBJECT_AllCombos_R9SP, aes(x=period, y=Count, fill=period)) + 
+    geom_bar(aes(fill = Ant),stat='identity',colour="black", fill=NA) +    
+    geom_text(aes(label=ifelse(Count>6,as.character(Ant),''),color=ifelse(Ant %in% ExposedAntsR9SP,"red","")), size = 2, position = position_stack(vjust = 0.9)) +
+    scale_colour_manual(values = c("darkgray","black")) +
+    facet_grid(~Behaviour, scale="free") +
+    theme(text=element_text(family="serif",size=7),legend.position="none") +
+    labs(title = paste("Behaviour frequency by",ANT_role,"\n by exposure period (colony:", "R9SP", ")"),
+      subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
+      y ="Behaviour count")
+  
+  grid.arrange(p, p1,
+               ncol = 2, nrow = 1)
+  
+}
+
 ## close the pdf
 dev.off()
 
-## TO DO : statistics on before / after counts & durations
+
+#check for normality visually first
+#look at the data histograms
+beh_dist_hist <- ggplot(annotations,aes(x=duration))+geom_histogram()+facet_grid(~Behaviour, scales = "free")+theme_bw() +
+  ggtitle("Behaviour duration distribution")
+beh_dist_hist
 
 ############################################################################
 ###### STATISTICS ON COUNTS ################################################
@@ -112,6 +183,8 @@ library(lme4)
 library(blmeco) # check dispersion for glmer
 library(emmeans) #post-hoc comparisons
 library(e1071) #calc skewness and other stuff
+library(lawstat) #for levene test (homogeneity of variance)
+
 
 #function to test normality of residuals
 test_norm <- function(resids){
@@ -204,23 +277,38 @@ posthoc$contrast
 
 annotations$treatment_rep <- as.factor(annotations$treatment_rep)
 annotations$period<- as.factor(annotations$period)
-annotations$Behaviour <- as.factor(annotations$Behaviour)
-annotations$Focal <- as.factor(annotations$Focal)
+annotations$Behaviour <- as.character(annotations$Behaviour)
+annotations$Focal <- as.character(annotations$Focal)
 str(annotations)
 
-#Counts_by_Behaviour_AllCombos$period = relevel(Counts_by_Behaviour_AllCombos$period, ref="pre")
+annotations <- annotations[which(annotations$Behaviour %in% c("A","G","SG","T","TB")),]
+annotations$Behaviour <- as.factor(annotations$Behaviour)
+
 m_dur1 <- lmerTest::lmer(duration ~ period + Behaviour + (1|treatment_rep), annotations)
 summary(m_dur1)
 test_norm(residuals(m_dur1)) #skewed data
 
-#how to solve this? look into SUMMARY_DATA_MOVEMENT_131219 FOR POINTERS
-m_dur2 <- glmer(duration ~ period + Behaviour + (1|treatment_rep), data = annotations, family = "   ")
+#Log transform data
+annotations <- annotations[!annotations$duration==0, ]
+annotations$duration_log <- log(annotations$duration)
+
+m_dur2 <- lmerTest::lmer(duration_log ~ period + Behaviour + (1|treatment_rep), annotations)
 summary(m_dur2)
-test_norm(residuals(m_dur2)) 
+test_norm(residuals(m_dur2)) #good values of kurtosis and skeweness
 
+plot(m_dur2)
+par(mfrow=c(1,2))
+qqnorm(resid(m_dur2)); qqline(resid(m_dur2)); hist(resid(m_dur2))
 
+## Homogeneity of variance
+#if test is ns the variances are homogenous
+levene.test(annotations$duration_log, annotations$period)
 
+anova(m_dur2) #I guess it shows that there are differences between behaviours but not between period
 
+emmeans(m_dur2, list(pairwise ~ period | Behaviour), adjust = "tukey")  #EVERY CONTRAST HAS SAME ESTIMATES WITH SUPER HIGH SIGNIFICANCE, EVEN WHEN IT SHOULDN'T (E.G. TROPHALLAXIS)
+
+emmip(m_dur2, Behaviour ~ period, CIs = TRUE) #the interaction plot looks pretty flat
 
 print("I'D LOVE TO HAVE COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOUR LABELS ALREADY!!")
 
@@ -236,13 +324,20 @@ library("caret")
 my.ids <- createDataPartition(annotations$Behaviour, p = 0.5)
 annotations_subset <- annotations[as.numeric(my.ids[[1]]), ]
 
+#create 25% set as first step of Cross Validation agreement, if agreement is high stop here, else continue check on the larger set 
+my.ids2 <- createDataPartition(annotations_subset$Behaviour, p = 0.5)
+annotations_subset2 <- annotations[as.numeric(my.ids2[[1]]), ]
+
+
 #You can check the distribution of your target variable in the population and in your subset.
-par(mfrow = c(1,2))
+par(mfrow = c(1,3))
 barplot(table(annotations$Behaviour), main = "full dataset")
-barplot(table(annotations_subset$Behaviour), main = "subset")
+barplot(table(annotations_subset$Behaviour), main = "subset 50%")
+barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
+
 
 # avoid file overwriting!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # if ()
 #   
-#   list.files(path=DATADIR, pattern=REPLICATE, full.names=T); MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl("Capsule_defined.myrmidon",MyrmidonCapsuleFile)]  
-#write.csv(annotations_subset, "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/Annotation_Cross_Validation/annotations_subset_50%.csv")
+# write.csv(annotations_subset, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_50%_2.csv")
+# write.csv(annotations_subset2, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_25%_2.csv")
