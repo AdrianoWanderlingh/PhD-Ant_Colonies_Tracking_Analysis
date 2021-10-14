@@ -12,6 +12,7 @@
 library(ggplot2)
 library(plotrix)
 library(gridExtra)
+library(gtools) # to convert p.values in stars
 
 annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
 annotations$Behaviour <- as.character(annotations$Behaviour)
@@ -73,6 +74,134 @@ Counts_by_Behaviour_AllCombos$Count[which(is.na(Counts_by_Behaviour_AllCombos$Co
 Counts_by_Behaviour_MEAN  <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
 Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
 
+############################################################################
+###### STATISTICS ON COUNTS ################################################
+############################################################################
+library(lme4)
+library(blmeco) # check dispersion for glmer
+library(emmeans) #post-hoc comparisons
+library(e1071) #calc skewness and other stuff
+library(lawstat) #for levene test (homogeneity of variance)
+
+
+#function to test normality of residuals
+test_norm <- function(resids){
+  print("Testing normality")
+  if (length(resids)<=300){
+    print("Fewer than 300 data points so performing Shapiro-Wilk's test")
+    print(shapiro.test(resids))
+  }else{
+    print("More than 300 data points so using the skewness and kurtosis
+approach")
+    print("Skewness should be between -3 and +3 (best around zero")
+    print(skewness(resids))
+    print("")
+    print("Excess kurtosis (i.e. absolute kurtosis -3) should be less than 4; ideally around zero")
+    print(kurtosis(resids))
+  }
+}
+
+str(Counts_by_Behaviour_AllCombos)
+Counts_by_Behaviour_AllCombos$treatment_rep <- as.factor(Counts_by_Behaviour_AllCombos$treatment_rep)
+Counts_by_Behaviour_AllCombos$period<- as.factor(Counts_by_Behaviour_AllCombos$period)
+Counts_by_Behaviour_AllCombos$Behaviour <- as.factor(Counts_by_Behaviour_AllCombos$Behaviour)
+Counts_by_Behaviour_AllCombos$Count <- as.numeric(Counts_by_Behaviour_AllCombos$Count)
+str(Counts_by_Behaviour_AllCombos)
+
+#Counts_by_Behaviour_AllCombos$period = relevel(Counts_by_Behaviour_AllCombos$period, ref="pre")
+m1 <- lmerTest::lmer(sqrt(Count) ~ period * Behaviour * (1|treatment_rep), Counts_by_Behaviour_AllCombos)
+summary(m1)
+test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
+qqnorm(residuals(m1))
+
+posthoc_FREQ <- emmeans(m1, specs = trt.vs.ctrlk ~ period | Behaviour)
+posthoc_FREQ_summary<-summary(posthoc_FREQ$contrasts)
+
+par(mfrow=c(1,2))
+plot(m1)
+qqnorm(residuals(m1))
+qqline(residuals(m1))
+hist(residuals(m1)) 
+
+##or
+#emmeans(m5, list(pairwise ~ period | Behaviour), adjust = "tukey")
+##or
+# contrast(emmeans(m5,~period|Behaviour, type="response"),
+#          method="pairwise", adjust="Tukey")  #method = "trt.vs.ctrl"
+
+
+# m2 <- glmer(Count ~ period * Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos, family = "poisson")
+# summary(m2)
+# test_norm(residuals(m2))
+# qqnorm(residuals(m2))
+
+##check poisson distribution overdispersion
+##if the ratio of residual deviance to degrees of freedom it's >1 then the data are overdispersed
+#dispersion_glmer(m2)
+
+# #overdispersion can be incorporated by including an observation-level random effect (1|obs), to allow observations to be correlated with themselves
+# Counts_by_Behaviour_AllCombos$obs=factor(1:nrow(Counts_by_Behaviour_AllCombos))
+# m5 <- glmer(Count ~ period + Behaviour + (1|treatment_rep) +(1|obs), data = Counts_by_Behaviour_AllCombos, family = "poisson")
+# summary(m5) # is singular fit a problem?
+# dispersion_glmer(m5)#model m5, which assumes poisson distribution and accounts for overdispersion by adding an observation-level random effect shows both lower AIC and dispersion ~1
+# anova(m2,m5)
+
+
+######OTHER STUFF################
+# #looking into negative binomial
+# m6 <- glmer.nb(Count ~ period + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos)
+# #m6<- glm.nb(Count ~ period + Behaviour, data = Counts_by_Behaviour_AllCombos)
+# m7 <- glmer(Count ~ treatment + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos, family=binomial(link = "logit"))
+
+# #we can use a quasi-family to estimate the dispersion parameter (Bbut without random effect in the model)
+# summary(m4) #model with Quasipoisson distribution
+
+#related packages
+# #test normality of residuals
+# library(e1071); library(lmerTest); library(MuMIn); library(arm); library(lmtest); library(MASS); library(pbkrtest)
+
+############################################################################
+###### STATISTICS ON DURATION ##############################################
+############################################################################
+annotations$treatment_rep <- as.factor(annotations$treatment_rep)
+annotations$period<- as.factor(annotations$period)
+annotations$Behaviour <- as.character(annotations$Behaviour)
+annotations$Focal <- as.character(annotations$Focal)
+str(annotations)
+
+## add the missing cases to avoid A to not be estimated
+annotations_allCombs <- plyr::join (x = annotations , y=all_combos, type = "right", match = "all")
+
+
+annotations_allCombs <- annotations_allCombs[which(annotations_allCombs$Behaviour %in% c("A","G","SG","T","TB")),]
+annotations_allCombs$Behaviour <- as.factor(annotations_allCombs$Behaviour)
+
+m_dur1 <- lmerTest::lmer(duration ~ period + Behaviour + (1|treatment_rep), annotations_allCombs)
+summary(m_dur1)
+test_norm(residuals(m_dur1)) #skewed data
+
+#Log transform data
+annotations_allCombs[annotations_allCombs$Behaviour=="A"& annotations_allCombs$period=="pre", ]$duration <- 0.0001
+annotations_allCombs <- annotations_allCombs[!annotations_allCombs$duration==0, ]
+annotations_allCombs$duration_log <- log(annotations_allCombs$duration)
+
+m_dur2 <- lmerTest::lmer(duration_log ~ period * Behaviour + (1|treatment_rep), annotations_allCombs)
+summary(m_dur2)
+test_norm(residuals(m_dur2)) #good values of kurtosis and skeweness
+
+plot(m_dur2)
+par(mfrow=c(1,2))
+qqnorm(resid(m_dur2)); qqline(resid(m_dur2)); hist(resid(m_dur2))
+
+## Homogeneity of variance
+#if test is ns the variances are homogenous
+levene.test(annotations_allCombs$duration_log, annotations_allCombs$period)
+
+anova(m_dur2) #I guess it shows that there are differences between behaviours but not between period
+
+posthoc_DUR <- emmeans(m_dur2, specs = trt.vs.ctrlk ~ period | Behaviour)
+posthoc_DUR_summary<-summary(posthoc_DUR$contrast)
+
 ###############################################################################
 ###### PLOTTING  ##############################################################
 ###############################################################################
@@ -81,18 +210,23 @@ Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + perio
 pdf(file=paste(DATADIR,"Behaviour_counts_pre-post.pdf", sep = ""), width=5, height=3)
 par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.1,0.1), mgp=c(1.3,0.3,0), tcl=-0.2)
 ## COUNTS
-Xpos <- barplot( Count ~ period + Behaviour , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour count", ylim=c(0,max( Counts_by_Behaviour_MEAN$Count +  Counts_by_Behaviour_SE$Count)))
+Xpos <- barplot( Count ~ period + Behaviour , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour count", ylim=c(0,max( Counts_by_Behaviour_MEAN$Count +  Counts_by_Behaviour_SE$Count*1.4 )))
 ##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
 segments(x0 = Xpos[1,], 
          x1 = Xpos[1,], 
          y0 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="pre"], 
          y1 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="pre"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$period=="pre"],
          lwd=2)
+
 segments(x0 = Xpos[2,], 
          x1 = Xpos[2,], 
          y0 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="post"], 
          y1 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$period=="post"],
          lwd=2)
+
+text(x = ((Xpos[1,]+Xpos[2,])/2),
+     y = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$period=="post"]+15,
+     stars.pval(posthoc_FREQ_summary$p.value))
 
 ## DURATIONS
 Xpos <- barplot( duration ~ period + Behaviour , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour duration (s)", ylim=c(0,max( Counts_by_Behaviour_MEAN$duration +  Counts_by_Behaviour_SE$duration, na.rm=T)))
@@ -108,6 +242,9 @@ segments(x0 = Xpos[2,],
          y1 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$period=="post"],
          lwd=2)
 
+text(x = ((Xpos[1,]+Xpos[2,])/2),
+     y = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$period=="post"]+3,
+     stars.pval(rev(posthoc_DUR_summary$p.value)))
 
 ## COUNT BY ACTOR and RECEIVER
 ## count the number of observations per actor/receiver and behaviour to find the most interacting indivduals
@@ -145,8 +282,8 @@ for (SUBJECT in Rec_Act_Counts_list) {
     facet_grid(~Behaviour, scale="free") +
     theme(text=element_text(family="serif",size=7),legend.position="none") +
     labs(title = paste("Behaviour frequency by",ANT_role, "\n by exposure period (colony:", "R3SP", ")"),
-      subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
-      y ="Behaviour count")
+         subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
+         y ="Behaviour count")
   
   SUBJECT_AllCombos_R9SP <- subset(SUBJECT_AllCombos, treatment_rep == "R9SP")
   # one box per behaviour, showing Receivers and divided by colony (to avoid overlaps of antIDs)
@@ -158,8 +295,8 @@ for (SUBJECT in Rec_Act_Counts_list) {
     facet_grid(~Behaviour, scale="free") +
     theme(text=element_text(family="serif",size=7),legend.position="none") +
     labs(title = paste("Behaviour frequency by",ANT_role,"\n by exposure period (colony:", "R9SP", ")"),
-      subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
-      y ="Behaviour count")
+         subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
+         y ="Behaviour count")
   
   grid.arrange(p, p1,
                ncol = 2, nrow = 1)
@@ -176,142 +313,6 @@ beh_dist_hist <- ggplot(annotations,aes(x=duration))+geom_histogram()+facet_grid
   ggtitle("Behaviour duration distribution")
 beh_dist_hist
 
-############################################################################
-###### STATISTICS ON COUNTS ################################################
-############################################################################
-library(lme4)
-library(blmeco) # check dispersion for glmer
-library(emmeans) #post-hoc comparisons
-library(e1071) #calc skewness and other stuff
-library(lawstat) #for levene test (homogeneity of variance)
-
-
-#function to test normality of residuals
-test_norm <- function(resids){
-  print("Testing normality")
-  if (length(resids)<=300){
-    print("Fewer than 300 data points so performing Shapiro-Wilk's test")
-    print(shapiro.test(resids))
-  }else{
-    print("More than 300 data points so using the skewness and kurtosis
-approach")
-    print("Skewness should be between -3 and +3 (best around zero")
-    print(skewness(resids))
-    print("")
-    print("Excess kurtosis (i.e. absolute kurtosis -3) should be less than 4; ideally around zero")
-    print(kurtosis(resids))
-  }
-}
-
-str(Counts_by_Behaviour_AllCombos)
-Counts_by_Behaviour_AllCombos$treatment_rep <- as.factor(Counts_by_Behaviour_AllCombos$treatment_rep)
-Counts_by_Behaviour_AllCombos$period<- as.factor(Counts_by_Behaviour_AllCombos$period)
-Counts_by_Behaviour_AllCombos$Behaviour <- as.factor(Counts_by_Behaviour_AllCombos$Behaviour)
-Counts_by_Behaviour_AllCombos$Count <- as.numeric(Counts_by_Behaviour_AllCombos$Count)
-str(Counts_by_Behaviour_AllCombos)
-
-#Counts_by_Behaviour_AllCombos$period = relevel(Counts_by_Behaviour_AllCombos$period, ref="pre")
-m1 <- lmerTest::lmer(Count ~ period + Behaviour + (1|treatment_rep), Counts_by_Behaviour_AllCombos)
-summary(m1)
-test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
-m2 <- glmer(Count ~ period + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos, family = "poisson")
-summary(m2)
-test_norm(residuals(m2))
-
-par(mfrow=c(1,2))
-plot(m2)
-qqnorm(residuals(m2))
-qqline(residuals(m2))
-hist(residuals(m2)) 
-
-#check poisson distribution overdispersion
-#if the ratio of residual deviance to degrees of freedom it's >1 then the data are overdispersed
-dispersion_glmer(m2)
-
-#overdispersion can be incorporated by including an observation-level random effect (1|obs), to allow observations to be correlated with themselves
-Counts_by_Behaviour_AllCombos$obs=factor(1:nrow(Counts_by_Behaviour_AllCombos))
-m5 <- glmer(Count ~ period + Behaviour + (1|treatment_rep) +(1|obs), data = Counts_by_Behaviour_AllCombos, family = "poisson")
-summary(m5) # is singular fit a problem?
-dispersion_glmer(m5)#model m5, which assumes poisson distribution and accounts for overdispersion by adding an observation-level random effect shows both lower AIC and dispersion ~1
-anova(m2,m5)
-
-#test residuals' normality
-test_norm(residuals(m5)) #residuals are non normal! 
-par(mfrow=c(1,2))
-plot(m5)
-#dev.off()
-qqnorm(residuals(m5))
-qqline(residuals(m5))
-hist(residuals(m5)) #distribution of residuals doesn't look very good
-
-#ISSUE: model m2 (poisson) suffers overdispersion but fixing it causes normality assumption not to be met anymore...
-
-#getting post-hoc comparison per behaviour between period (pre/post)
-posthoc <- emmeans(m5, specs = trt.vs.ctrlk ~ period | Behaviour) #EVERY CONTRAST HAS SAME ESTIMATES WITH SUPER HIGH SIGNIFICANCE, EVEN WHEN IT SHOULDN'T (E.G. TROPHALLAXIS)
-posthoc$contrast
-##or
-#emmeans(m5, list(pairwise ~ period | Behaviour), adjust = "tukey")
-##or
-# contrast(emmeans(m5,~period|Behaviour, type="response"),
-#          method="pairwise", adjust="Tukey")  #method = "trt.vs.ctrl"
-
-
-
-######OTHER STUFF################
-# #looking into negative binomial
-# m6 <- glmer.nb(Count ~ period + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos)
-# #m6<- glm.nb(Count ~ period + Behaviour, data = Counts_by_Behaviour_AllCombos)
-# m7 <- glmer(Count ~ treatment + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos, family=binomial(link = "logit"))
-
-# #we can use a quasi-family to estimate the dispersion parameter (Bbut without random effect in the model)
-# summary(m4) #model with Quasipoisson distribution
-
-#related packages
-# #test normality of residuals
-# library(e1071); library(lmerTest); library(MuMIn); library(arm); library(lmtest); library(MASS); library(pbkrtest)
-
-
-############################################################################
-###### STATISTICS ON DURATION ##############################################
-############################################################################
-
-annotations$treatment_rep <- as.factor(annotations$treatment_rep)
-annotations$period<- as.factor(annotations$period)
-annotations$Behaviour <- as.character(annotations$Behaviour)
-annotations$Focal <- as.character(annotations$Focal)
-str(annotations)
-
-annotations <- annotations[which(annotations$Behaviour %in% c("A","G","SG","T","TB")),]
-annotations$Behaviour <- as.factor(annotations$Behaviour)
-
-m_dur1 <- lmerTest::lmer(duration ~ period + Behaviour + (1|treatment_rep), annotations)
-summary(m_dur1)
-test_norm(residuals(m_dur1)) #skewed data
-
-#Log transform data
-annotations <- annotations[!annotations$duration==0, ]
-annotations$duration_log <- log(annotations$duration)
-
-m_dur2 <- lmerTest::lmer(duration_log ~ period + Behaviour + (1|treatment_rep), annotations)
-summary(m_dur2)
-test_norm(residuals(m_dur2)) #good values of kurtosis and skeweness
-
-plot(m_dur2)
-par(mfrow=c(1,2))
-qqnorm(resid(m_dur2)); qqline(resid(m_dur2)); hist(resid(m_dur2))
-
-## Homogeneity of variance
-#if test is ns the variances are homogenous
-levene.test(annotations$duration_log, annotations$period)
-
-anova(m_dur2) #I guess it shows that there are differences between behaviours but not between period
-
-emmeans(m_dur2, list(pairwise ~ period | Behaviour), adjust = "tukey")  #EVERY CONTRAST HAS SAME ESTIMATES WITH SUPER HIGH SIGNIFICANCE, EVEN WHEN IT SHOULDN'T (E.G. TROPHALLAXIS)
-
-emmip(m_dur2, Behaviour ~ period, CIs = TRUE) #the interaction plot looks pretty flat
-
-print("I'D LOVE TO HAVE COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOUR LABELS ALREADY!!")
-
 ##############################################
 ######CROSS-CHECK ANNOTATIONS ################
 ##############################################
@@ -319,6 +320,8 @@ print("I'D LOVE TO HAVE COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOUR LAB
 #The createDataPartition() function is meant to subset a dataset without losing the probability distribution of your target variable.
 annotations$RowID <- seq.int(nrow(annotations))
 annotations$BEH_AW <- NA
+annotations$RowID<- as.character(annotations$RowID)
+str(annotations)
 
 library("caret")
 my.ids <- createDataPartition(annotations$Behaviour, p = 0.5)
@@ -326,14 +329,15 @@ annotations_subset <- annotations[as.numeric(my.ids[[1]]), ]
 
 #create 25% set as first step of Cross Validation agreement, if agreement is high stop here, else continue check on the larger set 
 my.ids2 <- createDataPartition(annotations_subset$Behaviour, p = 0.5)
-annotations_subset2 <- annotations[as.numeric(my.ids2[[1]]), ]
+annotations_subset2 <- annotations_subset[as.numeric(my.ids2[[1]]), ]
+# 
+# #You can check the distribution of your target variable in the population and in your subset.
+# par(mfrow = c(1,3))
+# barplot(table(annotations$Behaviour), main = "full dataset")
+# barplot(table(annotations_subset$Behaviour), main = "subset 50%")
+# barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
 
-
-#You can check the distribution of your target variable in the population and in your subset.
-par(mfrow = c(1,3))
-barplot(table(annotations$Behaviour), main = "full dataset")
-barplot(table(annotations_subset$Behaviour), main = "subset 50%")
-barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
+print("COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOUR LABELS")
 
 
 # avoid file overwriting!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

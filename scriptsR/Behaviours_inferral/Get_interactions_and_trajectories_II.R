@@ -1,6 +1,5 @@
 rm(list=ls())
 
-## TO DO ; change 'PP' column name - to E.G. PERIOD & make alterations throughout!
 ## TO DO ; start to calculate trajectory statistics! 
 
 #"https://formicidae-tracker.github.io/myrmidon/docs/latest/api/index.html"
@@ -50,7 +49,7 @@ desired_step_length_time    <- 0.125 ###in seconds, the desired step length for 
 ###### 1. OPENING AN EXPERIMENT ##################
 ##################################################
 ####### navigate to folder containing myrmidon file
-if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Dropbox/Ants_behaviour_analysis/ScriptsR/Annotations_analysis.R"}
+if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Dropbox/Ants_behaviour_analysis"}
 if (USER=="Tom")     {WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"}
 
 DATADIR <- paste(WORKDIR,"Data",sep="/")
@@ -68,16 +67,17 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ###############################################################################
   
   ## locate the ant info file for REPLICATE
-  MyrmidonCapsuleFile <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T); MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl("Capsule_defined.myrmidon",MyrmidonCapsuleFile)]
+  MyrmidonCapsuleFile <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T)
+  MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl("Capsule_defined.myrmidon.gz",MyrmidonCapsuleFile)]
   e <- fmExperimentOpenReadOnly(MyrmidonCapsuleFile)
   e$getDataInformations()
   ###tag statistics
   tag_stats <- fmQueryComputeTagStatistics(e)
   
 
-  for (PP in c("pre","post"))
+  for (PERIOD in c("pre","post"))
     {
-    print(paste("Replicate",REPLICATE, PP))
+    print(paste("Replicate",REPLICATE, PERIOD))
 
 
   ###############################################################################
@@ -87,7 +87,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ## TO DO : CHANGE THIS START TIME DEPENDING ON THE REPLICATE - NOT SAME FOR R3 & R9 !!!
   
   # time_start_ISO <- parse_iso_8601("2021-03-16T12:13:21.670072093Z")  ### OLD: TO DO - CHECK THIS ADRIANO
-  StartTime      <- min(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period==PP])
+  StartTime      <- min(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])
   time_start_ISO <- parse_iso_8601(StartTime)
   time_start     <- fmTimeCPtrFromAnySEXP(time_start_ISO)
   time_stop      <- fmTimeCPtrFromAnySEXP(time_start_ISO + (32*60) ) ####arbitrary time in the correct format + 16min 
@@ -149,14 +149,15 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   
   ############Prepare overall data object
   summary_data <- NULL
+  interaction_data <- NULL
   
   ####First let's extract ant's trajectories
-  par(mfrow=c(1,5), mai=c(0.3,0.3,0.2,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
+  par(mfrow=c(2,5), mai=c(0.3,0.3,0.2,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
   
   for (BEH in c("G","T"))
     {
     ## subset all hand-labelled bahavs for this behaviour type in this colony
-    annot_BEH <- annotations[which(annotations$treatment_rep==REPLICATE  & annotations$period==PP & annotations$Behaviour==BEH ),]
+    annot_BEH <- annotations[which(annotations$treatment_rep==REPLICATE  & annotations$period==PERIOD & annotations$Behaviour==BEH ),]
     ## remove doubled allo-grooming interactions
     if (BEH=="G") {print("duplicates removed")}#{annot_BEH <- annot_BEH[!duplicated(annot_BEH),]}  ## leave NOT to catch possible un-matched rows
     if (BEH=="T") {print("duplicates removed")}
@@ -177,12 +178,12 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       traj_ACT <-  positions$trajectories[[Act_Name]]
       traj_REC <-  positions$trajectories[[Rec_Name]]
       
-      Title <- paste(REPLICATE, ", ", PP, ", ", BEH,", ", "Act:",ACT, ", ", "Rec:",REC, ", ", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
+      Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
       
-      ## Plot trajectories of both actor & receiver, show on the same panel
-      plot  (y ~ x, traj_ACT, pch=".", col=rgb(0,0,1,0.3,1), main=Title, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-      points(y ~ x, traj_REC, pch=".", col=rgb(1,0,0,0.3,1))
-      
+      # ## Plot trajectories of both actor & receiver, show on the same panel
+      # plot  (y ~ x, traj_ACT, pch=".", col=rgb(0,0,1,0.3,1), main=Title, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+      # points(y ~ x, traj_REC, pch=".", col=rgb(1,0,0,0.3,1))
+      # 
       ## subset the trajectories of both actor & receiver using the start & end times
       traj_ACT <- traj_ACT [ which(traj_ACT$UNIX_time >= ENC_TIME_start & traj_ACT$UNIX_time <= ENC_TIME_stop),]
       traj_REC <- traj_REC [ which(traj_REC$UNIX_time >= ENC_TIME_start & traj_REC$UNIX_time <= ENC_TIME_stop),]
@@ -192,10 +193,10 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       #check start time correspondance
       # print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_TIME_start, "traj_start", min(traj_ACT$UNIX_time,na.rm = TRUE)))
       # 
-      # ## Plot trajectories of both actor & receiver, show on the same panel
-      plot   (y ~ x, traj_ACT, type="l", lwd=6, col="blue4", main=Title, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-      points (y ~ x, traj_REC, type="l", lwd=6,  col="red4")
-      
+      # # ## Plot trajectories of both actor & receiver, show on the same panel
+      # plot   (y ~ x, traj_ACT, type="l", lwd=6, col="blue4", main=Title,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+      # points (y ~ x, traj_REC, type="l", lwd=6,  col="red4")
+      # 
       #plot angles of both actor & receiver
       #plot(angle ~ time, traj_ACT, col=rgb(0,0,1,0.3,1), main=paste("angle_rad",BEH,", Act:",ACT, "Rec:",REC, ENC_TIME_start, "-", ENC_TIME_stop)) #,xlim = c(0,500),ylim = c(0,2*pi))
       #points(angle ~ time, traj_REC, col=rgb(1,0,0,0.3,1))
@@ -237,28 +238,39 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
      #  periodiciRUE) :ty_sec                 <- TrajDAFindFirstMinimum(all_Acs)["deltaS"]*desired_step_length_time
      #  ###8. root mean square displacement
      # # rmse_mm                            <-  sqrt(sum( (traj[,c(paste("x",ACT,sep=""))]-mean(traj[,c(paste("x",ACT,sep=""))]))^2 + (traj[,c(paste("y",ACT,sep=""))]-mean(traj[,c(paste("y",ACT,sep=""))]))^2 )/length(na.omit(traj[,c(paste("x",ACT,sep=""))])))
-  
+
+    
+    #rename trajectories columns NOT TO BE MERGED for Act and Rec
+    names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
+    names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
+    #merge trajectories matching by time
+    traj_BOTH <- merge(traj_ACT,traj_REC,all=T)
+    
      # summary_data <- rbind(summary_data,data.frame(BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,distance_mm=distance_mm,mean_speed_mmpersec=mean_speed_mmpersec,median_speed_mmpersec=median_speed_mmpersec,mean_acceleration_mmpersec2=mean_acceleration_mmpersec2,median_acceleration_mmpersec2=median_acceleration_mmpersec2,mean_turnangle_radians=mean_turnangle_radians,median_turnangle_radians=median_turnangle_radians,straightness_index=straightness_index,sinuosity=sinuosity,sinuosity_corrected=sinuosity_corrected,expected_displacement_mm=expected_displacement_mm,periodicity_sec=periodicity_sec,stringsAsFactors = F))
-      summary_data <- rbind(summary_data,data.frame(BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,distance_ACT=distance_ACT, stringsAsFactors = F))
+      summary_data <- rbind(summary_data,data.frame(ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,distance_ACT=distance_ACT, stringsAsFactors = F))
+      interaction_data <- rbind(interaction_data,data.frame(ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,REPLICATE=REPLICATE, PERIOD=PERIOD, traj_BOTH=traj_BOTH, stringsAsFactors = F)) 
       
       }##ACT
     }##BEH
 
   ########################################################
-    # for (variable in names( summary_data)[!names(summary_data)%in%c("BEH","Act_Name","Rec_Name")]){
-    #   summary_data[,"variable"] <- summary_data[,variable]
-    #   boxplot(variable~BEH,ylab=variable,data=summary_data)
-    # }##var_PLOT
-    
+    for (variable in names(summary_data)[!names(summary_data)%in%c("BEH","Act_Name","Rec_Name")]){
+      summary_data[,"variable"] <- summary_data[,variable]
+      #boxplot(variable~BEH,ylab=variable,data=summary_data)
+    }##var_PLOT
+
     ########################################################
   }##PERIOD
 }##REPLICATE
+
+
+
 
 rm(list=(c("e")))
 gc() # clear cache
 
 
-
+unlist(strsplit(interactions_all$types[4],","))[2]
 
 
 
