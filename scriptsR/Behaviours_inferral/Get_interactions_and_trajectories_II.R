@@ -1,6 +1,13 @@
 rm(list=ls())
 
-## TO DO ; start to calculate trajectory statistics! 
+## TO DO ;
+
+#start to calculate trajectory statistics! 
+
+#Conversion of data in mm, probably takes ages over the full dataset
+# reuse this and tags size in pixel/mm as point of reference - traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] <-   traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] * petridish_diameter / range 
+
+
 
 #"https://formicidae-tracker.github.io/myrmidon/docs/latest/api/index.html"
 
@@ -138,15 +145,9 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
     }
   
   #check that milliseconds are preserved after adding the ant's time_start_ISO
-  positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
+  #positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
   
-  #Conversion of data in mm, probably takes ages over the full dataset
-  # reuse this and tags size in pixel/mm as point of reference - traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] <-   traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] * petridish_diameter / range 
-  
-  
-  # subset of annotations to run tests
-  # annotations <- annotations[which(annotations$period=="post" & annotations$treatment_rep == "R3SP"),]
-  
+
   ############Prepare overall data object
   summary_data <- NULL
   interaction_data <- NULL
@@ -215,6 +216,19 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       distance_ACT                   <- TrajLength(trajectory_ACT)
       distance_REC                   <- TrajLength(trajectory_REC)
   
+      #MEASURES
+      # \angle2-angle1\ %% 2pigreco
+      # 
+      # Circular variance
+      # 
+      # Straight line distance
+      # 
+      # Add collisions capsules
+      # 
+      # 
+      
+      
+      
   #   mean angle difference (data angle -> orientation of the ant in radians)
       
      ###2. Mean and median speed
@@ -252,29 +266,93 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       
       }##ACT
     }##BEH
-
-  ########################################################
     for (variable in names(summary_data)[!names(summary_data)%in%c("BEH","Act_Name","Rec_Name")]){
       summary_data[,"variable"] <- summary_data[,variable]
       #boxplot(variable~BEH,ylab=variable,data=summary_data)
-    }##var_PLOT
-
-    ########################################################
+    }##summary_data
   }##PERIOD
+  
+  #clear cache before opening following exp. TO BE TESTED 
+  # rm(list=(c("e")))
+  # gc() # clear cache
+  
 }##REPLICATE
 
 
 
 
-rm(list=(c("e")))
-gc() # clear cache
+
+###############################################################################
+###### 13. READING COLLISIONS ##################################################
+###############################################################################
+###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
+collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)
 
 
-unlist(strsplit(interactions_all$types[4],","))[2]
+#so what I suggest you do immediately after computing your positions object:
+collisions$collisions$ant1_str <- paste("ant_",collisions$collisions$ant1,sep="") ##creates a ID string for each ant: ant1, ant2,...
+collisions$collisions$ant2_str <- paste("ant_",collisions$collisions$ant2,sep="")
+
+#names(positions$trajectories)       <- positions$trajectory_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
+##and now we can extract each ant trajectory using the character ID storesd in antID_str - it's much safer!
+
+
+###collisions contains 3 objects: frames, positions and collisions
+collisions_frames    <- collisions$frames      ###data frames giving detail (time, space, width,height) about each frame
+collisions_positions <- collisions$positions   ###list containing as many objects as there are frames in collisions_frames. For each one, lists the positions of all detected ants on that frame
+###(those two are the exactly the same as the output from fmQueryIdentifyFrames)
+collisions_coll <- collisions$collisions      #### dataframe containing all detected collisions
+
+###let's view the first few lines of collisions
+head(collisions_frames) ###columns giving the ID of the two colliding ants, the zone where they are, the types of collisions (all types), and the frames_row_index referring to which frame that collision was detected in (matches the list indices in collisions_positions)
+head(collisions_coll)
+head(collisions_positions)
+
+#use rownames of collision_frames to filter frames of collisions according to collisions-coll (which acts as a Look Up Table)
+collisions_frames$frames_row_index <- rownames(collisions_frames)
+
+#merge collisions_frame and coll_coll based on index
+collisions_merge <- merge(collisions_coll, collisions_frames, by="frames_row_index")
+
+# add new column to interaction data when conditions are met (eg. time + ant ID) / ant ID has to be defined beforehead with NAT routine!
+nrow(collisions_merge)
+str(collisions_merge)
+nrow(interaction_data)
+str(interaction_data)
+
+
+#RENAME COLUMN TRAJBOTHREC IN time 
+#merge with equal time and some order of the couple ACT-REC=ant1_str-ant2_str. HOW?
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# #later on, deparse the capsule information to add it as an individual-linked row value in the interaction data.
+# #the structure for a 3-1, 1-1, could look like this:
+# capsules_example <- read.table(textConnection('
+# time  ACT_caps1  ACT_caps2  ACT_caps2  REC_caps1  REC_caps2 REC_caps3
+# 21211 1 0 1 2 0 0
+# 21212 1 0 1 2 0 0
+# '), header=TRUE)
+# #not very convinced that it would work, maybe is better to avoid full deparsing into multiple columns
+# 
+# some workaround has to be done to ensure that the ant (ACT-REC) is assigned the right capsule from the pair
+#unlist(strsplit(interactions_all$types[4],","))[2]
 
 ################# SCRAPS ##########################
 
