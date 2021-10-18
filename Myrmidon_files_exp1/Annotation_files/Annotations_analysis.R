@@ -1,3 +1,7 @@
+# USER            <- "Adriano"
+# if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Dropbox/Ants_behaviour_analysis"}
+# if (USER=="Tom")     {WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"}
+# DATADIR <- paste(WORKDIR,"Data",sep="/")
 
 ###############################################################################
 ###### LOAD MANUAL ANNOTATIONS ################################################
@@ -5,12 +9,18 @@
 #Behavioural codes explanation
 # beh_codes <- read.csv("behavioural_codes.csv", sep= ",")
 
-
+library(ggplot2)
+library(plotrix)
+library(gridExtra)
+library(gtools) # to convert p.values in stars
 
 annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
 annotations$Behaviour <- as.character(annotations$Behaviour)
 annotations$Actor <- as.character(annotations$Actor)
 annotations$Receiver <- as.character(annotations$Receiver)
+#call treatment as period
+colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
+
 
 #convert Zulu time to GMT
 annotations$T_start <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
@@ -28,126 +38,53 @@ annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),
 annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start","T_stop","Behaviour","treatment_rep")]),]
 
 #Summary counts of behaviour frequency
-Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
-Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
-Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + treatment, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
+Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
+Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
+Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
 #check how many cases have been removed
 Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
 Counts_by_Behaviour
 
 #see total final numer of behaviours
-Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("treatment",colnames(Counts_by_Behaviour))] <- "Totals"
-
-
+Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
 
 #Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below! 
 annotations <- annotations_drop_all_dup
 
-## count the number of observations of each behaviour - WARNING; some behavs not observed e.g. before the treatment, so will need to account for that (next step)
-Counts_by_Behaviour_CLEAN    <- aggregate(Actor ~ Behaviour + treatment + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count"
+## count the number of observations of each behaviour - WARNING; some behavs not observed e.g. before the treatment (period), so will need to account for that (next step)
+Counts_by_Behaviour_CLEAN    <- aggregate(Actor ~ Behaviour + period + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count"
 ## calculate mean durations for each behaviour
-Durations_by_Behaviour_CLEAN <- aggregate(duration ~ Behaviour + treatment + treatment_rep, FUN=mean, na.action=na.omit, annotations)
+Durations_by_Behaviour_CLEAN <- aggregate(duration ~ Behaviour + period + treatment_rep, FUN=mean, na.action=na.omit, annotations)
 ## merge counts & durations carefully
 Counts_by_Behaviour_CLEAN    <-  plyr::join(x=Counts_by_Behaviour_CLEAN, y=Durations_by_Behaviour_CLEAN, , type = "full", match = "all")
 
 ## create a data frame with all combinations of the conditioning variables
-all_combos <- expand.grid ( Behaviour=unique(annotations$Behaviour), treatment=unique(annotations$treatment), treatment_rep=unique(annotations$treatment_rep))
+all_combos <- expand.grid ( Behaviour=unique(annotations$Behaviour), period=unique(annotations$period), treatment_rep=unique(annotations$treatment_rep))
 
 ## add the missing cases
-Counts_by_Behaviour_AllCombos <- plyr::join (x = Counts_by_Behaviour_CLEAN , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","treatment","treatment_rep"), by.y=c("Behaviour","treatment","treatment_rep") )            
+Counts_by_Behaviour_AllCombos <- plyr::join (x = Counts_by_Behaviour_CLEAN , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
 
-## Focus only ion a few important behaviours
+## Focus only on a few important behaviours
 Counts_by_Behaviour_AllCombos$Behaviour <- as.character(Counts_by_Behaviour_AllCombos$Behaviour)  ## naughty R
 Counts_by_Behaviour_AllCombos <- Counts_by_Behaviour_AllCombos[which(Counts_by_Behaviour_AllCombos$Behaviour %in% c("A","G","SG","T","TB")),]
-
 
 ## replace the NAs with 0 counts            
 Counts_by_Behaviour_AllCombos$Count[which(is.na(Counts_by_Behaviour_AllCombos$Count))] <- 0
 ## finally, get the mean & S.E. for each behav before/after  for barplots
-Counts_by_Behaviour_MEAN  <- aggregate(cbind(Count,duration) ~ Behaviour + treatment,                 FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
-Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + treatment,                 FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
+Counts_by_Behaviour_MEAN  <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
+Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
 
-## show the mean counts for each behav | stage
-pdf(file=paste(DATADIR,"Behaviour_counts_pre-post.pdf", sep = ""), width=5, height=3)
-par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.1,0.1), mgp=c(1.3,0.3,0), tcl=-0.2)
-## COUNTS
-Xpos <- barplot( Count ~ treatment + Behaviour , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour count", ylim=c(0,max( Counts_by_Behaviour_MEAN$Count +  Counts_by_Behaviour_SE$Count)))
-##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
-segments(x0 = Xpos[1,], 
-         x1 = Xpos[1,], 
-         y0 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$treatment=="pre"], 
-         y1 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$treatment=="pre"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$treatment=="pre"],
-         lwd=2)
-segments(x0 = Xpos[2,], 
-         x1 = Xpos[2,], 
-         y0 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$treatment=="post"], 
-         y1 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$treatment=="post"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$treatment=="post"],
-         lwd=2)
-
-## DURATIONS
-Xpos <- barplot( duration ~ treatment + Behaviour , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour duration (s)", ylim=c(0,max( Counts_by_Behaviour_MEAN$duration +  Counts_by_Behaviour_SE$duration, na.rm=T)))
-##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
-segments(x0 = Xpos[1,], 
-         x1 = Xpos[1,], 
-         y0 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$treatment=="pre"], 
-         y1 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$treatment=="pre"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$treatment=="pre"],
-         lwd=2)
-segments(x0 = Xpos[2,], 
-         x1 = Xpos[2,], 
-         y0 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$treatment=="post"], 
-         y1 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$treatment=="post"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$treatment=="post"],
-         lwd=2)
-## close the pdf
-dev.off()
-
-## TO DO : statistics on before / after counts & durations
-str(Counts_by_Behaviour_AllCombos)
-Counts_by_Behaviour_AllCombos$treatment_rep <- as.factor(Counts_by_Behaviour_AllCombos$treatment_rep)
-Counts_by_Behaviour_AllCombos$treatment<- as.factor(Counts_by_Behaviour_AllCombos$treatment)
-Counts_by_Behaviour_AllCombos$Behaviour <- as.factor(Counts_by_Behaviour_AllCombos$Behaviour)
-Counts_by_Behaviour_AllCombos$Count <- as.numeric(Counts_by_Behaviour_AllCombos$Count)
-
-
+############################################################################
+###### STATISTICS ON COUNTS ################################################
+############################################################################
 library(lme4)
-m1 <- lmerTest::lmer(Count ~ treatment + Behaviour + (1|treatment_rep), Counts_by_Behaviour_AllCombos)
-m2 <- glmer(Count ~ treatment + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos, family = "poisson")
-m3 <- glm(Count ~ treatment + Behaviour, data = Counts_by_Behaviour_AllCombos, family = poisson(link = "log"))
-m4 <- glm(Count ~ treatment + Behaviour, data = Counts_by_Behaviour_AllCombos, family = quasipoisson(link = "log"))
+library(blmeco) # check dispersion for glmer
+library(emmeans) #post-hoc comparisons
+library(e1071) #calc skewness and other stuff
+library(lawstat) #for levene test (homogeneity of variance)
 
 
-
-m5<- glm.nb(Count ~ treatment + Behaviour, data = Counts_by_Behaviour_AllCombos)
-#m6 <- glm(Count ~ treatment + Behaviour, data = Counts_by_Behaviour_AllCombos, family=negative.binomial(3.99))
-
-summary(m1)
-summary(m2)
-summary(m3) #shows that res deviance/df is >>1
-summary(m4) #shows that res deviance/df is >>1
-summary(m5) 
-summary(m6) 
-
-
-#test poisson distribution overdispersion
-library(AER)
-#if the ratio of residual deviance to degrees of freedom it's >1 then the data are overdispersed
-dispersiontest(m3,trafo=1)
-
-#another measure of overdispersion with Pearson’s Chi-squared 
-dp <- sum(residuals(m3,type ="pearson")^2)/m3$df.residual
-dp
-
-#We can check how much the coefficient estimations are affected by overdispersion.
-summary(m3, dispersion=dp)
-#we can use a quasi-family to estimate the dispersion parameter.
-summary(m4) #model with uasipoisson distribution
-
-
-#with summary(m5) overdispersion is still very high! how to correct for it?
-#same problem of this https://stats.stackexchange.com/questions/123999/how-to-account-for-overdispersion-in-a-glm-with-negative-binomial-distribution
-
-
-
-#test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
+#function to test normality of residuals
 test_norm <- function(resids){
   print("Testing normality")
   if (length(resids)<=300){
@@ -164,54 +101,247 @@ approach")
   }
 }
 
-test_norm(residuals(m1))
-test_norm(residuals(m2))
+str(Counts_by_Behaviour_AllCombos)
+Counts_by_Behaviour_AllCombos$treatment_rep <- as.factor(Counts_by_Behaviour_AllCombos$treatment_rep)
+Counts_by_Behaviour_AllCombos$period<- as.factor(Counts_by_Behaviour_AllCombos$period)
+Counts_by_Behaviour_AllCombos$Behaviour <- as.factor(Counts_by_Behaviour_AllCombos$Behaviour)
+Counts_by_Behaviour_AllCombos$Count <- as.numeric(Counts_by_Behaviour_AllCombos$Count)
+str(Counts_by_Behaviour_AllCombos)
 
+#Counts_by_Behaviour_AllCombos$period = relevel(Counts_by_Behaviour_AllCombos$period, ref="pre")
+m1 <- lmerTest::lmer(sqrt(Count) ~ period * Behaviour * (1|treatment_rep), Counts_by_Behaviour_AllCombos)
+summary(m1)
+test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
+qqnorm(residuals(m1))
 
+posthoc_FREQ <- emmeans(m1, specs = trt.vs.ctrlk ~ period | Behaviour)
+posthoc_FREQ_summary<-summary(posthoc_FREQ$contrasts)
 
-
-
-
-
-
-anova(m1,m2)
-
-
-
-
-
-
-
-#test normality of residuals
-library(e1071)
-
-library(lmerTest)
-library(MuMIn)
-library(arm)
-library(lmtest)
-library(MASS)
-install.packages(c("MASS"))
-
-
-
-#including both fixed and random effects. R2c
-r.squaredGLMM(m2)
-lmtest::bptest(m2)  # Breusch-Pagan test, if significant residuals are not homoscedastic
-anova(m2)
-display(m2)
 par(mfrow=c(1,2))
 plot(m1)
-#dev.off()
-qqnorm(resid(m2))
-qqline(resid(m2))
-hist(resid(m2))
+qqnorm(residuals(m1))
+qqline(residuals(m1))
+hist(residuals(m1)) 
+
+##or
+#emmeans(m5, list(pairwise ~ period | Behaviour), adjust = "tukey")
+##or
+# contrast(emmeans(m5,~period|Behaviour, type="response"),
+#          method="pairwise", adjust="Tukey")  #method = "trt.vs.ctrl"
 
 
+# m2 <- glmer(Count ~ period * Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos, family = "poisson")
+# summary(m2)
+# test_norm(residuals(m2))
+# qqnorm(residuals(m2))
 
-library(emmeans)
-library(pbkrtest)
-emmeans(m2, list(pairwise ~ treatment), adjust = "tukey")
+##check poisson distribution overdispersion
+##if the ratio of residual deviance to degrees of freedom it's >1 then the data are overdispersed
+#dispersion_glmer(m2)
+
+# #overdispersion can be incorporated by including an observation-level random effect (1|obs), to allow observations to be correlated with themselves
+# Counts_by_Behaviour_AllCombos$obs=factor(1:nrow(Counts_by_Behaviour_AllCombos))
+# m5 <- glmer(Count ~ period + Behaviour + (1|treatment_rep) +(1|obs), data = Counts_by_Behaviour_AllCombos, family = "poisson")
+# summary(m5) # is singular fit a problem?
+# dispersion_glmer(m5)#model m5, which assumes poisson distribution and accounts for overdispersion by adding an observation-level random effect shows both lower AIC and dispersion ~1
+# anova(m2,m5)
 
 
-print("COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOUR LABELS!!")
+######OTHER STUFF################
+# #looking into negative binomial
+# m6 <- glmer.nb(Count ~ period + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos)
+# #m6<- glm.nb(Count ~ period + Behaviour, data = Counts_by_Behaviour_AllCombos)
+# m7 <- glmer(Count ~ treatment + Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos, family=binomial(link = "logit"))
 
+# #we can use a quasi-family to estimate the dispersion parameter (Bbut without random effect in the model)
+# summary(m4) #model with Quasipoisson distribution
+
+#related packages
+# #test normality of residuals
+# library(e1071); library(lmerTest); library(MuMIn); library(arm); library(lmtest); library(MASS); library(pbkrtest)
+
+############################################################################
+###### STATISTICS ON DURATION ##############################################
+############################################################################
+annotations$treatment_rep <- as.factor(annotations$treatment_rep)
+annotations$period<- as.factor(annotations$period)
+annotations$Behaviour <- as.character(annotations$Behaviour)
+annotations$Focal <- as.character(annotations$Focal)
+str(annotations)
+
+## add the missing cases to avoid A to not be estimated
+annotations_allCombs <- plyr::join (x = annotations , y=all_combos, type = "right", match = "all")
+
+
+annotations_allCombs <- annotations_allCombs[which(annotations_allCombs$Behaviour %in% c("A","G","SG","T","TB")),]
+annotations_allCombs$Behaviour <- as.factor(annotations_allCombs$Behaviour)
+
+m_dur1 <- lmerTest::lmer(duration ~ period + Behaviour + (1|treatment_rep), annotations_allCombs)
+summary(m_dur1)
+test_norm(residuals(m_dur1)) #skewed data
+
+#Log transform data
+annotations_allCombs[annotations_allCombs$Behaviour=="A"& annotations_allCombs$period=="pre", ]$duration <- 0.0001
+annotations_allCombs <- annotations_allCombs[!annotations_allCombs$duration==0, ]
+annotations_allCombs$duration_log <- log(annotations_allCombs$duration)
+
+m_dur2 <- lmerTest::lmer(duration_log ~ period * Behaviour + (1|treatment_rep), annotations_allCombs)
+summary(m_dur2)
+test_norm(residuals(m_dur2)) #good values of kurtosis and skeweness
+
+plot(m_dur2)
+par(mfrow=c(1,2))
+qqnorm(resid(m_dur2)); qqline(resid(m_dur2)); hist(resid(m_dur2))
+
+## Homogeneity of variance
+#if test is ns the variances are homogenous
+levene.test(annotations_allCombs$duration_log, annotations_allCombs$period)
+
+anova(m_dur2) #I guess it shows that there are differences between behaviours but not between period
+
+posthoc_DUR <- emmeans(m_dur2, specs = trt.vs.ctrlk ~ period | Behaviour)
+posthoc_DUR_summary<-summary(posthoc_DUR$contrast)
+
+###############################################################################
+###### PLOTTING  ##############################################################
+###############################################################################
+
+## show the mean counts for each behav | stage
+pdf(file=paste(DATADIR,"Behaviour_counts_pre-post.pdf", sep = ""), width=5, height=3)
+par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.1,0.1), mgp=c(1.3,0.3,0), tcl=-0.2)
+## COUNTS
+Xpos <- barplot( Count ~ period + Behaviour , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour count", ylim=c(0,max( Counts_by_Behaviour_MEAN$Count +  Counts_by_Behaviour_SE$Count*1.4 )))
+##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
+segments(x0 = Xpos[1,], 
+         x1 = Xpos[1,], 
+         y0 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="pre"], 
+         y1 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="pre"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$period=="pre"],
+         lwd=2)
+
+segments(x0 = Xpos[2,], 
+         x1 = Xpos[2,], 
+         y0 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="post"], 
+         y1 = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$period=="post"],
+         lwd=2)
+
+text(x = ((Xpos[1,]+Xpos[2,])/2),
+     y = Counts_by_Behaviour_MEAN$Count [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$Count [Counts_by_Behaviour_SE$period=="post"]+15,
+     stars.pval(posthoc_FREQ_summary$p.value))
+
+## DURATIONS
+Xpos <- barplot( duration ~ period + Behaviour , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour duration (s)", ylim=c(0,max( Counts_by_Behaviour_MEAN$duration +  Counts_by_Behaviour_SE$duration, na.rm=T)))
+##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
+segments(x0 = Xpos[1,], 
+         x1 = Xpos[1,], 
+         y0 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="pre"], 
+         y1 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="pre"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$period=="pre"],
+         lwd=2)
+segments(x0 = Xpos[2,], 
+         x1 = Xpos[2,], 
+         y0 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="post"], 
+         y1 = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$period=="post"],
+         lwd=2)
+
+text(x = ((Xpos[1,]+Xpos[2,])/2),
+     y = Counts_by_Behaviour_MEAN$duration [Counts_by_Behaviour_MEAN$period=="post"] + Counts_by_Behaviour_SE$duration [Counts_by_Behaviour_SE$period=="post"]+3,
+     stars.pval(rev(posthoc_DUR_summary$p.value)))
+
+## COUNT BY ACTOR and RECEIVER
+## count the number of observations per actor/receiver and behaviour to find the most interacting indivduals
+
+#Change colname of both Actor and Receiver in the dataframes to "ant" for the loop to work
+Counts_by_Behaviour_Rec <- aggregate(Focal ~ Behaviour + period + Receiver + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Rec) [match("Focal",colnames(Counts_by_Behaviour_Rec))] <- "Count"; colnames(Counts_by_Behaviour_Rec) [match("Receiver",colnames(Counts_by_Behaviour_Rec))] <- "Ant"
+Counts_by_Behaviour_Act <- aggregate(Focal ~ Behaviour + period + Actor + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Act) [match("Focal",colnames(Counts_by_Behaviour_Act))] <- "Count"; colnames(Counts_by_Behaviour_Act) [match("Actor",colnames(Counts_by_Behaviour_Act))] <- "Ant"
+#create place-holder column to have name for plotting
+Counts_by_Behaviour_Rec$Receiver <- "Receiver"
+Counts_by_Behaviour_Act$Actor <- "Actor"
+Rec_Act_Counts_list <- list(Counts_by_Behaviour_Rec=Counts_by_Behaviour_Rec,Counts_by_Behaviour_Act=Counts_by_Behaviour_Act)
+
+ExposedAntsR3SP <- c(5,17)
+ExposedAntsR9SP <- c(23,29,32)
+
+for (SUBJECT in Rec_Act_Counts_list) {
+  #print(deparse(substitute(Rec_Act_Counts_list)[SUBJECT]))
+  #cat(names(Rec_Act_Counts_list)[SUBJECT])
+  ANT_role <- names(SUBJECT)[6]
+  ## add the missing cases
+  SUBJECT_AllCombos <- plyr::join (x = SUBJECT , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )
+  ## Focus only on a few important behaviours
+  SUBJECT_AllCombos$Behaviour <- as.character(SUBJECT_AllCombos$Behaviour)  ## naughty R
+  SUBJECT_AllCombos <- SUBJECT_AllCombos[which(SUBJECT_AllCombos$Behaviour %in% c("A","G","SG","T","TB")),]
+  ## replace the NAs with 0 counts            
+  SUBJECT_AllCombos$Count[which(is.na(SUBJECT_AllCombos$Count))] <- 0
+  
+  SUBJECT_AllCombos_R3SP <- subset(SUBJECT_AllCombos, treatment_rep == "R3SP")
+  # one box per behaviour, showing Receivers and divided by colony (to avoid overlaps of antIDs)
+  #colony R3SP Ant
+  p <- ggplot(SUBJECT_AllCombos_R3SP, aes(x=period, y=Count, fill=period)) + 
+    geom_bar(aes(fill = Ant),stat='identity',colour="black", fill=NA) +
+    geom_text(aes(label=ifelse(Count>6,as.character(Ant),''),color=ifelse(Ant %in% ExposedAntsR3SP,"red","black")), size = 2, position = position_stack(vjust = 0.9)) +
+    scale_colour_manual(values = c("darkgray","black")) +
+    facet_grid(~Behaviour, scale="free") +
+    theme(text=element_text(family="serif",size=7),legend.position="none") +
+    labs(title = paste("Behaviour frequency by",ANT_role, "\n by exposure period (colony:", "R3SP", ")"),
+         subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
+         y ="Behaviour count")
+  
+  SUBJECT_AllCombos_R9SP <- subset(SUBJECT_AllCombos, treatment_rep == "R9SP")
+  # one box per behaviour, showing Receivers and divided by colony (to avoid overlaps of antIDs)
+  #colony R3SP Ant
+  p1 <- ggplot(SUBJECT_AllCombos_R9SP, aes(x=period, y=Count, fill=period)) + 
+    geom_bar(aes(fill = Ant),stat='identity',colour="black", fill=NA) +    
+    geom_text(aes(label=ifelse(Count>6,as.character(Ant),''),color=ifelse(Ant %in% ExposedAntsR9SP,"red","")), size = 2, position = position_stack(vjust = 0.9)) +
+    scale_colour_manual(values = c("darkgray","black")) +
+    facet_grid(~Behaviour, scale="free") +
+    theme(text=element_text(family="serif",size=7),legend.position="none") +
+    labs(title = paste("Behaviour frequency by",ANT_role,"\n by exposure period (colony:", "R9SP", ")"),
+         subtitle = "stacked bar label represents the AntID. \n black label= pathogen treated ant",
+         y ="Behaviour count")
+  
+  grid.arrange(p, p1,
+               ncol = 2, nrow = 1)
+  
+}
+
+## close the pdf
+dev.off()
+
+
+#check for normality visually first
+#look at the data histograms
+beh_dist_hist <- ggplot(annotations,aes(x=duration))+geom_histogram()+facet_grid(~Behaviour, scales = "free")+theme_bw() +
+  ggtitle("Behaviour duration distribution")
+beh_dist_hist
+
+##############################################
+######CROSS-CHECK ANNOTATIONS ################
+##############################################
+
+#The createDataPartition() function is meant to subset a dataset without losing the probability distribution of your target variable.
+annotations$RowID <- seq.int(nrow(annotations))
+annotations$BEH_AW <- NA
+annotations$RowID<- as.character(annotations$RowID)
+str(annotations)
+
+library("caret")
+my.ids <- createDataPartition(annotations$Behaviour, p = 0.5)
+annotations_subset <- annotations[as.numeric(my.ids[[1]]), ]
+
+#create 25% set as first step of Cross Validation agreement, if agreement is high stop here, else continue check on the larger set 
+my.ids2 <- createDataPartition(annotations_subset$Behaviour, p = 0.5)
+annotations_subset2 <- annotations_subset[as.numeric(my.ids2[[1]]), ]
+# 
+# #You can check the distribution of your target variable in the population and in your subset.
+# par(mfrow = c(1,3))
+# barplot(table(annotations$Behaviour), main = "full dataset")
+# barplot(table(annotations_subset$Behaviour), main = "subset 50%")
+# barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
+
+print("COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOUR LABELS")
+
+
+# avoid file overwriting!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# if ()
+#   
+# write.csv(annotations_subset, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_50%_2.csv")
+# write.csv(annotations_subset2, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_25%_2.csv")
