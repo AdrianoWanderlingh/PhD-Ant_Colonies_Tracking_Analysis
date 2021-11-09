@@ -18,7 +18,7 @@ library(igraph)       ####for network analysis
 library(parsedate)
 library (trajr)
 library(plotrix) 
-
+library(circular) #to work with circular data. objects not in circular class are coerced
 
 # ## TEMPORARY - Hard code plotrix function - Adriano to do; install plotrix!
 # std.error <- function (x, na.rm) 
@@ -62,7 +62,7 @@ if (USER=="Tom")     {WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analys
 DATADIR <- paste(WORKDIR,"Data",sep="/")
 SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
 
-##
+## perform analyses on annotation data
 source(paste(SCRIPTDIR,"Annotations_analysis.R",sep="/"))
 
 #######################
@@ -204,72 +204,89 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       
       
       ########################################################
-      #CHECK: HOW IT DEALS WITH MISSING COORDINATES? should the trajectories be resampled/rediscretized?
+      # uncorrelated vars used for Constance Tests:  median_acceleration_mmpersec2, rmse_mm, distance_mm, 
+      # mean_acceleration_mmpersec2, straightness_index , periodicity_sec (last two not calculated here as they need rediscretisation)
+      
+      ### angular st.dev
+      ang_SD_ACT                    <-  angular.deviation(traj_ACT$angle, na.rm = TRUE)
+      ang_SD_REC                    <-  angular.deviation(traj_REC$angle, na.rm = TRUE)
       
       ##define trajectory
-      trajectory_ACT                 <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y,time=as.numeric(traj_ACT$UNIX_time)), spatialUnits = "px",timeUnits="s")
+      trajectory_ACT                <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y,time=as.numeric(traj_ACT$UNIX_time)), spatialUnits = "px",timeUnits="s")
       trajectory_REC                <- TrajFromCoords(data.frame(x=traj_REC$x,y=traj_REC$y,time=as.numeric(traj_REC$UNIX_time)), spatialUnits = "px",timeUnits="s")
+      #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
+      ### total distance moved 
+      distance_ACT                  <- TrajLength(trajectory_ACT)
+      distance_REC                  <- TrajLength(trajectory_REC)
+      ### Calculate trajectory derivatives
+      deriv_traj_ACT                <- TrajDerivatives(trajectory_ACT)
+      deriv_traj_REC                <- TrajDerivatives(trajectory_REC)
+      #  mean_speed_mmpersec_ACT        <- mean(deriv_traj$speed,na.rm=T)
+      #  median_speed_mmpersec           <- median(deriv_traj$speed,na.rm=T)
+      #  Mean and median acceleration
+      mean_accel_ACT     <- mean(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
+      mean_accel_REC     <- mean(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
+      median_accel_ACT  <- median(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
+      median_accel_REC  <- median(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
+      ### Mean and median turn angle, in radians
+      #  mean_turnangle_radians          <- mean(abs( TrajAngles(trajectory)),na.rm=T)
+      #  median_turnangle_radians        <- median(abs( TrajAngles(trajectory)),na.rm=T)
+      ### Straightness
+      #  straightness_index              <- Mod(TrajMeanVectorOfTurningAngles(deriv_traj_ACT)) #requires redisretisation of the traj https://www.rdocumentation.org/packages/trajr/versions/1.4.0/topics/TrajMeanVectorOfTurningAngles
+      #  sinuosity                       <- TrajSinuosity(trajectory)
+      #  sinuosity_corrected             <- TrajSinuosity2(trajectory)
+      ### Expected Displacement
+      #  expected_displacement_mm        <- TrajEmax(trajectory,eMaxB =T)
+      ### Autocorrelations
+      # all_Acs                         <- TrajDirectionAutocorrelations(deriv_traj_ACT) #requires redisretisation of the traj
+      # periodicity_sec                 <- TrajDAFindFirstMinimum(all_Acs)["deltaS"]*desired_step_length_time 
+      ### root mean square displacement
+      rmse_mm_ACT                            <-  sqrt(sum( (traj_ACT$ACT.x-mean(traj_ACT$ACT.x))^2 + (traj_ACT$ACT.y-mean(traj_ACT$ACT.y))^2 )/length(na.omit(traj_ACT$ACT.x)))  
+      rmse_mm_REC                            <-  sqrt(sum( (traj_REC$REC.x-mean(traj_REC$REC.x))^2 + (traj_REC$REC.y-mean(traj_REC$REC.y))^2 )/length(na.omit(traj_REC$REC.x)))  
       
-       #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
-  
-      ###1. total distance moved 
-      distance_ACT                   <- TrajLength(trajectory_ACT)
-      distance_REC                   <- TrajLength(trajectory_REC)
-  
-      #MEASURES
-      # \angle2-angle1\ %% 2pigreco
-      # 
-      # Circular variance
-      # 
-      # Straight line distance
-      # 
-      # Add collisions capsules
-      # 
-      # 
+      #rename trajectories columns NOT TO BE MERGED for Act and Rec
+      names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
+      names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
+      #merge trajectories matching by time
+      traj_BOTH <- merge(traj_ACT,traj_REC,all=T)
       
       
+      #straight line - euclidean distance
+      traj_BOTH$straightline_dist <-  sqrt((traj_BOTH$ACT.x-traj_BOTH$REC.x)^2+(traj_BOTH$ACT.y-traj_BOTH$REC.y)^2)
       
-  #   mean angle difference (data angle -> orientation of the ant in radians)
+      #angular difference
+      traj_BOTH$angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% pi
       
-     ###2. Mean and median speed
-     #  deriv_traj                      <- TrajDerivatives(trajectory_ACT)
-     #  mean_speed_mmpersec_ACT             <- mean(deriv_traj$speed,na.rm=T)
-     #  median_speed_mmpersec           <- median(deriv_traj$speed,na.rm=T)
-     #  ###3. Mean and median acceleration
-     #  mean_acceleration_mmpersec2     <- mean(deriv_traj$acceleration,na.rm=T)
-     #  median_acceleration_mmpersec2   <- median(deriv_traj$acceleration,na.rm=T)
-     #  ###4. Mean and median turn angle, in radians
-     #  mean_turnangle_radians          <- mean(abs( TrajAngles(trajectory)),na.rm=T)
-     #  median_turnangle_radians        <- median(abs( TrajAngles(trajectory)),na.rm=T)
-     #  ###5. Straightness
-     #  straightness_index              <- Mod(TrajMeanVectorOfTurningAngles(trajectory))
-     #  sinuosity                       <- TrajSinuosity(trajectory)
-     #  sinuosity_corrected             <- TrajSinuosity2(trajectory)
-     #  ###6. Expected Displacement
-     #  expected_displacement_mm        <- TrajEmax(trajectory,eMaxB =T)
-     #  ###7. Autocorrelations
-     #  all_Acs                         <- TrajDirectionAutocorrelations(trajectory)
-     #  periodiciRUE) :ty_sec                 <- TrajDAFindFirstMinimum(all_Acs)["deltaS"]*desired_step_length_time
-     #  ###8. root mean square displacement
-     # # rmse_mm                            <-  sqrt(sum( (traj[,c(paste("x",ACT,sep=""))]-mean(traj[,c(paste("x",ACT,sep=""))]))^2 + (traj[,c(paste("y",ACT,sep=""))]-mean(traj[,c(paste("y",ACT,sep=""))]))^2 )/length(na.omit(traj[,c(paste("x",ACT,sep=""))])))
-
-    
-    #rename trajectories columns NOT TO BE MERGED for Act and Rec
-    names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
-    names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
-    #merge trajectories matching by time
-    traj_BOTH <- merge(traj_ACT,traj_REC,all=T)
-    
-     # summary_data <- rbind(summary_data,data.frame(BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,distance_mm=distance_mm,mean_speed_mmpersec=mean_speed_mmpersec,median_speed_mmpersec=median_speed_mmpersec,mean_acceleration_mmpersec2=mean_acceleration_mmpersec2,median_acceleration_mmpersec2=median_acceleration_mmpersec2,mean_turnangle_radians=mean_turnangle_radians,median_turnangle_radians=median_turnangle_radians,straightness_index=straightness_index,sinuosity=sinuosity,sinuosity_corrected=sinuosity_corrected,expected_displacement_mm=expected_displacement_mm,periodicity_sec=periodicity_sec,stringsAsFactors = F))
-      summary_data <- rbind(summary_data,data.frame(ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,distance_ACT=distance_ACT, stringsAsFactors = F))
-      interaction_data <- rbind(interaction_data,data.frame(ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,REPLICATE=REPLICATE, PERIOD=PERIOD, traj_BOTH=traj_BOTH, stringsAsFactors = F)) 
+      #SUMMARY DATA is a summary, INTERACTION DATA reports interaction frame by frame
+      summary_data <- rbind(summary_data,
+                            data.frame(ROW=ROW, BEH=BEH, Act_Name=Act_Name, Rec_Name=Rec_Name,
+                                       ang_SD_ACT=ang_SD_ACT, ang_SD_REC=ang_SD_REC,
+                                       distance_ACT=distance_ACT, distance_REC=distance_REC,
+                                       mean_accel_ACT=mean_accel_ACT, mean_accel_REC=mean_accel_REC,
+                                       median_accel_ACT=median_accel_ACT,median_accel_REC=median_accel_REC,
+                                       rmse_mm_ACT=rmse_mm_ACT,rmse_mm_REC=rmse_mm_REC,
+                                       stringsAsFactors = F))
+      
+      interaction_data <- rbind(interaction_data,data.frame(ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,REPLICATE=REPLICATE, PERIOD=PERIOD, traj_BOTH=traj_BOTH, stringsAsFactors = F))
       
       }##ACT
+    
     }##BEH
     for (variable in names(summary_data)[!names(summary_data)%in%c("BEH","Act_Name","Rec_Name")]){
       summary_data[,"variable"] <- summary_data[,variable]
       #boxplot(variable~BEH,ylab=variable,data=summary_data)
     }##summary_data
+  
+
+  ## close the pdf
+  dev.off()
+  
+ 
+  # 
+  # Add collisions capsules
+  
+  
+  
   }##PERIOD
   
   #clear cache before opening following exp. TO BE TESTED 
@@ -277,6 +294,50 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   # gc() # clear cache
   
 }##REPLICATE
+
+
+
+
+##############PARAMETERS PLOTS
+###angular_differences plot
+
+interaction_data_T <- subset(interaction_data, BEH == "T")
+
+pdf(file=paste(DATADIR,"Behaviour_angle_difference.pdf", sep = ""), width=5, height=3)
+par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+
+interaction_data_G <- subset(interaction_data[!is.na(interaction_data$traj_BOTH.angle_diff),], BEH == "G")
+for (row in unique(interaction_data_G$ROW)) {
+  single_interaction <-subset(interaction_data_G,ROW == row)
+  p <- plot.circular(single_interaction$traj_BOTH.angle_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100, tcl.text	 = 0.5, tol= 0, shrink = 1.7, sep= 0.05, #xlim=c(-1,1), ylim=c(-2.5,2.5), 
+                     main = paste("Behaviour: G, \n", "interaction N:",row, sep=""), sub=NULL) #REPLICATE, ", ", PERIOD, ", \n", "behaviour:", BEH,
+}
+
+interaction_data_T <- subset(interaction_data[!is.na(interaction_data$traj_BOTH.angle_diff),], BEH == "T")
+for (row in unique(interaction_data_T$ROW)) {
+  single_interaction <-subset(interaction_data_T,ROW == row)
+  p <- plot.circular(single_interaction$traj_BOTH.angle_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100, tcl.text	 = 0.5, tol= 0, shrink = 1.7, sep= 0.05, #xlim=c(-1,1), ylim=c(-2.5,2.5), 
+                     main = paste("Behaviour: T, \n", "interaction N:",row, sep=""), sub=NULL)
+}
+
+
+dev.off()
+
+# p <- ggplot(interaction_data_G, aes(x=as.factor(ROW), y=traj_BOTH.angle_diff)) +       # Note that id is a factor. If x is numeric, there is some space between the first bar
+# geom_bar(stat="identity", fill=alpha("blue", 0.3)) +
+# # Limits of the plot = very important. The negative value controls the size of the inner circle, the positive one is useful to add size over each bar
+# ylim(-10,300) +
+# # Custom the theme: no axis title and no cartesian grid
+# theme_minimal() +
+# # theme(
+# #   axis.text = element_blank(),axis.title = element_blank(),panel.grid = element_blank()# , plot.margin = unit(rep(-2,4), "cm")     # This remove unnecessary margin around plot
+# # ) +
+# labs(title = paste(REPLICATE, ", ", PERIOD, ", ", BEH,", ", sep="")) +
+# coord_polar(start = 0) # This makes the coordinate polar instead of cartesian.
+# print(p)
+
+
+
 
 
 
