@@ -19,6 +19,9 @@ library(parsedate)
 library (trajr)
 library(plotrix) 
 library(circular) #to work with circular data. objects not in circular class are coerced
+library(tidyverse)
+library(ggplot2)
+library(reshape2) #to use melt and similar
 
 # ## TEMPORARY - Hard code plotrix function - Adriano to do; install plotrix!
 # std.error <- function (x, na.rm) 
@@ -216,8 +219,8 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       trajectory_REC                <- TrajFromCoords(data.frame(x=traj_REC$x,y=traj_REC$y,time=as.numeric(traj_REC$UNIX_time)), spatialUnits = "px",timeUnits="s")
       #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
       ### total distance moved 
-      distance_ACT                  <- TrajLength(trajectory_ACT)
-      distance_REC                  <- TrajLength(trajectory_REC)
+      moved_distance_ACT                  <- TrajLength(trajectory_ACT)
+      moved_distance_REC                  <- TrajLength(trajectory_REC)
       ### Calculate trajectory derivatives
       deriv_traj_ACT                <- TrajDerivatives(trajectory_ACT)
       deriv_traj_REC                <- TrajDerivatives(trajectory_REC)
@@ -241,8 +244,8 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       # all_Acs                         <- TrajDirectionAutocorrelations(deriv_traj_ACT) #requires redisretisation of the traj
       # periodicity_sec                 <- TrajDAFindFirstMinimum(all_Acs)["deltaS"]*desired_step_length_time 
       ### root mean square displacement
-      rmse_mm_ACT                            <-  sqrt(sum( (traj_ACT$ACT.x-mean(traj_ACT$ACT.x))^2 + (traj_ACT$ACT.y-mean(traj_ACT$ACT.y))^2 )/length(na.omit(traj_ACT$ACT.x)))  
-      rmse_mm_REC                            <-  sqrt(sum( (traj_REC$REC.x-mean(traj_REC$REC.x))^2 + (traj_REC$REC.y-mean(traj_REC$REC.y))^2 )/length(na.omit(traj_REC$REC.x)))  
+      rmse_mm_ACT                            <-  sqrt(sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x)))  
+      rmse_mm_REC                            <-  sqrt(sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x)))  
       
       #rename trajectories columns NOT TO BE MERGED for Act and Rec
       names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
@@ -257,11 +260,11 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       #angular difference
       traj_BOTH$angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% pi
       
-      #SUMMARY DATA is a summary, INTERACTION DATA reports interaction frame by frame
+      #SUMMARY_DATA is a summary, INTERACTION_DATA reports interactions frame by frame
       summary_data <- rbind(summary_data,
                             data.frame(ROW=ROW, BEH=BEH, Act_Name=Act_Name, Rec_Name=Rec_Name,
                                        ang_SD_ACT=ang_SD_ACT, ang_SD_REC=ang_SD_REC,
-                                       distance_ACT=distance_ACT, distance_REC=distance_REC,
+                                       moved_distance_ACT=moved_distance_ACT, moved_distance_REC=moved_distance_REC,
                                        mean_accel_ACT=mean_accel_ACT, mean_accel_REC=mean_accel_REC,
                                        median_accel_ACT=median_accel_ACT,median_accel_REC=median_accel_REC,
                                        rmse_mm_ACT=rmse_mm_ACT,rmse_mm_REC=rmse_mm_REC,
@@ -276,36 +279,68 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       summary_data[,"variable"] <- summary_data[,variable]
       #boxplot(variable~BEH,ylab=variable,data=summary_data)
     }##summary_data
-  
-
-  ## close the pdf
-  dev.off()
-  
- 
-  # 
-  # Add collisions capsules
-  
-  
-  
   }##PERIOD
-  
   #clear cache before opening following exp. TO BE TESTED 
   # rm(list=(c("e")))
   # gc() # clear cache
-  
 }##REPLICATE
 
 
+# Add collisions capsules
+
+###############################################################################
+###### PARAMETERS PLOTS #######################################################
+###############################################################################
 
 
-##############PARAMETERS PLOTS
-###angular_differences plot
+#SUMMARY_DATA
+#descriptive analysis
+str(summary_data)
+
+#reshape data for plotting. Split by REC and ACT
+summary_data_ACT <-summary_data %>% dplyr::select(contains(c("BEH", "ACT"), ignore.case = TRUE))
+summary_data_REC <- summary_data %>% dplyr::select(contains(c("BEH", "REC"), ignore.case = TRUE))
+#Rename columns to make them match and bind+ melt columns
+summ_data_ACT  <- summary_data_ACT %>% rename_with(~str_remove(., c("_ACT|Act_"))); summ_data_ACT$Role <- "ACT"
+summ_data_REC  <- summary_data_REC %>% rename_with(~str_remove(., c("_REC|Rec_"))); summ_data_REC$Role <- "REC"
+summ_data_bind <- rbind(summ_data_ACT,summ_data_REC)
+summ_data_long <- melt(summ_data_bind,id.vars=c("BEH","Role","Name"))
+
+#subset data by BEH for plotting
+summary_data_T <- summ_data_long[which(summ_data_long$BEH == "T"),]
+summary_data_G <- summ_data_long[which(summ_data_long$BEH == "G"),]
+
+#set up plot
+pdf(file=paste(DATADIR,"Parameters_plots.pdf", sep = ""), width=5, height=3)
+par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+
+###plot divided by variable and Role for Trophallaxis
+vars_plot_T <- ggplot(summary_data_T, aes(value, fill = Role)) +
+  facet_wrap(variable ~ .,scales="free") +
+  theme_bw() +
+  theme(text=element_text(family="serif",size=7),legend.position="bottom",legend.justification='right', legend.key.size = unit(0.3, 'cm'))+ 
+  scale_fill_discrete( labels = c("Actor1","Actor2"))
+vars_plot_T + geom_density(alpha = 0.2) +
+  labs(title = "Density plot for movement variables calculated from coordinates \n for Actors and Receivers during Trophallaxis")
+vars_plot_T + geom_histogram(colour='black',alpha = 0.2,position="identity") +
+  labs(title = "Histogram for movement variables calculated from coordinates \n for Actors and Receivers during Trophallaxis")
+
+###plot divided by variable and Role for Grooming
+vars_plot_G <- ggplot(summary_data_G, aes(value, fill = Role)) +
+  facet_wrap(variable ~ .,scales="free") +
+  theme_bw() +
+  theme(text=element_text(family="serif",size=7),legend.position="bottom",legend.justification='right', legend.key.size = unit(0.3, 'cm'))
+vars_plot_G + geom_density(alpha = 0.2) +
+  labs(title = "Density plot for movement variables calculated from coordinates \n for Actors and Receivers during Grooming")
+vars_plot_G + geom_histogram(colour='black',alpha = 0.2,position="identity")+
+  labs(title = "Histogram plot for movement variables calculated from coordinates \n for Actors and Receivers during Grooming")
+
+
+#INTERACTION_DATA
 
 interaction_data_T <- subset(interaction_data, BEH == "T")
 
-pdf(file=paste(DATADIR,"Behaviour_angle_difference.pdf", sep = ""), width=5, height=3)
-par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
-
+##angular_differences plot per interaction
 interaction_data_G <- subset(interaction_data[!is.na(interaction_data$traj_BOTH.angle_diff),], BEH == "G")
 for (row in unique(interaction_data_G$ROW)) {
   single_interaction <-subset(interaction_data_G,ROW == row)
@@ -320,9 +355,10 @@ for (row in unique(interaction_data_T$ROW)) {
                      main = paste("Behaviour: T, \n", "interaction N:",row, sep=""), sub=NULL)
 }
 
-
+#close the pdf
 dev.off()
 
+#polar coordinates plot alternative
 # p <- ggplot(interaction_data_G, aes(x=as.factor(ROW), y=traj_BOTH.angle_diff)) +       # Note that id is a factor. If x is numeric, there is some space between the first bar
 # geom_bar(stat="identity", fill=alpha("blue", 0.3)) +
 # # Limits of the plot = very important. The negative value controls the size of the inner circle, the positive one is useful to add size over each bar
@@ -335,12 +371,6 @@ dev.off()
 # labs(title = paste(REPLICATE, ", ", PERIOD, ", ", BEH,", ", sep="")) +
 # coord_polar(start = 0) # This makes the coordinate polar instead of cartesian.
 # print(p)
-
-
-
-
-
-
 
 
 ###############################################################################
@@ -384,22 +414,6 @@ str(interaction_data)
 
 #RENAME COLUMN TRAJBOTHREC IN time 
 #merge with equal time and some order of the couple ACT-REC=ant1_str-ant2_str. HOW?
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
