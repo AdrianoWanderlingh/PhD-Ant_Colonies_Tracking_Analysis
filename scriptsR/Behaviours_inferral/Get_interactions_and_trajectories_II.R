@@ -97,10 +97,12 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ## TO DO : CHANGE THIS START TIME DEPENDING ON THE REPLICATE - NOT SAME FOR R3 & R9 !!!
   
   # time_start_ISO <- parse_iso_8601("2021-03-16T12:13:21.670072093Z")  ### OLD: TO DO - CHECK THIS ADRIANO
-  StartTime      <- min(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])
+  StartTime      <- min(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period=="pre"])
   time_start_ISO <- parse_iso_8601(StartTime)
   time_start     <- fmTimeCPtrFromAnySEXP(time_start_ISO)
-  time_stop      <- fmTimeCPtrFromAnySEXP(time_start_ISO + (32*60) ) ####arbitrary time in the correct format + 16min 
+  time_stop      <- max(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period=="post"])
+  #time_stop      <- fmTimeCPtrFromAnySEXP(time_start_ISO + (24*60*60) ) ####arbitrary time in the correct format + (N mins * N seconds)
+
   
   ######### Subset 15 min block
   positions <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = FALSE) #set true to obtain the zone of the ant
@@ -158,12 +160,12 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ####First let's extract ant's trajectories
   par(mfrow=c(2,5), mai=c(0.3,0.3,0.2,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
   
-  for (BEH in c("G","T"))
+  for (BEH in c("G","T","FR","CR"))
     {
     ## subset all hand-labelled bahavs for this behaviour type in this colony
     annot_BEH <- annotations[which(annotations$treatment_rep==REPLICATE  & annotations$period==PERIOD & annotations$Behaviour==BEH ),]
     ## remove doubled allo-grooming interactions
-    if (BEH=="G") {print("duplicates removed")}#{annot_BEH <- annot_BEH[!duplicated(annot_BEH),]}  ## leave NOT to catch possible un-matched rows
+    if (BEH=="G") {print("duplicates removed")}#{annot_BEH <- annot_BEH[!duplicated(annot_BEH),]} 
     if (BEH=="T") {print("duplicates removed")}
     ## loop through each event in annot_BEH
     for (ROW in 1:nrow(annot_BEH))
@@ -206,31 +208,60 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       #points(angle ~ time, traj_REC, col=rgb(1,0,0,0.3,1))
       
       
-      ########################################################
+      ##################
+      ## INDIVIDUAL TRAJECTORY MEASURES
       # uncorrelated vars used for Constance Tests:  median_acceleration_mmpersec2, rmse_mm, distance_mm, 
       # mean_acceleration_mmpersec2, straightness_index , periodicity_sec (last two not calculated here as they need rediscretisation)
       
-      ### angular st.dev
-      ang_SD_ACT                    <-  angular.deviation(traj_ACT$angle, na.rm = TRUE)
-      ang_SD_REC                    <-  angular.deviation(traj_REC$angle, na.rm = TRUE)
+      ### angular st.dev 
+      StDev_angle_ACT                    <-  angular.deviation(traj_ACT$angle, na.rm = TRUE)
+      StDev_angle_REC                    <-  angular.deviation(traj_REC$angle, na.rm = TRUE)
+      
+      # mean direction of a vector of circular data
+      angle_mean_ACT                    <-  mean.circular(traj_ACT$angle, na.rm = TRUE) 
+      angle_mean_REC                    <-  mean.circular(traj_REC$angle, na.rm = TRUE)
+      
+      ##Delta_angles: differential between body angle and movement angle
+      # movement_angle: as the body_angle (orientation) remains the same, the movement_angle can change without if the movement is perpendicular to the body_angle
+      # change in movement angle calculated as atan(x2/y2) - atan(x1/y1)
+      Movement.angle.diff     <- function(x)  {
+        if( length(x) > 0 & !is_null(x)){
+        c( atan(x[-nrow(x), "x"] / x[-nrow(x), "y"]) - atan(x[-1, "x"] / x[-1, "y"]), NA)}
+        else {vector()}}
+      
+      
+      Orientation.diff        <- function(x)  { c( x[-nrow(x), "angle"] - x[-1, "angle"], NA)}
+      # # variation of movement angle frame by frame
+      # traj_ACT$Movement_angle_difference <- Movement.angle.diff(x = traj_ACT)
+      # traj_REC$Movement_angle_difference <- Movement.angle.diff(x = traj_REC)
+      # # variation of Orientation angle frame by frame
+      # traj_ACT$Orientation_diff <- Orientation.diff(x = traj_ACT)
+      # traj_REC$Orientation_diff <- Orientation.diff(x = traj_REC)
+      # # delta_angles
+      # traj_ACT$delta_angles <- traj_ACT$Movement_angle_difference - traj_ACT$Orientation_diff
+      # traj_REC$delta_angles <- traj_REC$Movement_angle_difference - traj_REC$Orientation_diff
+      # # mean delta_angles
+      # mean_delta_angles_ACT <- mean(traj_ACT$delta_angles,na.rm=TRUE)
+      # mean_delta_angles_REC <- mean(traj_REC$delta_angles,na.rm=TRUE)
+      #   
       
       ##define trajectory
       trajectory_ACT                <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y,time=as.numeric(traj_ACT$UNIX_time)), spatialUnits = "px",timeUnits="s")
       trajectory_REC                <- TrajFromCoords(data.frame(x=traj_REC$x,y=traj_REC$y,time=as.numeric(traj_REC$UNIX_time)), spatialUnits = "px",timeUnits="s")
       #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
       ### total distance moved 
-      moved_distance_ACT                  <- TrajLength(trajectory_ACT)
-      moved_distance_REC                  <- TrajLength(trajectory_REC)
+      moved_distance_px_ACT                  <- TrajLength(trajectory_ACT)
+      moved_distance_px_REC                  <- TrajLength(trajectory_REC)
       ### Calculate trajectory derivatives
       deriv_traj_ACT                <- TrajDerivatives(trajectory_ACT)
       deriv_traj_REC                <- TrajDerivatives(trajectory_REC)
       #  mean_speed_mmpersec_ACT        <- mean(deriv_traj$speed,na.rm=T)
       #  median_speed_mmpersec           <- median(deriv_traj$speed,na.rm=T)
       #  Mean and median acceleration
-      mean_accel_ACT     <- mean(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
-      mean_accel_REC     <- mean(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
-      median_accel_ACT  <- median(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
-      median_accel_REC  <- median(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
+      mean_accel_pxpersec2_ACT     <- mean(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
+      mean_accel_pxpersec2_REC     <- mean(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
+      #median_accel_ACT  <- median(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
+      #median_accel_REC  <- median(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
       ### Mean and median turn angle, in radians
       #  mean_turnangle_radians          <- mean(abs( TrajAngles(trajectory)),na.rm=T)
       #  median_turnangle_radians        <- median(abs( TrajAngles(trajectory)),na.rm=T)
@@ -244,8 +275,9 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       # all_Acs                         <- TrajDirectionAutocorrelations(deriv_traj_ACT) #requires redisretisation of the traj
       # periodicity_sec                 <- TrajDAFindFirstMinimum(all_Acs)["deltaS"]*desired_step_length_time 
       ### root mean square displacement
-      rmse_mm_ACT                            <-  sqrt(sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x)))  
-      rmse_mm_REC                            <-  sqrt(sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x)))  
+      rmse_px_ACT                            <-  sqrt(sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x)))  
+      rmse_px_REC                            <-  sqrt(sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x)))  
+      
       
       #rename trajectories columns NOT TO BE MERGED for Act and Rec
       names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
@@ -253,21 +285,32 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       #merge trajectories matching by time
       traj_BOTH <- merge(traj_ACT,traj_REC,all=T)
       
+      interaction_length_frames <- NROW(traj_BOTH$time)
       
+      prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x)))/length(traj_BOTH$ACT.x)
+      prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x)))/length(traj_BOTH$REC.x)
+      
+      ##################
+      ## INTERACTING PAIR TRAJECTORY MEASURES
+  
       #straight line - euclidean distance
       traj_BOTH$straightline_dist <-  sqrt((traj_BOTH$ACT.x-traj_BOTH$REC.x)^2+(traj_BOTH$ACT.y-traj_BOTH$REC.y)^2)
       
       #angular difference
-      traj_BOTH$angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% pi
+      traj_BOTH$angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
       
       #SUMMARY_DATA is a summary, INTERACTION_DATA reports interactions frame by frame
       summary_data <- rbind(summary_data,
-                            data.frame(ROW=ROW, BEH=BEH, Act_Name=Act_Name, Rec_Name=Rec_Name,
-                                       ang_SD_ACT=ang_SD_ACT, ang_SD_REC=ang_SD_REC,
-                                       moved_distance_ACT=moved_distance_ACT, moved_distance_REC=moved_distance_REC,
-                                       mean_accel_ACT=mean_accel_ACT, mean_accel_REC=mean_accel_REC,
-                                       median_accel_ACT=median_accel_ACT,median_accel_REC=median_accel_REC,
-                                       rmse_mm_ACT=rmse_mm_ACT,rmse_mm_REC=rmse_mm_REC,
+                            data.frame(ROW=ROW, BEH=BEH, Act_Name=Act_Name, Rec_Name=Rec_Name, PERIOD=PERIOD,
+                                       StDev_angle_ACT=StDev_angle_ACT, StDev_angle_REC=StDev_angle_REC,
+                                       angle_mean_ACT=angle_mean_ACT, angle_mean_REC=angle_mean_REC,
+                                       #mean_delta_angles_ACT=mean_delta_angles_ACT, mean_delta_angles_REC=mean_delta_angles_REC,
+                                       moved_distance_px_ACT=moved_distance_px_ACT, moved_distance_px_REC=moved_distance_px_REC,
+                                       mean_accel_pxpersec2_ACT=mean_accel_pxpersec2_ACT, mean_accel_pxpersec2_REC=mean_accel_pxpersec2_REC,
+                                       #median_accel_ACT=median_accel_ACT,median_accel_REC=median_accel_REC,
+                                       rmse_px_ACT=rmse_px_ACT,rmse_px_REC=rmse_px_REC,
+                                       interaction_length_frames=interaction_length_frames,
+                                       prop_time_undetected_ACT=prop_time_undetected_ACT, prop_time_undetected_REC=prop_time_undetected_REC,
                                        stringsAsFactors = F))
       
       interaction_data <- rbind(interaction_data,data.frame(ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,REPLICATE=REPLICATE, PERIOD=PERIOD, traj_BOTH=traj_BOTH, stringsAsFactors = F))
@@ -275,7 +318,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       }##ACT
     
     }##BEH
-    for (variable in names(summary_data)[!names(summary_data)%in%c("BEH","Act_Name","Rec_Name")]){
+    for (variable in names(summary_data)[!names(summary_data)%in%c("BEH","Act_Name","Rec_Name","PERIOD")]){
       summary_data[,"variable"] <- summary_data[,variable]
       #boxplot(variable~BEH,ylab=variable,data=summary_data)
     }##summary_data
@@ -288,6 +331,23 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
 
 # Add collisions capsules
 
+
+##############################################################################
+###### TEMPORARY DATA ########################################################
+##############################################################################
+
+unique(interaction_data$PERIOD)
+min(interaction_data$traj_BOTH.UNIX_time)
+StartTime
+
+#save R3SP and re-run on R9SP
+
+#dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
+#positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
+
+
+
+
 ###############################################################################
 ###### PARAMETERS PLOTS #######################################################
 ###############################################################################
@@ -298,62 +358,115 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
 str(summary_data)
 
 #reshape data for plotting. Split by REC and ACT
-summary_data_ACT <-summary_data %>% dplyr::select(contains(c("BEH", "ACT"), ignore.case = TRUE))
-summary_data_REC <- summary_data %>% dplyr::select(contains(c("BEH", "REC"), ignore.case = TRUE))
+summary_data_ACT <-summary_data %>% dplyr::select(contains(c("BEH", "ACT","interaction_length"), ignore.case = TRUE))
+summary_data_REC <- summary_data %>% dplyr::select(contains(c("BEH", "REC","interaction_length"), ignore.case = TRUE))
 #Rename columns to make them match and bind+ melt columns
 summ_data_ACT  <- summary_data_ACT %>% rename_with(~str_remove(., c("_ACT|Act_"))); summ_data_ACT$Role <- "ACT"
 summ_data_REC  <- summary_data_REC %>% rename_with(~str_remove(., c("_REC|Rec_"))); summ_data_REC$Role <- "REC"
 summ_data_bind <- rbind(summ_data_ACT,summ_data_REC)
-summ_data_long <- melt(summ_data_bind,id.vars=c("BEH","Role","Name"))
+summ_data_long <- melt(summ_data_bind,id.vars=c("BEH","Role","Name")) #explanation on the warning message https://stackoverflow.com/questions/25688897/reshape2-melt-warning-message
 
 #subset data by BEH for plotting
-summary_data_T <- summ_data_long[which(summ_data_long$BEH == "T"),]
 summary_data_G <- summ_data_long[which(summ_data_long$BEH == "G"),]
+summary_data_T <- summ_data_long[which(summ_data_long$BEH == "T"),]
+summary_data_FR <- summ_data_long[which(summ_data_long$BEH == "FR"),]
+summary_data_CR <- summ_data_long[which(summ_data_long$BEH == "CR"),]
+#keep Trophallaxis, Cross Rest and Front REst togheter and fill by BEH when plotting
+summary_data_T_FR_CR <- summ_data_long[which(!summ_data_long$BEH == "G"),]
+
 
 #set up plot
-pdf(file=paste(DATADIR,"Parameters_plots.pdf", sep = ""), width=5, height=3)
+pdf(file=paste(DATADIR,"Parameters_plots_R3SP.pdf", sep = ""), width=6, height=6)
 par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
-
-###plot divided by variable and Role for Trophallaxis
-vars_plot_T <- ggplot(summary_data_T, aes(value, fill = Role)) +
-  facet_wrap(variable ~ .,scales="free") +
-  theme_bw() +
-  theme(text=element_text(family="serif",size=7),legend.position="bottom",legend.justification='right', legend.key.size = unit(0.3, 'cm'))+ 
-  scale_fill_discrete( labels = c("Actor1","Actor2"))
-vars_plot_T + geom_density(alpha = 0.2) +
-  labs(title = "Density plot for movement variables calculated from coordinates \n for Actors and Receivers during Trophallaxis")
-vars_plot_T + geom_histogram(colour='black',alpha = 0.2,position="identity") +
-  labs(title = "Histogram for movement variables calculated from coordinates \n for Actors and Receivers during Trophallaxis")
 
 ###plot divided by variable and Role for Grooming
 vars_plot_G <- ggplot(summary_data_G, aes(value, fill = Role)) +
   facet_wrap(variable ~ .,scales="free") +
   theme_bw() +
-  theme(text=element_text(family="serif",size=7),legend.position="bottom",legend.justification='right', legend.key.size = unit(0.3, 'cm'))
-vars_plot_G + geom_density(alpha = 0.2) +
-  labs(title = "Density plot for movement variables calculated from coordinates \n for Actors and Receivers during Grooming")
+  theme(text=element_text(family="serif",size=9),legend.position="top",legend.justification='right', legend.key.size = unit(0.3, 'cm'))
 vars_plot_G + geom_histogram(colour='black',alpha = 0.2,position="identity")+
   labs(title = "Histogram plot for movement variables calculated from coordinates \n for Actors and Receivers during Grooming")
+vars_plot_G + geom_density(alpha = 0.2) +
+  labs(title = "Density plot for movement variables calculated from coordinates \n for Actors and Receivers during Grooming")
+
+
+###plot divided by variable and Role for Trophallaxis
+vars_plot_T <- ggplot(summary_data_T, aes(value)) +
+  facet_wrap(variable ~ .,scales="free") +
+  theme_bw() +
+  theme(text=element_text(family="serif",size=9),legend.position="top",legend.justification='right', legend.key.size = unit(0.3, 'cm')) 
+vars_plot_T + geom_histogram(colour='black',alpha = 0.2,position="identity") +
+  labs(title = "Histogram for movement variables calculated from coordinates \n for interacting ants during Trophallaxis")
+vars_plot_T + geom_density(alpha = 0.2) +
+  labs(title = "Density plot for movement variables calculated from coordinates \n for interacting ants during Trophallaxis")
+
+###plot divided by variable and Role for Trophallaxis compared to FR and CR
+vars_plot_T_FR_CR <- ggplot(summary_data_T_FR_CR, aes(value, color = forcats::fct_inorder(BEH))) +
+  facet_wrap(variable ~ .,scales="free") +
+  theme_bw() +
+  theme(text=element_text(family="serif",size=9),legend.position="top",legend.justification='right', legend.key.size = unit(0.3, 'cm'))
+#vars_plot_T_FR_CR + geom_histogram(colour='black',alpha = 0.2,position="identity") +
+#  labs(title = "Histogram for movement variables calculated from coordinates \n for interacting ants during Trophallaxis and for non-interacting ants during Front Rest and Cross Rest")
+vars_plot_T_FR_CR + geom_density(alpha = 0.2,aes(linetype=forcats::fct_inorder(BEH))) +
+  labs(title = "Density plot for movement variables calculated from coordinates \n for interacting ants during Trophallaxis and for non-interacting ants during Front Rest and Cross Rest")
+
+# ###plot divided by variable and Role for Front Rest
+# vars_plot_FR <- ggplot(summary_data_FR, aes(value)) +
+#   facet_wrap(variable ~ .,scales="free") +
+#   theme_bw() +
+#   theme(text=element_text(family="serif",size=8),legend.position="top",legend.justification='right', legend.key.size = unit(0.3, 'cm'))
+# vars_plot_FR + geom_histogram(colour='black',alpha = 0.2,position="identity") +
+#   labs(title = "Histogram for movement variables calculated from coordinates \n for non-interacting ants during Front Rest")
+# vars_plot_FR + geom_density(alpha = 0.2) +
+#   labs(title = "Density plot for movement variables calculated from coordinates \n for non-interacting ants during Front Rest")
+
+# ###plot divided by variable and Role for Cross Rest
+# vars_plot_CR <- ggplot(summary_data_CR, aes(value)) +
+#   facet_wrap(variable ~ .,scales="free") +
+#   theme_bw() +
+#   theme(text=element_text(family="serif",size=8),legend.position="top",legend.justification='right', legend.key.size = unit(0.3, 'cm'))
+# vars_plot_CR + geom_histogram(colour='black',alpha = 0.2,position="identity") +
+#   labs(title = "Histogram for movement variables calculated from coordinates \n for non-interacting ants during Cross Rest")
+# vars_plot_CR + geom_density(alpha = 0.2) +
+#   labs(title = "Density plot for movement variables calculated from coordinates \n for non-interacting ants during Cross Rest")
+
 
 
 #INTERACTION_DATA
-
-interaction_data_T <- subset(interaction_data, BEH == "T")
 
 ##angular_differences plot per interaction
 interaction_data_G <- subset(interaction_data[!is.na(interaction_data$traj_BOTH.angle_diff),], BEH == "G")
 for (row in unique(interaction_data_G$ROW)) {
   single_interaction <-subset(interaction_data_G,ROW == row)
-  p <- plot.circular(single_interaction$traj_BOTH.angle_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100, tcl.text	 = 0.5, tol= 0, shrink = 1.7, sep= 0.05, #xlim=c(-1,1), ylim=c(-2.5,2.5), 
-                     main = paste("Behaviour: G, \n", "interaction N:",row, sep=""), sub=NULL) #REPLICATE, ", ", PERIOD, ", \n", "behaviour:", BEH,
+  p <- plot.circular(single_interaction$traj_BOTH.angle_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100, tcl.text	 = 0.5, tol= 0, shrink = 2.5, sep= 0.04, #xlim=c(-1,1), ylim=c(-2.5,2.5), 
+                     main = paste("Behaviour: G, \n", "interaction N: ",row, sep=""), sub=NULL) #REPLICATE, ", ", PERIOD, ", \n", "behaviour:", BEH,
 }
+
 
 interaction_data_T <- subset(interaction_data[!is.na(interaction_data$traj_BOTH.angle_diff),], BEH == "T")
 for (row in unique(interaction_data_T$ROW)) {
   single_interaction <-subset(interaction_data_T,ROW == row)
-  p <- plot.circular(single_interaction$traj_BOTH.angle_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100, tcl.text	 = 0.5, tol= 0, shrink = 1.7, sep= 0.05, #xlim=c(-1,1), ylim=c(-2.5,2.5), 
-                     main = paste("Behaviour: T, \n", "interaction N:",row, sep=""), sub=NULL)
+  p <- plot.circular(single_interaction$traj_BOTH.angle_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100, tcl.text	 = 0.5, tol= 0, shrink = 2.5, sep= 0.04, #xlim=c(-1,1), ylim=c(-2.5,2.5), 
+                     main = paste("Behaviour: T, \n", "interaction N: ",row, sep=""), sub=NULL)
 }
+
+
+#means
+## calculate circular mean angles for each interaction Row
+#interaction_data_mean <- aggregate(traj_BOTH.angle_diff ~ ROW + BEH + REPLICATE + PERIOD, FUN=mean, na.action=na.omit, interaction_data)
+interaction_data_circ_mean <- aggregate(circular(traj_BOTH.angle_diff) ~ ROW + BEH + REPLICATE + PERIOD, FUN=mean, na.action=na.omit, interaction_data)
+
+
+for (beh in unique(interaction_data_circ_mean$BEH)) {
+  single_interaction <-subset(interaction_data_circ_mean,BEH == beh)
+  plot.circular(single_interaction$`circular(traj_BOTH.angle_diff)`, pch = 16, cex = 0.8,stack=TRUE, bins=100, tcl.text	 = 0.5, tol= 0, shrink = 2.5, sep= 0.08, xlim=c(-0.4,0.4), ylim=c(-0.4,0.4), 
+                     main = paste("Mean interaction angle for ", beh, "\n", "Tot N interactions: ",NROW(subset(interaction_data_circ_mean,BEH == beh)), sep=""), sub=NULL)
+  #densityline <- density(single_interaction$`circular(traj_BOTH.angle_diff)`, bw=30)
+  #lines(densityline, col=2)
+  arrows.circular(mean(single_interaction$`circular(traj_BOTH.angle_diff)`))
+  arrows.circular(0, col = "red")
+}
+
 
 #close the pdf
 dev.off()
@@ -691,3 +804,15 @@ str(interaction_data)
 
 rm(list=(c("e")))
 gc()
+
+
+
+
+# 
+# x <- 1
+# y <- 1
+# 
+# atan(x/y) * 180/pi
+# 
+# #rad to deg
+# rad * 180/pi
