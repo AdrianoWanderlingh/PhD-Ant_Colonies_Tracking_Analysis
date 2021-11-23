@@ -3,6 +3,21 @@
 # if (USER=="Tom")     {WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"}
 # DATADIR <- paste(WORKDIR,"Data",sep="/")
 
+
+####################### MOVE WHERE RELEVANT ###
+#######LOAD TABLE WITH ANTS TASK #####
+Task_list_R3SP <- read.table("/home/cf19810/Dropbox/Ants_behaviour_analysis/Data/R3SP_13-03-21.0000_TASK_list_1percent.txt")
+Task_list_R3SP$treatment_rep <- "R3SP"
+Task_ants_num_R3SP <- aggregate(antID ~ AntTask, FUN=NROW, Task_list_R3SP); colnames(Task_ants_num_R3SP) [match("antID",colnames(Task_ants_num_R3SP))] <- "number_ants"
+
+ExposedAntsR3SP <- c(5,17)
+ExposedAntsR9SP <- c(23,29,32)
+
+#File specifing the exposed ants
+antID <- c(5,17,23,29,32); Exposed <- c("exp","exp","exp","exp","exp"); treatment_rep <- c("R3SP","R3SP","R9SP","R9SP","R9SP"); ExposedAnts <- data.frame(antID,treatment_rep,Exposed)
+# Check that exposed ants are nurses (they are as defined during experiments. If some turn out not to be then the Nurse_list Script has to be altered in T-start and T-end)
+#ExposedAnts$AntTask  <- Task_list_R3SP$AntTask[which(Task_list_R3SP$antID %in% ExposedAnts$antID, )]
+
 ###############################################################################
 ###### LOAD MANUAL ANNOTATIONS ################################################
 ###############################################################################
@@ -56,7 +71,7 @@ Counts_by_Behaviour_CLEAN    <- aggregate(Actor ~ Behaviour + period + treatment
 ## calculate mean durations for each behaviour
 Durations_by_Behaviour_CLEAN <- aggregate(duration ~ Behaviour + period + treatment_rep, FUN=mean, na.action=na.omit, annotations)
 ## merge counts & durations carefully
-Counts_by_Behaviour_CLEAN    <-  plyr::join(x=Counts_by_Behaviour_CLEAN, y=Durations_by_Behaviour_CLEAN, , type = "full", match = "all")
+Counts_by_Behaviour_CLEAN    <-  plyr::join(x=Counts_by_Behaviour_CLEAN, y=Durations_by_Behaviour_CLEAN, type = "full", match = "all")
 
 ## create a data frame with all combinations of the conditioning variables
 all_combos <- expand.grid ( Behaviour=unique(annotations$Behaviour), period=unique(annotations$period), treatment_rep=unique(annotations$treatment_rep))
@@ -123,6 +138,7 @@ qqnorm(residuals(m1))
 qqline(residuals(m1))
 hist(residuals(m1)) 
 
+anova(m1)
 ##or
 #emmeans(m5, list(pairwise ~ period | Behaviour), adjust = "tukey")
 ##or
@@ -250,15 +266,19 @@ text(x = ((Xpos[1,]+Xpos[2,])/2),
 ## count the number of observations per actor/receiver and behaviour to find the most interacting indivduals
 
 #Change colname of both Actor and Receiver in the dataframes to "ant" for the loop to work
-Counts_by_Behaviour_Rec <- aggregate(Focal ~ Behaviour + period + Receiver + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Rec) [match("Focal",colnames(Counts_by_Behaviour_Rec))] <- "Count"; colnames(Counts_by_Behaviour_Rec) [match("Receiver",colnames(Counts_by_Behaviour_Rec))] <- "Ant"
-Counts_by_Behaviour_Act <- aggregate(Focal ~ Behaviour + period + Actor + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Act) [match("Focal",colnames(Counts_by_Behaviour_Act))] <- "Count"; colnames(Counts_by_Behaviour_Act) [match("Actor",colnames(Counts_by_Behaviour_Act))] <- "Ant"
+Counts_by_Behaviour_Rec <- aggregate(Focal ~ Behaviour + period + Receiver + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Rec) [match("Focal",colnames(Counts_by_Behaviour_Rec))] <- "Count"; colnames(Counts_by_Behaviour_Rec) [match("Receiver",colnames(Counts_by_Behaviour_Rec))] <- "antID"
+Counts_by_Behaviour_Act <- aggregate(Focal ~ Behaviour + period + Actor + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Act) [match("Focal",colnames(Counts_by_Behaviour_Act))] <- "Count"; colnames(Counts_by_Behaviour_Act) [match("Actor",colnames(Counts_by_Behaviour_Act))] <- "antID"
+
+Durations_by_Behaviour_Rec <- aggregate(duration ~ Behaviour + period + Receiver + treatment_rep, FUN=mean, na.action=na.omit, annotations); colnames(Durations_by_Behaviour_Rec) [match("Focal",colnames(Durations_by_Behaviour_Rec))] <- "Count"; colnames(Durations_by_Behaviour_Rec) [match("Receiver",colnames(Durations_by_Behaviour_Rec))] <- "antID"
+Durations_by_Behaviour_Act <- aggregate(duration ~ Behaviour + period + Actor + treatment_rep, FUN=mean, na.action=na.omit, annotations); colnames(Durations_by_Behaviour_Act) [match("Focal",colnames(Durations_by_Behaviour_Act))] <- "Count"; colnames(Durations_by_Behaviour_Act) [match("Actor",colnames(Durations_by_Behaviour_Act))] <- "antID"
+
 #create place-holder column to have name for plotting
 Counts_by_Behaviour_Rec$Receiver <- "Receiver"
 Counts_by_Behaviour_Act$Actor <- "Actor"
 Rec_Act_Counts_list <- list(Counts_by_Behaviour_Rec=Counts_by_Behaviour_Rec,Counts_by_Behaviour_Act=Counts_by_Behaviour_Act)
 
-ExposedAntsR3SP <- c(5,17)
-ExposedAntsR9SP <- c(23,29,32)
+Durations_by_Behaviour_Rec$Receiver <- "Receiver"
+Durations_by_Behaviour_Act$Actor <- "Actor"
 
 for (SUBJECT in Rec_Act_Counts_list) {
   #print(deparse(substitute(Rec_Act_Counts_list)[SUBJECT]))
@@ -276,8 +296,8 @@ for (SUBJECT in Rec_Act_Counts_list) {
   # one box per behaviour, showing Receivers and divided by colony (to avoid overlaps of antIDs)
   #colony R3SP Ant
   p <- ggplot(SUBJECT_AllCombos_R3SP, aes(x=period, y=Count, fill=period)) + 
-    geom_bar(aes(fill = Ant),stat='identity',colour="black", fill=NA) +
-    geom_text(aes(label=ifelse(Count>6,as.character(Ant),''),color=ifelse(Ant %in% ExposedAntsR3SP,"red","black")), size = 2, position = position_stack(vjust = 0.9)) +
+    geom_bar(aes(fill = antID),stat='identity',colour="black", fill=NA) +
+    geom_text(aes(label=ifelse(Count>6,as.character(antID),''),color=ifelse(antID %in% ExposedAntsR3SP,"red","black")), size = 2, position = position_stack(vjust = 0.9)) +
     scale_colour_manual(values = c("darkgray","black")) +
     facet_grid(~Behaviour, scale="free") +
     theme(text=element_text(family="serif",size=7),legend.position="none") +
@@ -289,8 +309,8 @@ for (SUBJECT in Rec_Act_Counts_list) {
   # one box per behaviour, showing Receivers and divided by colony (to avoid overlaps of antIDs)
   #colony R3SP Ant
   p1 <- ggplot(SUBJECT_AllCombos_R9SP, aes(x=period, y=Count, fill=period)) + 
-    geom_bar(aes(fill = Ant),stat='identity',colour="black", fill=NA) +    
-    geom_text(aes(label=ifelse(Count>6,as.character(Ant),''),color=ifelse(Ant %in% ExposedAntsR9SP,"red","")), size = 2, position = position_stack(vjust = 0.9)) +
+    geom_bar(aes(fill = antID),stat='identity',colour="black", fill=NA) +    
+    geom_text(aes(label=ifelse(Count>6,as.character(antID),''),color=ifelse(antID %in% ExposedAntsR9SP,"red","")), size = 2, position = position_stack(vjust = 0.9)) +
     scale_colour_manual(values = c("darkgray","black")) +
     facet_grid(~Behaviour, scale="free") +
     theme(text=element_text(family="serif",size=7),legend.position="none") +
@@ -305,6 +325,130 @@ for (SUBJECT in Rec_Act_Counts_list) {
 
 ## close the pdf
 dev.off()
+
+
+####MODIFY FOR COUNTS AND DURATIONS #########
+
+
+# # this can be eliminated if not modified!!!!!!!!!!!
+# #Change colname of both Actor and Receiver in the dataframes to "ant" for the loop to work
+# Counts_by_Behaviour_Rec <- aggregate(Focal ~ Behaviour + period + Receiver + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Rec) [match("Focal",colnames(Counts_by_Behaviour_Rec))] <- "Count"; colnames(Counts_by_Behaviour_Rec) [match("Receiver",colnames(Counts_by_Behaviour_Rec))] <- "antID"
+# Counts_by_Behaviour_Act <- aggregate(Focal ~ Behaviour + period + Actor + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_Act) [match("Focal",colnames(Counts_by_Behaviour_Act))] <- "Count"; colnames(Counts_by_Behaviour_Act) [match("Actor",colnames(Counts_by_Behaviour_Act))] <- "antID"
+# #create place-holder column to have name for plotting
+# Counts_by_Behaviour_Rec$Receiver <- "Receiver"
+# Counts_by_Behaviour_Act$Actor <- "Actor"
+
+############################
+
+
+## COUNT BY EXPOSED AND UNEXPOSED PER TASK ##
+#rename Actor/Receiver columns to Role before binding
+colnames(Counts_by_Behaviour_Rec) [match("Receiver",colnames(Counts_by_Behaviour_Rec))] <- "Role"
+colnames(Counts_by_Behaviour_Act) [match("Actor",colnames(Counts_by_Behaviour_Act))] <- "Role"
+colnames(Durations_by_Behaviour_Rec) [match("Receiver",colnames(Durations_by_Behaviour_Rec))] <- "Role"
+colnames(Durations_by_Behaviour_Act) [match("Actor",colnames(Durations_by_Behaviour_Act))] <- "Role"
+
+Counts_by_Beh_Role <- dplyr::bind_rows(Counts_by_Behaviour_Rec=Counts_by_Behaviour_Rec,Counts_by_Behaviour_Act=Counts_by_Behaviour_Act)
+Durations_by_Beh_Role <- dplyr::bind_rows(Durations_by_Behaviour_Rec=Durations_by_Behaviour_Rec,Durations_by_Behaviour_Act=Durations_by_Behaviour_Act)
+
+## merge counts & durations carefully
+Counts_by_Beh_Role   <-  plyr::join(x=Counts_by_Beh_Role, y=Durations_by_Beh_Role, type = "full", match = "all")
+
+#ADD THE R9SP TASKS OR YOU LOOSE R9SP INFORMATION!
+Counts_by_Beh_Role_Task <- plyr::join (x = Task_list_R3SP[,c("antID","AntTask","treatment_rep")] , y=Counts_by_Beh_Role, type = "full", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+NROW(Counts_by_Beh_Role_Task)
+NROW(Counts_by_Beh_Role)
+
+#assign "exposed" label to nurses that were exposed, based on ExposedAnts file
+Counts_by_Beh_Role_Task_Exp <- plyr::join (x = ExposedAnts[,c("antID","treatment_rep","Exposed")] , y=Counts_by_Beh_Role_Task, type = "full", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+#assign "non-exposed" label to everyone else
+Counts_by_Beh_Role_Task_Exp$Exposed[is.na(Counts_by_Beh_Role_Task_Exp$Exposed)] <- "non_exp"
+head(Counts_by_Beh_Role_Task_Exp)
+#crete new Exposure+task column for plots
+Counts_by_Beh_Role_Task_Exp$Exp_task <- paste(Counts_by_Beh_Role_Task_Exp$Exposed,Counts_by_Beh_Role_Task_Exp$AntTask,sep = "_")
+unique(Counts_by_Beh_Role_Task_Exp$Exp_task)
+
+## add the missing cases
+Counts_by_Beh_Role_Task_Exp_AllComb <- plyr::join (x = Counts_by_Beh_Role_Task_Exp , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+
+## Focus only on a few important behaviours
+Counts_by_Beh_Role_Task_Exp_AllComb <- Counts_by_Beh_Role_Task_Exp_AllComb[which(Counts_by_Beh_Role_Task_Exp_AllComb$Behaviour %in% c("A","G","SG","T","TB")),]
+## Skip for now the undetermined groups, REMOVE ONCE TASKS ARE DETERMINED FOR R9SP
+Counts_by_Beh_Role_Task_Exp_AllComb <- Counts_by_Beh_Role_Task_Exp_AllComb[which(Counts_by_Beh_Role_Task_Exp_AllComb$Exp_task %in% c("exp_nurse","non_exp_forager","non_exp_nurse")),]
+
+
+## replace the NAs with 0 counts
+Counts_by_Beh_Role_Task_Exp_AllComb$Count[which(is.na(Counts_by_Beh_Role_Task_Exp_AllComb$Count))] <- 0
+## finally, get the mean & S.E. for each behav before/after  for barplots
+Counts_by_Beh_Role_Task_Exp_MEAN  <- aggregate(cbind(Count,duration) ~ Behaviour + period + Role + Exp_task,                 FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Beh_Role_Task_Exp_AllComb)
+Counts_by_Beh_Role_Task_Exp_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + period + Role + Exp_task,                 FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Beh_Role_Task_Exp_AllComb)
+
+
+#CROSSCHECK OPERATIONS WERE RIGHT, 
+#THERE SEEMS TO BE A DISCREPANCY BETWEEN Counts_by_Beh_Role_Task_Exp_MEAN AND Counts_by_Behaviour_MEAN
+# SAME FOR THE SE MEASURE. Counts_by_Beh_Role_Task_Exp_MEAN AND SE SHOWS
+#OF COURSE IT IS NOT MATCHING! IT IS STILL MISSING THE INFORMATION FROM THE R9SP NEST!!!!!!!!!!!!!!
+
+
+###############################################################################
+###### PLOTTING  ##############################################################
+###############################################################################
+
+probably would be convenient to run a loop for actors and receivers and to provide subsets of data per Behaviour
+given that the focus is on specific responses by Exp_task and Role
+
+#test with one behaviour
+# Counts_by_Beh_Role_Task_Exp_MEAN <- Counts_by_Beh_Role_Task_Exp_MEAN[which(Counts_by_Beh_Role_Task_Exp_MEAN$Behaviour %in% c("G")),]
+# Counts_by_Beh_Role_Task_Exp_SE <- Counts_by_Beh_Role_Task_Exp_SE[which(Counts_by_Beh_Role_Task_Exp_SE$Behaviour %in% c("G")),]
+
+come fare??????
+
+
+## show the mean counts for each behav | stage
+pdf(file=paste(DATADIR,"Behaviour_counts_pre-post.pdf", sep = ""), width=5, height=3)
+par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.1,0.1), mgp=c(1.3,0.3,0), tcl=-0.2)
+## COUNTS
+Xpos <- barplot( Count ~ period + Exp_task , Counts_by_Beh_Role_Task_Exp_MEAN, beside=T, xlab="", ylab="Behaviour count", ylim=c(0,max( Counts_by_Beh_Role_Task_Exp_MEAN$Count +  Counts_by_Beh_Role_Task_Exp_SE$Count*1.4 )))
+##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
+segments(x0 = Xpos[1,], 
+         x1 = Xpos[1,], 
+         y0 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"], 
+         y1 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="pre"],
+         lwd=2)
+
+segments(x0 = Xpos[2,], 
+         x1 = Xpos[2,], 
+         y0 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"], 
+         y1 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="post"],
+         lwd=2)
+
+text(x = ((Xpos[1,]+Xpos[2,])/2),
+     y = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="post"]+15,
+     stars.pval(posthoc_FREQ_summary$p.value))
+
+# ## DURATIONS
+# Xpos <- barplot( duration ~ period + Behaviour , Counts_by_Beh_Role_Task_Exp_MEAN, beside=T, xlab="", ylab="Behaviour duration (s)", ylim=c(0,max( Counts_by_Beh_Role_Task_Exp_MEAN$duration +  Counts_by_Beh_Role_Task_Exp_SE$duration, na.rm=T)))
+# ##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
+# segments(x0 = Xpos[1,], 
+#          x1 = Xpos[1,], 
+#          y0 = Counts_by_Beh_Role_Task_Exp_MEAN$duration [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"], 
+#          y1 = Counts_by_Beh_Role_Task_Exp_MEAN$duration [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"] + Counts_by_Beh_Role_Task_Exp_SE$duration [Counts_by_Beh_Role_Task_Exp_SE$period=="pre"],
+#          lwd=2)
+# segments(x0 = Xpos[2,], 
+#          x1 = Xpos[2,], 
+#          y0 = Counts_by_Beh_Role_Task_Exp_MEAN$duration [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"], 
+#          y1 = Counts_by_Beh_Role_Task_Exp_MEAN$duration [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$duration [Counts_by_Beh_Role_Task_Exp_SE$period=="post"],
+#          lwd=2)
+# 
+# text(x = ((Xpos[1,]+Xpos[2,])/2),
+#      y = Counts_by_Beh_Role_Task_Exp_MEAN$duration [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$duration [Counts_by_Beh_Role_Task_Exp_SE$period=="post"]+3,
+#      stars.pval(rev(posthoc_DUR_summary$p.value)))
+# 
+
+
+
+
+
 
 
 #check for normality visually first
