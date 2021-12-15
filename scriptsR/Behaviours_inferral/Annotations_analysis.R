@@ -28,6 +28,7 @@ library(ggplot2)
 library(plotrix)
 library(gridExtra)
 library(gtools) # to convert p.values in stars
+library(pbkrtest)
 
 annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
 annotations$Behaviour <- as.character(annotations$Behaviour)
@@ -38,19 +39,19 @@ colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
 
 
 #convert Zulu time to GMT
-annotations$T_start <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations$T_stop  <- as.POSIXct(annotations$T_stop, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations$duration <- as.numeric(annotations$T_stop - annotations$T_start)
+annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+annotations$duration <- as.numeric(annotations$T_stop_UNIX - annotations$T_start_UNIX)
 
 #see if milliseconds are shown (number of decimals represented by the number after %OS)
-format(annotations$T_start[3], "%Y-%m-%d %H:%M:%OS6")
+format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
 
 #remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
 #this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
 annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
 
 #remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
-annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start","T_stop","Behaviour","treatment_rep")]),]
+annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start_UNIX","T_stop_UNIX","Behaviour","treatment_rep")]),]
 
 #Summary counts of behaviour frequency
 Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
@@ -65,6 +66,10 @@ Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, C
 
 #Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below! 
 annotations <- annotations_drop_all_dup
+
+#SAVE THE NEW ANNOTATION FILE 
+write.csv(annotations,"/home/cf19810/Dropbox/Ants_behaviour_analysis/Data//R3SP_R9SP_All_data_FINAL_script_output.csv")
+
 
 ## count the number of observations of each behaviour - WARNING; some behavs not observed e.g. before the treatment (period), so will need to account for that (next step)
 Counts_by_Behaviour_CLEAN    <- aggregate(Actor ~ Behaviour + period + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count"
@@ -394,14 +399,14 @@ Counts_by_Beh_Role_Task_Exp_SE    <- aggregate(cbind(Count,duration) ~ Behaviour
 ###### PLOTTING  ##############################################################
 ###############################################################################
 
-probably would be convenient to run a loop for actors and receivers and to provide subsets of data per Behaviour
-given that the focus is on specific responses by Exp_task and Role
+#probably would be convenient to run a loop for actors and receivers and to provide subsets of data per Behaviour
+#given that the focus is on specific responses by Exp_task and Role
 
 #test with one behaviour
 # Counts_by_Beh_Role_Task_Exp_MEAN <- Counts_by_Beh_Role_Task_Exp_MEAN[which(Counts_by_Beh_Role_Task_Exp_MEAN$Behaviour %in% c("G")),]
 # Counts_by_Beh_Role_Task_Exp_SE <- Counts_by_Beh_Role_Task_Exp_SE[which(Counts_by_Beh_Role_Task_Exp_SE$Behaviour %in% c("G")),]
 
-come fare??????
+#come fare??????
 
 
 ## show the mean counts for each behav | stage
