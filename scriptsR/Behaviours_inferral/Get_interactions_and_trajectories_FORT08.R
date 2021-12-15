@@ -1,7 +1,9 @@
-########################################################################################
-############## THIS VERSION IS FORT 0.7 COMPATIBLE #####################################
-########################################################################################
 
+##########################################################################################
+############## THIS VERSION IS FORT 0.8.1 COMPATIBLE #####################################
+##########################################################################################
+#this should be the version of the script maintained for long term use. 
+#MODIFY this file to make it work with all the new functions!!!!
 
 
 rm(list=(c("e")))
@@ -95,8 +97,8 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ## locate the ant info file for REPLICATE
   MyrmidonCapsuleFile <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T)
   MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl("Capsule_Zones_defined.myrmidon",MyrmidonCapsuleFile)]
-  e <- fmExperimentOpenReadOnly(MyrmidonCapsuleFile)
-  e$getDataInformations()
+  e <- fmExperimentOpen(MyrmidonCapsuleFile)
+  fmQueryGetDataInformations(e)
   ###tag statistics
   tag_stats <- fmQueryComputeTagStatistics(e)
   
@@ -111,15 +113,21 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ###############################################################################
   ###### READING TRAJECTORIES ###################################################
   ###############################################################################
-  StartTime      <- min(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])
-  time_start_ISO <- parse_iso_8601(StartTime)
-  time_start     <- fmTimeCPtrFromAnySEXP(time_start_ISO)
-  #time_stop      <- max(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period=="post"])
-  time_stop      <- fmTimeCPtrFromAnySEXP(time_start_ISO + (40*60) ) ####arbitrary time in the correct format + (N mins * N seconds)
-  
-  #keep end time as date and not environment for plotting purposes
-  time_stop_ISO <- time_start_ISO + (40*60)
+    
+    time_start <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])) ###experiment start time
+    time_stop   <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + 40*60  ) ###experiment start time ####arbitrary time in the correct format + (N mins * N seconds)
 
+  #   
+  # StartTime      <- min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])
+  # time_start_ISO <- parse_iso_8601(StartTime)
+  # time_start     <- fmTimeCPtrFromAnySEXP(time_start_ISO)
+  # #time_stop      <- max(annotations$T_start[annotations$treatment_rep==REPLICATE & annotations$period=="post"])
+  # time_stop      <- fmTimeCPtrFromAnySEXP(time_start_ISO + (40*60) ) ####arbitrary time in the correct format + (N mins * N seconds)
+  # 
+  #keep end time as date and not environment for plotting purposes
+  #time_stop_ISO <- time_start_ISO + (40*60)
+
+  #COMPUTE TRAJECTORIES  
   positions <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = TRUE) #set true to obtain the zone of the ant
   #print(head(postions))
   
@@ -127,11 +135,11 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   # positions <- fmQueryComputeAntTrajectories(e,start = e$getDataInformations()$details$tdd.start[1],end = e$getDataInformations()$details$tdd.end[3],maximumGap = max_gap,computeZones = FALSE) #set true to obtain the zone of the ant
   # ?fmQueryComputeAntTrajectories
   # 
-  # positions$trajectory_summary
+  # positions$trajectories_summary
   # positions$trajectories
   ###Let's have a look at the first element of the trajectories list within positions:
   # str(positions$trajectories)
-  # str(positions$trajectory_summary)
+  # str(positions$trajectories_summary)
   #plot(positions$trajectories[[20]]$x,positions$trajectories[[20]]$y)
   
   ###that is a dataframe with columns "time" (in seconds since start), x, y (coordinates in pixels), angle (orientation of the ant in radians), zone (which zone the ant is)
@@ -141,8 +149,8 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ### but imagine you had to delete an ant in fort-studio and the antID list "jumped" from 10 to 12 (so it would be 1,...10 then 12...23)
   ### then the 22nd object of trajectory list would not be the trajectory of ant 22 but of ant 23. That is not fool proof, but very risky!
   ##so what I suggest you do immediately after computing your positions object:
-  positions$trajectory_summary$antID_str <- paste("ant_",positions$trajectory_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
-  names(positions$trajectories)       <- positions$trajectory_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
+  positions$trajectories_summary$antID_str <- paste("ant_",positions$trajectories_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
+  names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
   ##and now we can extract each ant trajectory using the character ID stored in antID_str - it's much safer!
   
   # #unlisting the trajectories 
@@ -150,7 +158,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   # trajectories_unlist <- as.data.frame(rbindlist(positions$trajectories,use.names=TRUE,idcol=TRUE))
   # write.csv(trajectories_unlist, file=paste(e$getDataInformations()[["details"]][["tdd.URI"]],'trajectories_30min.csv'),row.names = FALSE) #specify name of the block better!
   
-  trajectory_summary <- positions$trajectory_summary
+  trajectories_summary <- positions$trajectories_summary
   
   #generate reproducible example
   #dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
@@ -158,13 +166,15 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   
   
   ## Add ant_x names and times to the positions to convert from time since the start of the experiment, to UNIX time
-  for (A in positions$trajectory_summary$antID)
+  for (A in positions$trajectories_summary$antID)
     {
     AntID <- paste("ant_",A,sep="") 
-    First_Obs_Time <- positions$trajectory_summary$start [which(positions$trajectory_summary$antID_str==AntID)] ## find the first time after the user defined time_start_ISO that this ant was seen
+    First_Obs_Time <- as.POSIXct(positions$trajectories_summary$start [which(positions$trajectories_summary$antID_str==AntID)]) ## find the first time after the user defined time_start_ISO that this ant was seen
     print(paste("Adding first obs time", First_Obs_Time, "to the time-zeroed trajectory of ant", AntID))
-    positions$trajectories[[AntID]] $UNIX_time <- positions$trajectories[[AntID]] $time + First_Obs_Time ##convert back to UNIX time  
+    positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin="1970-01-01")  + First_Obs_Time ##convert back to UNIX time  
     }
+ 
+ # format(First_Obs_Time, "%Y-%m-%d %H:%M:%OS6")
   
   #check that milliseconds are preserved after adding the ant's time_start_ISO
   #positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
@@ -191,8 +201,8 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       ACT <- annot_BEH$Actor[ROW]
       REC <- annot_BEH$Receiver[ROW]
       
-      ENC_TIME_start <- annot_BEH$T_start[ROW]
-      ENC_TIME_stop  <- annot_BEH$T_stop[ROW]
+      ENC_TIME_start <- annot_BEH$T_start_UNIX[ROW]
+      ENC_TIME_stop  <- annot_BEH$T_stop_UNIX[ROW]
       
       Act_Name <- paste("ant",ACT,sep="_")
       Rec_Name <- paste("ant",REC,sep="_")
@@ -219,9 +229,9 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       # print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_TIME_start, "traj_start", min(traj_ACT$UNIX_time,na.rm = TRUE)))
       # 
       # # ## Plot trajectories of both actor & receiver, show on the same panel
-      # plot   (y ~ x, traj_ACT, type="l", lwd=6, col="blue4", main=Title,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-      # points (y ~ x, traj_REC, type="l", lwd=6,  col="red4")
-      # 
+      plot   (y ~ x, traj_ACT, type="l", lwd=6, col="blue4", main=Title,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+      points (y ~ x, traj_REC, type="l", lwd=6,  col="red4")
+
       #plot angles of both actor & receiver
       #plot(angle ~ time, traj_ACT, col=rgb(0,0,1,0.3,1), main=paste("angle_rad",BEH,", Act:",ACT, "Rec:",REC, ENC_TIME_start, "-", ENC_TIME_stop)) #,xlim = c(0,500),ylim = c(0,2*pi))
       #points(angle ~ time, traj_REC, col=rgb(1,0,0,0.3,1))
@@ -394,11 +404,11 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       #NO UNIX TIME BUT TIME SINCE START OF INTERACTION
       #interaction AREA= NEST, FORAGING delete x y coords
       interaction_data <- rbind(interaction_data,data.frame(ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,
-                                                            REPLICATE=REPLICATE, 
-                                                            PERIOD=PERIOD, 
+                                                            REPLICATE=REPLICATE,
+                                                            PERIOD=PERIOD,
                                                             traj_BOTH=traj_BOTH,
                                                             stringsAsFactors = F))
-      
+
       }##ACT
     
     }##BEH
@@ -419,8 +429,6 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
 unique(interaction_data$PERIOD)
 min(interaction_data$traj_BOTH.UNIX_time)
 max(interaction_data$traj_BOTH.UNIX_time)
-StartTime
-
 
 
 plot(interaction_data$traj_BOTH.ACT.y ~ interaction_data$traj_BOTH.ACT.x, asp=1, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
@@ -571,7 +579,7 @@ collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)
 collisions$collisions$ant1_str <- paste("ant_",collisions$collisions$ant1,sep="") 
 collisions$collisions$ant2_str <- paste("ant_",collisions$collisions$ant2,sep="")
 
-#names(positions$trajectories)       <- positions$trajectory_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
+#names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
 ##and now we can extract each ant trajectory using the character ID storesd in antID_str - it's much safer!
 
 
@@ -658,17 +666,17 @@ str(interaction_data)
 # ######################## At the moment the function only works if this is set as TRUE (in my case I get a segmentation fault otherwise)
 # 
 # ###so:
-# interactions_all       <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T)
+interactions_all       <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportFullTrajectories = T)
 # 
 # ###let's View the object: 
-# str(interactions_all)
+str(interactions_all)
 # ###it's a list containing 3 objects: summaryTrajectory, trajectories and interactions
 # ###let's extract them for simplicity:
-# summaryTrajectory_all       <- interactions_all$summaryTrajectory  ## same object as positions$trajectory_summary described above - however here it will have many more rows given that the trajectories will be broken whenever there is a 10 second non-detection gap for an ant.
+summaryTrajectory_all       <- interactions_all$trajectories_summary  ## same object as positions$trajectories_summary described above - however here it will have many more rows given that the trajectories will be broken whenever there is a 10 second non-detection gap for an ant.
 # ## therefore in this case my trick with ant_ID_str won't work - it only works if there's exactly one trajectory as ants in the data
 # ## so I would NOT use the output of this function to analyse trajectories
-# trajectories_all           <- interactions_all$trajectories       ## same object as positions$trajectories described above - but containing more objects for the same reason as stated above
-# interacions_all            <- interactions_all$interactions       ## data frame containing all interactions
+trajectories_all           <- interactions_all$trajectories      ## same object as positions$trajectories described above - but containing more objects for the same reason as stated above
+interactions_all            <- interactions_all$interactions       ## data frame containing all interactions
 # 
 # str(interactions_all)
 # ###let's have a look at the interactions object
@@ -795,37 +803,37 @@ str(interaction_data)
 # 
 # ###Second - let's convert the relative time (in seconds since start) into absolute times
 # ###For this we need the starting time of that ant's trajectory
-# ###Which we find in object positions$trajectory_summary : positions$trajectory_summary[which(positions$trajectory_summary$antID_str=="ant1"),"start"]
-# trajectory$time_abs <- positions$trajectory_summary[which(positions$trajectory_summary$antID_str=="ant_1"),"start"] + trajectory$time
+# ###Which we find in object positions$trajectories_summary : positions$trajectories_summary[which(positions$trajectories_summary$antID_str=="ant1"),"start"]
+# trajectory$time_abs <- positions$trajectories_summary[which(positions$trajectories_summary$antID_str=="ant_1"),"start"] + trajectory$time
 # 
 # 
-# trajectories_unlist$time_abs <- positions$trajectory_summary[which(positions$trajectory_summary$antID_str),"start"] + trajectory$time
-# positions$trajectories <- unlist(lapply(positions$trajectories[c(match(positions$trajectory_summary$antID_str,names(positions$trajectories)))],FUN=trajectory_abs_time)) ###the match is once again to ensure we will extract the right information for the right ant
+# trajectories_unlist$time_abs <- positions$trajectories_summary[which(positions$trajectories_summary$antID_str),"start"] + trajectory$time
+# positions$trajectories <- unlist(lapply(positions$trajectories[c(match(positions$trajectories_summary$antID_str,names(positions$trajectories)))],FUN=trajectory_abs_time)) ###the match is once again to ensure we will extract the right information for the right ant
 # 
 # ##################################################################################################################################
 # ###### 7. EXAMPLE USE OF TRAJECTORIES: how to apply a function to all trajectories simultaneously#################################
 # ##################################################################################################################################
-# ###let's assume we want to know the duration of each trajectory and fill in the information into the positions$trajectory_summary file 
+# ###let's assume we want to know the duration of each trajectory and fill in the information into the positions$trajectories_summary file 
 # funTest <- function(trajectory) {
-#   if(positions$trajectory_summary$antID_str==trajectories_unlist$.id) {
-#     return (positions$trajectory_summary$start + trajectories_unlist$time)
+#   if(positions$trajectories_summary$antID_str==trajectories_unlist$.id) {
+#     return (positions$trajectories_summary$start + trajectories_unlist$time)
 #   } 
 # }
 # 
-# trajectories_unlist$time_abs <- lapply(positions$trajectories[c(match(positions$trajectory_summary$antID_str,names(positions$trajectories)))],FUN=funTest)
+# trajectories_unlist$time_abs <- lapply(positions$trajectories[c(match(positions$trajectories_summary$antID_str,names(positions$trajectories)))],FUN=funTest)
 # 
 # ###First we would define our own function:
-# trajectory_absol_time                 <- function(trajectory){ return (positions$trajectory_summary$start + trajectory$time)}
-# positions$trajectory_summary$start
+# trajectory_absol_time                 <- function(trajectory){ return (positions$trajectories_summary$start + trajectory$time)}
+# positions$trajectories_summary$start
 # trajectory$time
 # trajectory_duration                   <- function(trajectory){ return (max(trajectory$time,na.rm=T)-min(trajectory$time,na.rm=T))}
 # 
 # 
 # ###Second let's apply that function to all trajectories and fill in the results
-# positions$trajectories <- unlist(lapply(positions$trajectories[c(match(positions$trajectory_summary$antID_str,names(positions$trajectories)))],FUN=trajectory_abs_time)) ###the match is once again to ensure we will extract the right information for the right ant
+# positions$trajectories <- unlist(lapply(positions$trajectories[c(match(positions$trajectories_summary$antID_str,names(positions$trajectories)))],FUN=trajectory_abs_time)) ###the match is once again to ensure we will extract the right information for the right ant
 # 
 # ###Another example: number of coordinates per trajectory
-# positions$trajectory_summary$nb_coordinates <- unlist(lapply(positions$trajectories[c(match(positions$trajectory_summary$antID_str,names(positions$trajectories)))],FUN=nrow)) ###the match is once again to ensure we will extract the right information for the right ant
+# positions$trajectories_summary$nb_coordinates <- unlist(lapply(positions$trajectories[c(match(positions$trajectories_summary$antID_str,names(positions$trajectories)))],FUN=nrow)) ###the match is once again to ensure we will extract the right information for the right ant
 # 
 # ###etc. Generally this will save you time compared to a loop
 # 
