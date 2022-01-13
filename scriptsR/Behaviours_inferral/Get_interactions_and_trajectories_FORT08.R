@@ -1,20 +1,44 @@
-
 ##########################################################################################
 ############## THIS VERSION IS FORT 0.8.1 COMPATIBLE #####################################
 ##########################################################################################
 #this should be the version of the script maintained for long term use. 
-#MODIFY this file to make it work with all the new functions!!!!
 
+
+
+#SOMETHING WEIRD IS GOING ON WITH THE UNIX TIME OF TRAJ_BOTH, CHECK FOR THAT!
+# > traj_BOTH
+# time zone           UNIX_time    ACT.x
+# 1  1162.887    1 2021-03-16 12:32:46       NA
+# 2  1163.012    1 2021-03-16 12:32:46       NA
+# 3  1163.137    1 2021-03-16 12:32:46       NA
+# 4  1163.262    1 2021-03-16 12:32:46       NA
+# 5  1163.387    1 2021-03-16 12:32:46       NA
+# 6  1163.512    1 2021-03-16 12:32:46       NA
+# 7  1163.637    1 2021-03-16 12:32:46       NA
+# 8  1163.762    1 2021-03-16 12:32:47       NA
+# 9  1163.887    1 2021-03-16 12:32:47       NA
+# 10 1164.012    1 2021-03-16 12:32:47       NA
+# 11 1164.137    1 2021-03-16 12:32:47       NA
+# 12 1164.262    1 2021-03-16 12:32:47       NA
+# 13 1164.512    1 2021-03-16 12:32:46 2921.293 #AT THIS POINT, TIME GOES BACK TO :46???????????????????????
+# 14 1164.637    1 2021-03-16 12:32:46 2920.520
+# 15 1164.762    1 2021-03-16 12:32:46 2920.324
+# 16 1164.887    1 2021-03-16 12:32:46 2920.324
+# 17 1165.012    1 2021-03-16 12:32:46 2920.102
+# 18 1165.137    1 2021-03-16 12:32:46 2919.718
+# 19 1165.262    1 2021-03-16 12:32:46 2919.365
+# 20 1165.387    1 2021-03-16 12:32:47 2918.255
+# 21 1165.512    1 2021-03-16 12:32:47 2917.788
+# 22 1165.637    1 2021-03-16 12:32:47 2918.283
+# 23 1165.762    1 2021-03-16 12:32:47 2917.751
+# 24 1165.887    1 2021-03-16 12:32:47 2916.758
 
 rm(list=(c("e")))
 gc()
 
 rm(list=ls())
 
-## TO DO ;
-
-#start to calculate trajectory statistics! 
-
+#TO DO:
 #Conversion of data in mm, probably takes ages over the full dataset
 # reuse this and tags size in pixel/mm as point of reference - traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] <-   traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] * petridish_diameter / range 
 
@@ -26,7 +50,6 @@ else {vector()}}
 
 #change system of coords
 Orientation.diff        <- function(x)  { c( x[-nrow(x), "angle"] - x[-1, "angle"], NA)}
-
 
 
 
@@ -44,7 +67,7 @@ library(tidyverse)
 library(ggplot2)
 library(reshape2) #to use melt and similar
 
-# ## TEMPORARY - Hard code plotrix function - Adriano to do; install plotrix!
+# ## TEMPORARY - Hard code plotrix function
 # std.error <- function (x, na.rm) 
 # {
 #   vn <- function(x) return(sum(!is.na(x)))
@@ -184,8 +207,9 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   ###############################################################################
   ####First let's extract ant's trajectories
   #set plots parameters (for plotting coords)
-  par(mfrow=c(2,5), mai=c(0.3,0.3,0.2,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
-  
+  #pdf(file=paste(DATADIR,"Interactions_Coordinates_plots.pdf", sep = ""), width=6, height=4.5)
+  par(mfrow=c(2,3), mai=c(0.3,0.3,0.4,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
+ 
   for (BEH in c("G","T","FR","CR"))
     {
     ## subset all hand-labelled bahavs for this behaviour type in this colony
@@ -212,7 +236,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       traj_ACT <-  positions$trajectories[[Act_Name]]
       traj_REC <-  positions$trajectories[[Rec_Name]]
       
-      Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
+      Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
 
       
       # ## Plot trajectories of both actor & receiver, show on the same panel
@@ -229,8 +253,8 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       # print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_TIME_start, "traj_start", min(traj_ACT$UNIX_time,na.rm = TRUE)))
       # 
       # # ## Plot trajectories of both actor & receiver, show on the same panel
-      plot   (y ~ x, traj_ACT, type="l", lwd=6, col="blue4", main=Title,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-      points (y ~ x, traj_REC, type="l", lwd=6,  col="red4")
+      plot   (y ~ x, traj_ACT, type="l", lwd=6, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+      points (y ~ x, traj_REC, type="l", lwd=6,  col="red4",asp=1)
 
       #plot angles of both actor & receiver
       #plot(angle ~ time, traj_ACT, col=rgb(0,0,1,0.3,1), main=paste("angle_rad",BEH,", Act:",ACT, "Rec:",REC, ENC_TIME_start, "-", ENC_TIME_stop)) #,xlim = c(0,500),ylim = c(0,2*pi))
@@ -248,7 +272,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       
       # mean direction of a vector of circular data
       
-      # adriano to double check  wheTHER THE circular average is based on the wrong coordinate systEM - E.G. 0-360 CLOCKWISE !!!!!!!
+      # ADRIANO to double check  wheTHER THE circular average is based on the wrong coordinate systEM - E.G. 0-360 CLOCKWISE !!!!!!!
       
       angle_mean_ACT                    <-  mean.circular(traj_ACT$angle, na.rm = TRUE) 
       angle_mean_REC                    <-  mean.circular(traj_REC$angle, na.rm = TRUE)
@@ -302,7 +326,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       # 
       # 
       # 
-      # traj_BOTH$angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
+      #traj_BOTH$angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
       # Orientation.diff_RE        <- function(x)  {   c(  abs( (x[-nrow(x), "angle"]-pi) - 
       #                                                         (x[-1,      "angle"])-pi) , NA)}
       # 
@@ -341,7 +365,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       ### Calculate trajectory derivatives
       deriv_traj_ACT                <- TrajDerivatives(trajectory_ACT)
       deriv_traj_REC                <- TrajDerivatives(trajectory_REC)
-      #  mean_speed_mmpersec_ACT        <- mean(deriv_traj$speed,na.rm=T)
+      #mean_speed_mmpersec_ACT        <- mean(deriv_traj_ACT$speed,na.rm=T)
       #  median_speed_mmpersec           <- median(deriv_traj$speed,na.rm=T)
       #  Mean and median acceleration
       mean_accel_pxpersec2_ACT     <- mean(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
@@ -363,8 +387,8 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       ### root mean square displacement
       rmsd_px_ACT                            <-  sqrt(sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x)))
       rmsd_px_REC                            <-  sqrt(sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x)))
-
-
+      
+      
       #rename trajectories columns NOT TO BE MERGED for Act and Rec
       names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
       names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
@@ -376,6 +400,26 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x)))/length(traj_BOTH$ACT.x)
       prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x)))/length(traj_BOTH$REC.x)
 
+     
+      # FRAME BY FRAME PARAMETERS
+      
+      #  distance walked
+      # traj_BOTH$ACT.distance        <- c(NA, with(traj_BOTH, (sqrt(diff(ACT.x)^2 + diff(ACT.y)^2))) # euclidean distance
+      # traj_BOTH$REC.distance        <- c(NA, with(traj_BOTH, sqrt(diff(REC.x)^2 + diff(REC.y)^2))) # euclidean distance
+      
+      #speed
+      traj_BOTH$ACT.speed_PxPerSec        <- c(NA, with(traj_BOTH, (sqrt(diff(ACT.x)^2 + diff(ACT.y)^2)) / diff(time))) # it works as it corresponds to mean(deriv_traj_ACT$speed,na.rm=T)
+      traj_BOTH$REC.speed_PxPerSec        <- c(NA, with(traj_BOTH, (sqrt(diff(REC.x)^2 + diff(REC.y)^2)) / diff(time))) # it works as it corresponds to mean(deriv_traj_ACT$speed,na.rm=T)
+      
+      #  acceleration
+      traj_BOTH$ACT.accel_PxPerSec2 <- c(NA, with(traj_BOTH, diff(ACT.speed_PxPerSec)/diff(time)))
+      traj_BOTH$REC.accel_PxPerSec2 <- c(NA, with(traj_BOTH, diff(REC.speed_PxPerSec)/diff(time)))
+      
+      # jerk (diff in accelerations)
+      traj_BOTH$ACT.jerk_PxPerSec2 <- c(NA, with(traj_BOTH, diff(ACT.accel_PxPerSec2)/diff(time)))
+      traj_BOTH$REC.jerk_PxPerSec2 <- c(NA, with(traj_BOTH, diff(REC.accel_PxPerSec2)/diff(time)))
+      
+      
       ##################
       ## INTERACTING PAIR TRAJECTORY MEASURES
 
@@ -384,6 +428,14 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
       strghtline_dist_px <- mean(traj_BOTH$straightline_dist_px, na.rm=TRUE)
       #angular difference
       traj_BOTH$angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
+      
+      ###############
+    
+      
+      #calculate acceleration row by row
+      # traj_BOTH$accel_pxpersec2_ACT     <- deriv_traj_ACT$acceleration #units: pxpersec2
+      # traj_BOTH$accel_pxpersec2_REC     <- deriv_traj_REC$acceleration #units: pxpersec2
+      # 
 
       # #SUMMARY_DATA is a summary, INTERACTION_DATA reports interactions frame by frame
       # summary_data <- rbind(summary_data,
@@ -421,28 +473,28 @@ for (REPLICATE in c("R3SP"))#,"R9SP")) TEMPORARY
   # rm(list=(c("e")))
   # gc() # clear cache
 }##REPLICATE
+dev.off()
 
 
+###################### TO DOS ##############################
+############################################################
+# - position of heads is different between various behaviours, if you can measure distance between capsules you can use that as a variable
+# - ask Mathias if he knows how to extract the geometry of capsules
+# - angular momentum
+# - acceleration of the angle
+# - frame by frame rate of change of angle
+# - list of measures for enrico
+# - DELTA ANGLES formulas FIX
 # Add collisions capsules
+
+
 
 #check
 unique(interaction_data$PERIOD)
 min(interaction_data$traj_BOTH.UNIX_time)
 max(interaction_data$traj_BOTH.UNIX_time)
 
-
 plot(interaction_data$traj_BOTH.ACT.y ~ interaction_data$traj_BOTH.ACT.x, asp=1, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-
-
-##############################################################################
-###### TEMPORARY DATA ########################################################
-##############################################################################
-
-#save R3SP outputs with dput and re-run on R9SP. Better option: get subscription for Dropbox
-
-#dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
-#positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
-
 ###############################################################################
 ###### PARAMETERS PLOTS #######################################################
 ###############################################################################
@@ -511,6 +563,64 @@ vars_plot_T_FR_CR + geom_density(alpha = 0.2,aes(linetype=forcats::fct_inorder(B
 
 
 #INTERACTION_DATA
+#-------------------------------------------------------------
+#use same plots as before but for interactions
+#THIS CASE WILL BE JUST CUTTING FOR 1 INTERACTION
+interaction_data_19 <- interaction_data[which(interaction_data$ROW == 19),]
+
+
+#reshape data for plotting. Split by REC and ACT
+interaction_data_19$frame <- seq.int(nrow(interaction_data_19)) 
+interaction_data_ACT <-interaction_data_19 %>% dplyr::select(contains(c("ROW","BEH", "Act_Name","traj_BOTH.ACT","angle_diff","straightline","frame"), ignore.case = TRUE))
+interaction_data_REC <- interaction_data_19 %>% dplyr::select(contains(c("ROW","BEH", "Rec_Name","traj_BOTH.REC","angle_diff","straightline","frame"), ignore.case = TRUE))
+#Rename columns to make them match and bind+ melt columns
+int_data_ACT  <- interaction_data_ACT %>% rename_with(~str_remove(., c("_ACT|Act_|traj_BOTH.ACT.|traj_BOTH."))); int_data_ACT$Role <- "ACT"
+int_data_REC  <- interaction_data_REC %>% rename_with(~str_remove(., c("_REC|Rec_|traj_BOTH.REC.|traj_BOTH."))); int_data_REC$Role <- "REC"
+int_data_bind <- rbind(int_data_ACT,int_data_REC)
+#int_data_bind$frame <- seq.int(nrow(int_data_bind)) 
+int_data_long <- melt(int_data_bind,id.vars=c("BEH","Role","Name","frame")) #explanation on the warning message https://stackoverflow.com/questions/25688897/reshape2-melt-warning-message
+
+#subset data by BEH for plotting and #remove ROW
+interaction_data_G <- int_data_long[which(int_data_long$BEH == "G" & !int_data_long$variable == "ROW" ),]
+interaction_data_G <- interaction_data_G[which(!is.na(interaction_data_G$value)),]
+#cut the receiver as it will be the same for common parameters and add row number as time 
+interaction_data_G <- interaction_data_G[which(!interaction_data_G$Role == "REC"),]
+interaction_data_G <- interaction_data_G[which(!interaction_data_G$variable == "x"),]
+interaction_data_G <- interaction_data_G[which(!interaction_data_G$variable == "y"),]
+interaction_data_G <- interaction_data_G[which(!interaction_data_G$variable == "angle"),]
+interaction_data_G <- interaction_data_G[which(!is.na(interaction_data_G$value)),]
+
+
+#set up plot
+
+pdf(file=paste(DATADIR,"TEST_TEST_2.pdf", sep = ""), width=1.7, height=3.1)
+par(mfrow=c(2,6), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+#par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+
+
+ggplot(data=interaction_data_G,
+       aes(x=frame, y=value, colour=variable)) + facet_wrap(variable ~ .,scales="free",ncol = 1) + theme(legend.position = "none") +
+  geom_line(size=0.8)
+
+dev.off()
+
+###plot divided by variable and Role for Grooming
+# vars_plot_G <- ggplot(interaction_data_G, aes(frame, fill = BEH)) +
+#   facet_wrap(variable ~ .,scales="free") +
+#   theme_bw() +
+#   theme(text=element_text(family="serif",size=9), legend.key.size = unit(0.3, 'cm')) #,legend.position="bottom",legend.justification='right'
+# # vars_plot_G + geom_histogram(colour='black',alpha = 0.2,position="identity",bins = 500)+
+# #   labs(title = "Histogram plot for movement variables calculated from coordinates \n for Actors and Receivers during Grooming"#,
+# #        #subtitle = paste( "Periods:",unique(interaction_data$PERIOD),". Window:",time_start_ISO,"-",time_stop_ISO)
+# #        )
+# vars_plot_G + geom_density(alpha = 0.2) +
+#   labs(title = "Density plot for movement variables calculated from coordinates \n for Actors and Receivers during Grooming",
+#        #subtitle = paste( "Periods:",unique(interaction_data$PERIOD),". Window:",time_start_ISO,"-",time_stop_ISO)
+#        )
+
+
+#------------------------------------------------------------
+
 interaction_data_circ <- circular(interaction_data$traj_BOTH.angle_diff)
 
 ##angular_differences plot per interaction
@@ -569,8 +679,9 @@ dev.off()
 
 
 ###############################################################################
-###### 13. READING COLLISIONS ##################################################
+###### 13. READING COLLISIONS #################################################
 ###############################################################################
+
 ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
 collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)
 
@@ -610,6 +721,36 @@ str(collisions_merge)
 nrow(interaction_data)
 str(interaction_data)
 
+#create new variable by pasting ant numbers "low,high" for collisions_merge
+collisions_merge$sorted_ants <- apply(collisions_merge[,c("ant1","ant2")],1,function(x){
+                                paste(sort(x),collapse = ",") })
+
+#create new variable by pasting ant numbers "low,high" for interaction_data
+interaction_data$ant1 <- gsub("ant_","", interaction_data$Act_Name)
+interaction_data$ant2 <- gsub("ant_","", interaction_data$Rec_Name)
+
+interaction_data$sorted_ants <- apply(interaction_data[,c("ant1","ant2")],1,function(x){
+                                paste(sort(x),collapse = ",") })
+
+# name time variables the same
+collisions_merge$traj_BOTH.UNIX_time <- collisions_merge$time
+
+# check that the time formats are the same
+dput(interaction_data$traj_BOTH.UNIX_time[1])
+dput(collisions_merge$traj_BOTH.UNIX_time[1])
+# modify class attributes to make operations between times possible
+collisions_merge <- collisions_merge %>% 
+  mutate(traj_BOTH.UNIX_time = as.numeric(traj_BOTH.UNIX_time)) %>% 
+  mutate(traj_BOTH.UNIX_time = as.POSIXct(traj_BOTH.UNIX_time, tz = "GMT", origin = "1970-01-01 00:00:00"))
+
+#join dataframes to have collisions on interaction_data  
+#FUNCTION: WHEN sorted_ants=sorted_ants AND time=traj_BOTH.UNIX_time -> ASSIGN collisions_merge$types TO interaction_data
+#or merge as here: 
+# ****DOES NOT WORK!!!!****
+new_dataset <- interaction_data %>% dplyr::left_join(collisions_merge, by=c("traj_BOTH.UNIX_time","sorted_ants"))
+
+#check that the output is equal to interaction data
+NROW(interaction_data) ; NROW(new_dataset)
 
 
 # #later on, deparse the capsule information to add it as an individual-linked row value in the interaction data.
@@ -626,6 +767,53 @@ str(interaction_data)
 
 
 
+#----------------------------------------------------------------
+
+#FIND HOW CAPSULES ARE SPATIALLY ARRANGED COMPARED TO TAG POSITION TO MAKE POSSIBLE TO CALCULATE distance between interacting ants's capsules AND use that as a variable
+
+#THE FOLLOWING BIT OF CODE COMES FROM THE AUTOMATIC ANGLE DETERMINATION SCRIPT. IT HELPS TO UNDERSTAND HOW TO ACCESS
+# CAPSULE PARTS. USE BITS OF IT TO GET CAPSULE GEOMETRIES, THEIR POSITION IN SPACE AND TO CALCULATE DISTANCE AMONG 
+# VARIOUS CAPSULES DURING INTERACTIONS (IE. HEAD-ABDOMEN DISTANCE DURING GROOMING)
+
+oriented_metadata <- NULL
+capsule_list <- list()
+#for (myrmidon_file in data_list){
+  experiment_name <- unlist(strsplit(MyrmidonCapsuleFile,split="/"))[length(unlist(strsplit(MyrmidonCapsuleFile,split="/")))]
+  oriented_data <- fmExperimentOpen(MyrmidonCapsuleFile) #this step is already performed at the beginning
+  oriented_ants <- oriented_data$ants
+  capsule_names <- oriented_data$antShapeTypeNames
+  for (ant in oriented_ants){
+    ###extract ant length and capsules
+    #ant_length_px <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_px)
+    capsules      <- ant$capsules
+    for (caps in 1:length(capsules)){
+      capsule_name  <- capsule_names[[capsules[[caps]]$type]]
+      capsule_coord <- capsules[[caps]]$capsule
+      capsule_info <- data.frame(experiment = experiment_name,
+                                 antID      = ant$ID,
+                                 c1x = capsule_coord$c1[1],
+                                 c1y = capsule_coord$c1[2],
+                                 c2x = capsule_coord$c2[1],
+                                 c2y = capsule_coord$c2[2],
+                                 r1  = capsule_coord$r1[1],
+                                 r2   = capsule_coord$r2[1]
+      )
+      
+      if (!capsule_name %in%names(capsule_list)){ ###if this is the first time we encounter this capsule, add it to capsule list...
+        capsule_list <- c(capsule_list,list(capsule_info)) 
+        if(length(names(capsule_list))==0){
+          names(capsule_list) <- capsule_name
+        }else{
+          names(capsule_list)[length(capsule_list)] <- capsule_name
+        }
+      }else{###otherwise, add a line to the existing dataframe within capsule_list
+        capsule_list[[capsule_name]] <- rbind(capsule_list[[capsule_name]] , capsule_info)
+      }
+    }
+  }
+
+  
+#----------------------------------------------------------------
 
 
 
@@ -904,3 +1092,8 @@ gc()
 # 
 # #rad to deg
 # rad * 180/pi
+
+
+
+#dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
+#positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
