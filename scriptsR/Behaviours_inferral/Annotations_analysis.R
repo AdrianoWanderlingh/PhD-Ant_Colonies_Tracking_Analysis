@@ -30,45 +30,84 @@ library(gridExtra)
 library(gtools) # to convert p.values in stars
 library(pbkrtest)
 
-annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
-annotations$Behaviour <- as.character(annotations$Behaviour)
-annotations$Actor <- as.character(annotations$Actor)
-annotations$Receiver <- as.character(annotations$Receiver)
-#call treatment as period
-colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
+# annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
+# annotations$Behaviour <- as.character(annotations$Behaviour)
+# annotations$Actor <- as.character(annotations$Actor)
+# annotations$Receiver <- as.character(annotations$Receiver)
+# #call treatment as period
+# colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
+# 
+# 
+# #convert Zulu time to GMT
+# annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+# annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+# annotations$duration <- as.numeric(annotations$T_stop_UNIX - annotations$T_start_UNIX)
+# 
+# #see if milliseconds are shown (number of decimals represented by the number after %OS)
+# format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
+# 
+# #remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
+# #this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
+# annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
+# 
+# #remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
+# annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start_UNIX","T_stop_UNIX","Behaviour","treatment_rep")]),]
+# 
+# #Summary counts of behaviour frequency
+# Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
+# Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
+# Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
+# #check how many cases have been removed
+# Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
+# Counts_by_Behaviour
+# 
+# #see total final numer of behaviours
+# Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
+# 
+# #Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below! 
+# annotations <- annotations_drop_all_dup
+# 
+# #SAVE THE NEW ANNOTATION FILE 
+# write.csv(annotations,"/home/cf19810/Dropbox/Ants_behaviour_analysis/Data/R3SP_R9SP_All_data_FINAL_script_output.csv")
+
+###############################################################################################################################
+##### BY 17/12/21, VASUDHA'S DATA HAS BEEN CROSS VALIDATED STARTING FROM THE FILE R3SP_R9SP_All_data_FINAL_script_output.csv. 
+# ADJUST THE VALIDATED FILE TO USE IT FOR THE FOLLOWING CALCULATIONS
+################################################################################################################################
+
+###1. CORRECT THE 25% FILE
+
+#USE THE RSCRIPT cross_val_output.R and look at the output of # > annotation_val[which(is.na(annotation_val$IsEqual)),]
+
+#implement the following NOTES:
+# - exclude 1-2 secs SelfGrooming (done later in the script)
+# - check all Aggreession events
+# - many FrontRest Events are antennation events
+# - remove all events over 2mins (done later in the script)
+# - Remove queen from counts (a mislabeled event of SG was Queen SG)
 
 
-#convert Zulu time to GMT
-annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations$duration <- as.numeric(annotations$T_stop_UNIX - annotations$T_start_UNIX)
+###2. CORRECT THE FEW 100% TROPHALLAXIS WRONG EVENTS
 
-#see if milliseconds are shown (number of decimals represented by the number after %OS)
-format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
+###3. put trophallaxis and 25% FILE TOGHETER (CALL IT 25%+ ALL TROPH).
+###4. IMPORT THIS FILE HERE AND ADD VALUE FROM BEH ROW TO AW_BEH WHEN THERE IS NO VALUE PRESENT + CUT NA BEHAVIOURS FROM AW_BEH 
 
-#remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
-#this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
-annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
+####THE OUTPUT CAN THEN BE USED TO RUN THE REST OF THE SCRIPT.
 
-#remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
-annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start_UNIX","T_stop_UNIX","Behaviour","treatment_rep")]),]
 
-#Summary counts of behaviour frequency
-Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
-Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
-Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
-#check how many cases have been removed
-Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
-Counts_by_Behaviour
 
-#see total final numer of behaviours
-Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
 
-#Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below! 
-annotations <- annotations_drop_all_dup
+# RUN
+# annotations <- read.csv(paste(DATADIR,"/VALIDATED FILE.csv",sep = ""), sep = ",")
 
-#SAVE THE NEW ANNOTATION FILE 
-write.csv(annotations,"/home/cf19810/Dropbox/Ants_behaviour_analysis/Data//R3SP_R9SP_All_data_FINAL_script_output.csv")
+
+
+
+
+
+
+
+
 
 
 ## count the number of observations of each behaviour - WARNING; some behavs not observed e.g. before the treatment (period), so will need to account for that (next step)
