@@ -78,6 +78,10 @@ Xmax <- 7900
 Ymin <- 0000
 Ymax <- 5500
 
+N_DECIMALS <- 3 ## number of decimals to preserve when rounding to match between interactions & collisions
+FUZZY_MATCH <- TRUE  ## fuzzy matching between data frames
+
+
 max_gap         <- fmHour(24*365)   ## important parameter to set! Set a maximumGap high enough that no cutting will happen. For example, set it at an entire year: fmHour(24*365)
 desired_step_length_time    <- 0.125 ###in seconds, the desired step length for the analysis
 
@@ -148,16 +152,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
     ######### no subsetting - take the entire tracking period
     # positions <- fmQueryComputeAntTrajectories(e,start = e$getDataInformations()$details$tdd.start[1],end = e$getDataInformations()$details$tdd.end[3],maximumGap = max_gap,computeZones = FALSE) #set true to obtain the zone of the ant
     # ?fmQueryComputeAntTrajectories
-    # 
-    # positions$trajectories_summary
-    # positions$trajectories
-    ###Let's have a look at the first element of the trajectories list within positions:
-    # str(positions$trajectories)
-    # str(positions$trajectories_summary)
-    #plot(positions$trajectories[[20]]$x,positions$trajectories[[20]]$y)
-    
-    ###that is a dataframe with columns "time" (in seconds since start), x, y (coordinates in pixels), angle (orientation of the ant in radians), zone (which zone the ant is)
-    
+
     ###WARNING!!!!!
     ###in this particular example the values in antID are consecutive (1 to 22), and so positions$trajectories[[1]] will correspond to the trajectory of ant 1
     ### but imagine you had to delete an ant in fort-studio and the antID list "jumped" from 10 to 12 (so it would be 1,...10 then 12...23)
@@ -178,17 +173,19 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
     #dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
     #positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
   
+    # because time gaps are not fixed (not exactly 0.125) every x frames (~800/1000) there is a time mismatch at the third decimal place
+    #[787]  98.250995  98.375997  98.500998  98.625999  *98.751000*  98.876002
+    
     ## Add ant_x names and times to the positions to convert from time since the start of the experiment, to UNIX time
     for (A in positions$trajectories_summary$antID)
       {
       AntID <- paste("ant_",A,sep="") 
-      First_Obs_Time <- as.POSIXct(positions$trajectories_summary$start [which(positions$trajectories_summary$antID_str==AntID)]) ## find the first time after the user defined time_start_ISO that this ant was seen
+      First_Obs_Time <- as.POSIXct(positions$trajectories_summary$start [which(positions$trajectories_summary$antID_str==AntID)], tz="GMT",origin = "1970-01-01 00:00:00") ## find the first time after the user defined time_start_ISO that this ant was seen
       print(paste("Adding first obs time", First_Obs_Time, "to the time-zeroed trajectory of ant", AntID))
-      positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin="1970-01-01")  + First_Obs_Time ##convert back to UNIX time  
+      positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin = "1970-01-01 00:00:00")  + First_Obs_Time ##convert back to UNIX time  
       }
    
-    #check that milliseconds are preserved after adding the ant's time_start_ISO
-    #positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
+    #check that milliseconds are preserved after adding the ant's time_start_ISO #positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
     
     ###############################################################################
     ###### extract ant trajectories from hand-annotated data ######################
@@ -202,9 +199,6 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
       {
       ## subset all hand-labelled bahavs for this behaviour type in this colony
       annot_BEH <- annotations[which(annotations$treatment_rep==REPLICATE  & annotations$period==PERIOD & annotations$Behaviour==BEH ),]
-      ## remove doubled allo-grooming interactions
-      if (BEH=="G") {print("duplicates removed")}#{annot_BEH <- annot_BEH[!duplicated(annot_BEH),]} 
-      if (BEH=="T") {print("duplicates removed")}
       ## loop through each event in annot_BEH
       for (ROW in 1:nrow(annot_BEH))
         { 
@@ -224,6 +218,13 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
         traj_ACT <-  positions$trajectories[[Act_Name]]
         traj_REC <-  positions$trajectories[[Rec_Name]]
         
+        ##  convert POSIX format to raw secs since 1.1.1970; brute force for match.closest with collisions
+        traj_ACT$UNIX_secs <- as.numeric(traj_ACT$UNIX_time)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
+        traj_REC$UNIX_secs <- as.numeric(traj_REC$UNIX_time) 
+        ## now round these decimal seconds to 3 d.p.
+        traj_ACT$UNIX_secs <- round(traj_ACT$UNIX_secs,N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
+        traj_REC$UNIX_secs <- round(traj_REC$UNIX_secs,N_DECIMALS)
+        
         ## remove 'time' column as it is confusing - it's not a common time
         traj_ACT$time <- NULL
         traj_REC$time <- NULL
@@ -236,15 +237,47 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
         traj_ACT <- traj_ACT [ which(traj_ACT$UNIX_time >= ENC_TIME_start & traj_ACT$UNIX_time <= ENC_TIME_stop),]
         traj_REC <- traj_REC [ which(traj_REC$UNIX_time >= ENC_TIME_start & traj_REC$UNIX_time <= ENC_TIME_stop),]
         
-        ## For some reason, the 4th decimal place of the UNIX times (ten-thousandths of a sec) for two individuals seen in a given frame are not identical; cbind(format(traj_ACT$UNIX_time, "%Y-%m-%d %H:%M:%OS4"), format(traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS4"))
+        ## For some reason, the 4th decimal place of the UNIX times (thousandths of a sec) for two individuals seen in a given frame are not identical; cbind(format(traj_ACT$UNIX_time, "%Y-%m-%d %H:%M:%OS4"), format(traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS4"))
         ## so eliminate the 4th-nth decimal place ; retains accuract to a thousandth-of-a-second
-        traj_ACT$UNIX_time <- format(traj_ACT$UNIX_time, "%Y-%m-%d %H:%M:%OS3")
-        traj_REC$UNIX_time <- format(traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS3")
-        ## .. and convert back to POSIX format, durr
-        traj_ACT$UNIX_time <- as.POSIXct(traj_ACT$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
-        traj_REC$UNIX_time <- as.POSIXct(traj_REC$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
+        # traj_ACT$UNIX_time <- format(traj_ACT$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+        # traj_REC$UNIX_time <- format(traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+        # print(table(substr(x =  format( traj_ACT$UNIX_time, "%OS6"), start = 7, stop = 7)))
+        # print(table(substr(x =  format( traj_REC$UNIX_time, "%OS6"), start = 7, stop = 7)))
         
-        print(paste("For row",ROW,"traj_ACT has",nrow(traj_ACT),"traj_REC has", nrow(traj_REC)))
+      #   
+      #   ## .. and convert back to POSIX format, durr
+      #   traj_ACT$UNIX_time <- as.POSIXct(traj_ACT$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
+      #   traj_REC$UNIX_time <- as.POSIXct(traj_REC$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
+      #   ## use posixlt - more accurate than posixct, but still not perfect
+      #   # traj_ACT$UNIX_time <- as.POSIXlt(traj_ACT$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
+      #   # traj_REC$UNIX_time <- as.POSIXlt(traj_REC$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
+      #   
+      #   ## https://stackoverflow.com/questions/7726034/how-r-formats-posixct-with-fractional-seconds
+      #   myformat.POSIXct <- function(x, digits=0) 
+      #   {
+      #     x2 <- round(unclass(x), digits)
+      #     attributes(x2) <- attributes(x)
+      #     x <- as.POSIXlt(x2)
+      #     x$sec <- round(x$sec, digits)
+      #     format.POSIXlt(x, paste("%Y-%m-%d %H:%M:%OS",digits,sep=""))
+      #     }
+      #   
+      #   traj_ACT$UNIX_time <- as.POSIXct( myformat.POSIXct(traj_ACT$UNIX_time,3), tz = "GMT", origin = "1970-01-01 00:00:00")
+      #   traj_REC$UNIX_time <- as.POSIXct( myformat.POSIXct(traj_REC$UNIX_time,3), tz = "GMT", origin = "1970-01-01 00:00:00")
+      #   
+      #   
+      #   ## ERROR ERROR ! For some reason, as.POSIXct converts the 3.d.p. trimmed times to have e.g. '999' from the 4th-nth decimals ??!?!?! 
+      #   
+      #   format( traj_ACT$UNIX_time, "%OS3")
+      #   format( traj_REC$UNIX_time, "%OS3")
+      #   
+      # data.frame( format( traj_ACT$UNIX_time, "%OS3"), 
+      #             format( traj_ACT$UNIX_time, "%OS6"))
+      #   
+      #   print(table(substr(x =  format( traj_ACT$UNIX_time, "%OS6"), start = 7, stop = 7)))
+      #   print(table(substr(x =  format( traj_REC$UNIX_time, "%OS6"), start = 7, stop = 7)))
+      #   
+        
         
         #check start time correspondance
         # print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_TIME_start, "traj_start", min(traj_ACT$UNIX_time,na.rm = TRUE)))
@@ -356,6 +389,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
         ##define trajectory
         trajectory_ACT <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y, UNIX_time=as.numeric(traj_ACT$UNIX_time)), spatialUnits = "px",timeUnits="s")
         trajectory_REC <- TrajFromCoords(data.frame(x=traj_REC$x,y=traj_REC$y, UNIX_time=as.numeric(traj_REC$UNIX_time)), spatialUnits = "px",timeUnits="s")
+
         #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
         ### total distance moved
         moved_distance_px_ACT                  <- TrajLength(trajectory_ACT)
@@ -390,16 +424,18 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
         #rename trajectories columns NOT TO BE MERGED for Act and Rec
         names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
         names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
-        
+     
         #merge trajectories matching by time
-        traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("UNIX_time"))  ## CAREFUL NOT TO INCLUDE 'time' AS IF THE FIRST OBSERVATION TIME OF ACT & REC IS NOT IDENTICAL, THEN MERGE WILL TREAT THE SAME UNIX TIME AS DIFFERENT ...
+        # traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("UNIX_time"))  ## CAREFUL NOT TO INCLUDE 'time' AS IF THE FIRST OBSERVATION TIME OF ACT & REC IS NOT IDENTICAL, THEN MERGE WILL TREAT THE SAME UNIX TIME AS DIFFERENT ...
+        traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("UNIX_secs"))  ## 21 Jan 2022: Changed to sue raw unix seconds to allow simpler matching below (posix formats cause problems with the matching...)
+        
         
         ## merge drops the column attributes - add back the POSIX time format 
-        traj_BOTH$UNIX_time <- as.POSIXct(traj_BOTH$UNIX_time, tz="GMT",origin="1970-01-01")
-        
+        # traj_BOTH$UNIX_time <- as.POSIXct(traj_BOTH$UNIX_time, tz="GMT",origin="1970-01-01 00:00:00")
         
         ## measure the length *in seconds* of the interaction between ACT & REC
-        interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
+        # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
+        interaction_length_secs <-  max(traj_BOTH$UNIX_secs, na.rm=T) - min(traj_BOTH$UNIX_secs, na.rm=T)  ## 21 Jan 2022
         
         ## CAREFUL - this is wrong, as traj_BOTH does NOT CONTAIN blank rows for frames whenneither Act or REC were seen - need to use interaction_length_secs
         # prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x))) / length(traj_BOTH$ACT.x)
@@ -470,6 +506,10 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
         ## stack -by the end of the loop, this should just contain all events for replicate X, period Y
         interaction_data_REP_PER <- rbind(interaction_data_REP_PER, interaction_data_ROW)
         
+        
+        
+       
+        
         }##ROW
       }##BEH
     
@@ -478,13 +518,11 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
     
     ########################################################################################################################
     ########################################################################################################################
+    # COLLISIONS
     
     ##creates a ID string for each ant: ant_1, ant_2,...
     collisions$collisions$ant1_str <- paste("ant_",collisions$collisions$ant1,sep="") 
     collisions$collisions$ant2_str <- paste("ant_",collisions$collisions$ant2,sep="")
-    
-    #names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
-    ##and now we can extract each ant trajectory using the character ID storesd in antID_str - it's much safer!
     
     ###collisions contains 3 objects: frames, positions and collisions
     collisions_frames    <- collisions$frames      ###data frames giving detail (time, space, width,height) about each frame
@@ -492,23 +530,40 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
     ###(those two are the exactly the same as the output from fmQueryIdentifyFrames)
     collisions_coll <- collisions$collisions      #### dataframe containing all detected collisions
     
-    ## trim the UNIX time to 3 d.p. as we did for the hand-labelled interactions above
-    collisions_frames$UNIX_time <- format(collisions_frames$time, "%Y-%m-%d %H:%M:%OS3"); collisions_frames$time <- NULL
-    ## .. and convert back to POSIX format, durr
-    collisions_frames$UNIX_time <- as.POSIXct(collisions_frames$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
+    ## trim the UNIX time to 3 decimals as we did for the hand-labelled interactions above _ DOESN@T WORK :-()
+    # collisions_frames$UNIX_time <- format(collisions_frames$time, "%Y-%m-%d %H:%M:%OS3"); collisions_frames$time <- NULL
+    ## .. and convert back to POSIX format, dur
+    # collisions_frames$UNIX_time <- as.POSIXct(collisions_frames$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
+    
+    ## for reliable matching with the events in interactions, above (don't trust POSIX times!)
+    collisions_frames$UNIX_secs <- round(as.numeric(collisions_frames$time),N_DECIMALS)
     
     ###let's view the first few lines of collisions
-    head(collisions_frames) ###columns giving the ID of the two colliding ants, the zone where they are, the types of collisions (all types), and the frames_row_index referring to which frame that collision was detected in (matches the list indices in collisions_positions)
-    head(collisions_coll)
+    head(collisions_frames) 
+    head(collisions_coll) ###columns giving the ID of the two colliding ants, the zone where they are, the types of collisions (all types), and the frames_row_index referring to which frame that collision was detected in (matches the list indices in collisions_positions)
     head(collisions_positions)
-    
+    ?fmQueryCollideFrames
     #use rownames of collision_frames to filter frames of collisions according to collisions-coll (which acts as a Look Up Table)
+    #add frames_row_index
     collisions_frames$frames_row_index <- rownames(collisions_frames)
     
     #merge collisions_frame and coll_coll based on index
     collisions_merge <- merge(collisions_coll, collisions_frames[,-match(c("height","width"),colnames(collisions_frames))], by="frames_row_index")
+  
+    
     #check that to the same frame corresponds the same time
-    format(collisions_merge$UNIX_time[collisions_merge$frames_row_index==7], "%Y-%m-%d %H:%M:%OS6")
+    # format(collisions_merge$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+    # format(collisions_frames$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+    # format(    traj_ACT$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+    # format(    traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+    # 
+    # format(    traj_BOTH$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+    # format(interaction_data_ROW$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
+    # 
+    # table(substr(x =  format( traj_BOTH$UNIX_time, "%OS6"), start = 7, stop = 7))
+    
+    
+    ##if(collisions_coll$frames_row_index[125] == collisions_merge$frames_row_index[125]) {print("TRUE")}
     
     # add new column to interaction data when conditions are met (eg. time + ant ID)
     #RENAME COLUMN TRAJBOTHREC IN time 
@@ -527,42 +582,40 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
     interaction_data_REP_PER$ant2 <- gsub("ant_","", interaction_data_REP_PER$Rec_Name)
     ## the ant 1 & ant 2 labels are not strictly ascending, so sort them so ant 1 alwasy < ant 2
     interaction_data_REP_PER$pair <- apply(interaction_data_REP_PER[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
-    
-    # name time variables the same
-    # collisions_merge$traj_BOTH.UNIX_time <- collisions_merge$UNIX_time
-    
+
     # check that the time formats are the same
     attributes(interaction_data_REP_PER$UNIX_time[1])
     attributes(collisions_merge$UNIX_time[1])
     
-    # modify class attributes to make operations between times possible
-    # collisions_merge <- collisions_merge %>% 
-    #   mutate(UNIX_time = as.numeric(UNIX_time)) %>% 
-    #   mutate(UNIX_time = as.POSIXct(UNIX_time, tz = "GMT", origin = "1970-01-01 00:00:00"))
-    
-    
     ## check that the pair-time combinations in interaction_data_REP_PER are in collisions_merge
     table(  paste(interaction_data_REP_PER$pair) %in% 
               paste(collisions_merge$pair) )
-    table(  paste(interaction_data_REP_PER$UNIX_time) %in% 
-              paste(collisions_merge$UNIX_time) )
-    table(  paste(interaction_data_REP_PER$pair,interaction_data_REP_PER$UNIX_time) %in% 
-              paste(collisions_merge$pair,collisions_merge$UNIX_time) )
+    table(  paste(interaction_data_REP_PER$UNIX_secs) %in% 
+              paste(collisions_merge$UNIX_secs) )
+    table(  paste(interaction_data_REP_PER$pair,interaction_data_REP_PER$UNIX_secs) %in% 
+              paste(collisions_merge$pair,collisions_merge$UNIX_secs) )
     ## get a list of the missing pair-time combinations:
-    paste(interaction_data_REP_PER$pair,interaction_data_REP_PER$UNIX_time) [!paste(interaction_data_REP_PER$pair,interaction_data_REP_PER$UNIX_time) %in% paste(collisions_merge$pair,collisions_merge$UNIX_time) ]
+    paste(interaction_data_REP_PER$pair,interaction_data_REP_PER$UNIX_secs) [!paste(interaction_data_REP_PER$pair,interaction_data_REP_PER$UNIX_secs) %in% paste(collisions_merge$pair,collisions_merge$UNIX_secs) ]
     
     #join dataframes to have collisions on interaction_data_REP_PER  
     #FUNCTION: WHEN pair=pair AND time=UNIX_time -> ASSIGN collisions_merge$types TO interaction_data_REP_PER
-    #or merge as here: 
-    # ****DOES NOT WORK!!!!****
-    # new_dataset <- interaction_data_REP_PER %>% dplyr::left_join(collisions_merge, by=c("UNIX_time","pair"))
+    if (FUZZY_MATCH==FALSE)
+      {
+      interaction_data_REP_PER <- plyr::join(x = interaction_data_REP_PER, 
+                                             y = collisions_merge[,c("UNIX_secs","pair","types")], 
+                                             by=c("UNIX_secs","pair"), type="left")
+      }
+    ## alternative: fuzzy match
+    if (FUZZY_MATCH==TRUE)
+      {
+      I_in_C_rows <- match.closest(x = interaction_data_REP_PER$UNIX_secs,
+                                   table = collisions_merge$UNIX_secs, tolerance = 0.125)
+      ## copy tpes across
+      interaction_data_REP_PER$types  <- collisions_merge$types [I_in_C_rows]
+      }
     
-    interaction_data_REP_PER <- plyr::join(x = interaction_data_REP_PER, 
-                                   y = collisions_merge[,c("UNIX_time","pair","types")], by=c("UNIX_time","pair"), type="left")
-    
-    
-    ## PROBLEM: *MANY* rows in interactions aren't present in collisions; plot the spatial interactios to see whether this makes sense or not:
-    par(mfrow=c(3,4), mai=c(0.2,0.2,0.2,0.1))
+    ## PROBLEM: *MANY* rows in interactions aren't present in collisions; plot the spatial interactions to see whether this makes sense or not:
+    par(mfrow=c(3,4), mai=c(0.3,0.3,0.4,0.1))
     for(BH in unique(interaction_data_REP_PER$BEH))
     {
       for (RW in unique(interaction_data_REP_PER$ROW))
@@ -571,23 +624,24 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
         ## check if this interaction is present in collisions
         paste(IntPair$pair[1],IntPair)
         ## plot it
-        plot(NA, xlim=range(c(IntPair$ACT.x,IntPair$REC.x),na.rm=T),  ylim=range(c(IntPair$ACT.y,IntPair$REC.y),na.rm=T), type="n", main=paste(BH,RW), xlab="x", ylab="y")
-        points (ACT.y ~ ACT.x, IntPair, type="p", col="red4"); lines (ACT.y ~ ACT.x, IntPair, col="red4")
-        points (REC.y ~ REC.x, IntPair, type="p", col="blue4"); lines (REC.y ~ REC.x, IntPair, col="blue4")
+        #to fix as some of the vars are defined only in the previous function #TitleInt <- paste(REPLICATE, ", ", PERIOD, ", ", BH, RW,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
+        plot(NA, xlim=range(c(IntPair$ACT.x,IntPair$REC.x),na.rm=T),  ylim=range(c(IntPair$ACT.y,IntPair$REC.y),na.rm=T), type="n", main=paste(RW,BH), xlab="x", ylab="y")
+        points (ACT.y ~ ACT.x, IntPair, type="p", col="blue4"); lines (ACT.y ~ ACT.x, IntPair, col="blue4")
+        points (REC.y ~ REC.x, IntPair, type="p", col="red4"); lines (REC.y ~ REC.x, IntPair, col="red4")
         ## show the headings of each ACT
         arrows.az (x = IntPair$ACT.x, 
                    y = IntPair$ACT.y, 
                    azimuth = IntPair$ACT.angle, 
                    rho = 10,
                    HeadWidth=0.1,
-                   units="radians", Kol="red", Lwd=1)
+                   units="radians", Kol="blue2", Lwd=1)
         ## show the headings of each REC
         arrows.az (x = IntPair$REC.x, 
                    y = IntPair$REC.y, 
                    azimuth = IntPair$REC.angle, 
                    rho = 10,
                    HeadWidth=0.1,
-                   units="radians", Kol="blue", Lwd=1)
+                   units="radians", Kol="red2", Lwd=1)
         
         
         ## add lines connecting ACT & REC when there is a capsule overlap 
@@ -608,6 +662,29 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
     ### ... so rows in interactions that don't match collisions is not  a function of distance ...
     
     
+
+    #cut collisions for the specific G 1 case
+
+    ROW2 <- 1 #first behaviour
+
+    interactio_data_SELECTED <- interaction_data_ALL[which(interaction_data_ALL$ROW==ROW2  & interaction_data_ALL$BEH=="G" & interaction_data_ALL$PERIOD=="post"),]
+
+    COLL_TIME_start <- min(interactio_data_SELECTED$UNIX_secs)
+    COLL_TIME_stop  <- max(interactio_data_SELECTED$UNIX_secs)
+    PAIR <- "1_5"
+
+    ## subset the collisions using the start & end times
+    collisions_merge_SELECTED <- collisions_merge[ which(collisions_merge$UNIX_secs >= COLL_TIME_start & collisions_merge$UNIX_secs <= COLL_TIME_stop & collisions_merge$pair==PAIR),]
+    min(collisions_merge_SELECTED$UNIX_secs)
+    max(collisions_merge_SELECTED$UNIX_secs)
+
+    format( collisions_merge_SELECTED$UNIX_secs, nsmall=5)
+    format( interactio_data_SELECTED$UNIX_secs, nsmall=5)
+    
+
+    tail(format(collisions_merge_SELECTED$UNIX_secs, "%Y-%m-%d %H:%M:%OS6"),10)
+    tail(format(interactio_data_SELECTED$UNIX_secs, "%Y-%m-%d %H:%M:%OS6"),10)
+
     ########################################################################################################################
     ########################################################################################################################
     
@@ -622,7 +699,7 @@ for (REPLICATE in c("R3SP"))#,"R9SP"))
     # rm(list=(c("e")))
     # gc() # clear cache
   }##REPLICATE
-dev.off()
+# dev.off() # save to pds!
 
 
 ###################### TO DOS ##############################
