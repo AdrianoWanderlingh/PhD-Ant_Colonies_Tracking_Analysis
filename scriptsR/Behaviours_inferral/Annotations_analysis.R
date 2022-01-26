@@ -30,82 +30,70 @@ library(gridExtra)
 library(gtools) # to convert p.values in stars
 library(pbkrtest)
 
-# annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
-# annotations$Behaviour <- as.character(annotations$Behaviour)
-# annotations$Actor <- as.character(annotations$Actor)
-# annotations$Receiver <- as.character(annotations$Receiver)
-# #call treatment as period
-# colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
-# 
-# 
-# #convert Zulu time to GMT
-# annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-# annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-# annotations$duration <- as.numeric(annotations$T_stop_UNIX - annotations$T_start_UNIX)
-# 
-# #see if milliseconds are shown (number of decimals represented by the number after %OS)
-# format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
-# 
-# #remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
-# #this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
-# annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
-# 
-# #remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
-# annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start_UNIX","T_stop_UNIX","Behaviour","treatment_rep")]),]
-# 
-# #Summary counts of behaviour frequency
-# Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
-# Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
-# Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
-# #check how many cases have been removed
-# Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
-# Counts_by_Behaviour
-# 
-# #see total final numer of behaviours
-# Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
-# 
-# #Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below! 
-# annotations <- annotations_drop_all_dup
-# 
+#annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
+annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
+
+annotations$Behaviour <- as.character(annotations$Behaviour)
+annotations$Actor <- as.character(annotations$Actor)
+annotations$Receiver <- as.character(annotations$Receiver)
+#call treatment as period
+colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
+
+
+#convert Zulu time to GMT
+annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+annotations$duration <- as.numeric(annotations$T_stop_UNIX - annotations$T_start_UNIX)
+
+# see if milliseconds are shown (number of decimals represented by the number after %OS)
+format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
+
+###### THIS SECTION HAS BEEN USED TO CLEAN THE DATASET /R3SP_R9SP_All_data_dropped_useless_cols.csv.
+###### SUCH DATASET THEN UNDERWENT MANUAL MANIPULATION AS A RESULT OF CROSS-VALIDATION BY ADRIANO
+###### AND WAS SAVED AS FOLLOWS Data/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv
+
+#remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
+#this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
+annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
+
+#remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
+annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start_UNIX","T_stop_UNIX","Behaviour","treatment_rep")]),]
+
+#Summary counts of behaviour frequency
+Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
+Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
+Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
+#check how many cases have been removed
+Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
+Counts_by_Behaviour
+
+#see total final numer of behaviours
+Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
+
+#Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below!
+annotations <- annotations_drop_all_dup
+
 # #SAVE THE NEW ANNOTATION FILE 
 # write.csv(annotations,"/home/cf19810/Dropbox/Ants_behaviour_analysis/Data/R3SP_R9SP_All_data_FINAL_script_output.csv")
 
 ###############################################################################################################################
-##### BY 17/12/21, VASUDHA'S DATA HAS BEEN CROSS VALIDATED STARTING FROM THE FILE R3SP_R9SP_All_data_FINAL_script_output.csv. 
-# ADJUST THE VALIDATED FILE TO USE IT FOR THE FOLLOWING CALCULATIONS
+##### BY 17/12/21, VASUDHA'S DATA HAS BEEN CROSS VALIDATED STARTING FROM THE FILE R3SP_R9SP_All_data_FINAL_script_output.csv.
 ################################################################################################################################
 
-###1. CORRECT THE 25% FILE
-
+####THINGS ALREADY DONE
+##1. CORRECT THE 25% FILE
 #USE THE RSCRIPT cross_val_output.R and look at the output of # > annotation_val[which(is.na(annotation_val$IsEqual)),]
+##2. CORRECT THE FEW 100% TROPHALLAXIS WRONG EVENTS ...DONE
+##3. put trophallaxis and 25% FILE TOGHETER (CALL IT 25%+ ALL TROPH). .DONE
 
+
+####TO DO'S FOR FUTHER ANALYSES
 #implement the following NOTES:
 # - exclude 1-2 secs SelfGrooming (done later in the script)
-# - check all Aggreession events
+# - check all Aggression events
 # - many FrontRest Events are antennation events
-# - remove all events over 2mins (done later in the script)
+# - TRUNCATE all events over 2mins (done later in the script)
 # - Remove queen from counts (a mislabeled event of SG was Queen SG)
-
-
-###2. CORRECT THE FEW 100% TROPHALLAXIS WRONG EVENTS
-
-###3. put trophallaxis and 25% FILE TOGHETER (CALL IT 25%+ ALL TROPH).
-###4. IMPORT THIS FILE HERE AND ADD VALUE FROM BEH ROW TO AW_BEH WHEN THERE IS NO VALUE PRESENT + CUT NA BEHAVIOURS FROM AW_BEH 
-
-####THE OUTPUT CAN THEN BE USED TO RUN THE REST OF THE SCRIPT.
-
-
-
-
-# RUN
-# annotations <- read.csv(paste(DATADIR,"/VALIDATED FILE.csv",sep = ""), sep = ",")
-
-
-
-
-
-
-
 
 
 
@@ -449,26 +437,26 @@ Counts_by_Beh_Role_Task_Exp_SE    <- aggregate(cbind(Count,duration) ~ Behaviour
 
 
 ## show the mean counts for each behav | stage
-pdf(file=paste(DATADIR,"Behaviour_counts_pre-post.pdf", sep = ""), width=5, height=3)
-par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.1,0.1), mgp=c(1.3,0.3,0), tcl=-0.2)
+# pdf(file=paste(DATADIR,"Behaviour_counts_pre-post.pdf", sep = ""), width=5, height=3)
+# par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.1,0.1), mgp=c(1.3,0.3,0), tcl=-0.2)
 ## COUNTS
-Xpos <- barplot( Count ~ period + Exp_task , Counts_by_Beh_Role_Task_Exp_MEAN, beside=T, xlab="", ylab="Behaviour count", ylim=c(0,max( Counts_by_Beh_Role_Task_Exp_MEAN$Count +  Counts_by_Beh_Role_Task_Exp_SE$Count*1.4 )))
-##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
-segments(x0 = Xpos[1,], 
-         x1 = Xpos[1,], 
-         y0 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"], 
-         y1 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="pre"],
-         lwd=2)
-
-segments(x0 = Xpos[2,], 
-         x1 = Xpos[2,], 
-         y0 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"], 
-         y1 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="post"],
-         lwd=2)
-
-text(x = ((Xpos[1,]+Xpos[2,])/2),
-     y = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="post"]+15,
-     stars.pval(posthoc_FREQ_summary$p.value))
+# Xpos <- barplot( Count ~ period + Exp_task , Counts_by_Beh_Role_Task_Exp_MEAN, beside=T, xlab="", ylab="Behaviour count", ylim=c(0,max( Counts_by_Beh_Role_Task_Exp_MEAN$Count +  Counts_by_Beh_Role_Task_Exp_SE$Count*1.4 )))
+# ##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
+# segments(x0 = Xpos[1,], 
+#          x1 = Xpos[1,], 
+#          y0 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"], 
+#          y1 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="pre"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="pre"],
+#          lwd=2)
+# 
+# segments(x0 = Xpos[2,], 
+#          x1 = Xpos[2,], 
+#          y0 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"], 
+#          y1 = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="post"],
+#          lwd=2)
+# 
+# text(x = ((Xpos[1,]+Xpos[2,])/2),
+#      y = Counts_by_Beh_Role_Task_Exp_MEAN$Count [Counts_by_Beh_Role_Task_Exp_MEAN$period=="post"] + Counts_by_Beh_Role_Task_Exp_SE$Count [Counts_by_Beh_Role_Task_Exp_SE$period=="post"]+15,
+#      stars.pval(posthoc_FREQ_summary$p.value))
 
 # ## DURATIONS
 # Xpos <- barplot( duration ~ period + Behaviour , Counts_by_Beh_Role_Task_Exp_MEAN, beside=T, xlab="", ylab="Behaviour duration (s)", ylim=c(0,max( Counts_by_Beh_Role_Task_Exp_MEAN$duration +  Counts_by_Beh_Role_Task_Exp_SE$duration, na.rm=T)))
