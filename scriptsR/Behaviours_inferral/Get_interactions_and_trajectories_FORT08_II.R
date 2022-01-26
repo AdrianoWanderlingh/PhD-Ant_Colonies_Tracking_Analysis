@@ -480,8 +480,8 @@ for (REPLICATE in c("R3SP","R9SP"))
         
         ## measure the length *in seconds* of the interaction between ACT & REC
         # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
-        interaction_start_secs  <- min(traj_BOTH$UNIX_secs, na.rm=T)
-        interaction_stop_secs   <- max(traj_BOTH$UNIX_secs, na.rm=T)
+        int_start_secs  <- min(traj_BOTH$UNIX_secs, na.rm=T)
+        int_end_secs   <- max(traj_BOTH$UNIX_secs, na.rm=T)
         interaction_length_secs <-  max(traj_BOTH$UNIX_secs, na.rm=T) - min(traj_BOTH$UNIX_secs, na.rm=T)  ## 21 Jan 2022
         
         ## CAREFUL - this is wrong, as traj_BOTH does NOT CONTAIN blank rows for frames whenneither Act or REC were seen - need to use interaction_length_secs
@@ -534,7 +534,7 @@ for (REPLICATE in c("R3SP","R9SP"))
                    # mean_accel_pxpersec2_ACT=mean_accel_pxpersec2_ACT, mean_accel_pxpersec2_REC=mean_accel_pxpersec2_REC,
                    # #median_accel_ACT=median_accel_ACT,median_accel_REC=median_accel_REC,
                    # rmsd_px_ACT=rmsd_px_ACT,rmsd_px_REC=rmsd_px_REC,
-                   interaction_start_secs, interaction_stop_secs, interaction_length_secs,
+                   int_start_secs, int_end_secs, interaction_length_secs,
                    prop_time_undetected_ACT, prop_time_undetected_REC,
                    # strghtline_dist_px=strghtline_dist_px,
                    #when adding a new variable, it must be included in the reshape rule for data plotting
@@ -561,19 +561,24 @@ for (REPLICATE in c("R3SP","R9SP"))
     AntDistanceGreaterThan <- min(interaction_MANUAL$straightline_dist_px,na.rm = T)
    # AntDisplacement <- #max trajectory step lenght per each ant during interaction, use higher value for matcher
     
-    summary_MANUAL
     
     #########################################################################################
     ###### READING AUTOMATIC INTERACTIONS ###################################################
     #########################################################################################
     
     #fmMatcherAntDistanceSmallerThan(), fmMatcherAntDistanceGreaterThan() 
-    #fmMatcherAntAngleSmallerThan(), fmMatcherAntAngleGreaterThan() : 
-    #fmMatcherInteractionType() : 
+    #fmMatcherAntAngleSmallerThan(), fmMatcherAntAngleGreaterThan() 
     #fmMatcherAntDisplacement(): 
     #fmMatcherAnd(matchers)
     #matcher = fmMatcherAnd(list(fmMatcherInteractionType(body_id,body_id),fmMatcherInteractionType(body_id,antenna_id))))
-
+    capsules  <- e$antShapeTypeNames
+    names(capsules) <- as.character( 1:length(capsules))
+    antennae_id <- as.numeric(names(capsules)[[which(capsules=="antennae")]])
+    body_id <- as.numeric(names(capsules)[[which(capsules=="body")]])
+    
+    # body_id <- capsules[which(capsules$name=="body"),"typeID"]
+   
+   fmMatcherInteractionType(body_id,antennae_id)
     
     ## sequentially vary the interaction gap-filling to check what effect this has on the agreement between the MANUAL & AUTOMATIC interactions
     for (Buffer in seq(0,30,5))
@@ -586,15 +591,16 @@ for (REPLICATE in c("R3SP","R9SP"))
                                                                 end=time_stop,
                                                                 maximumGap =fmSecond(MAX_INTERACTION_GAP), ## WHEN A PAIR DISENGAGE, HOW LONG IS THE INTERVAL? 
                                                                 reportFullTrajectories = T)#,
-        # matcher = fmMatcherInteractionType(type1=1,type2 = 1))
+      #                                                          
+       # matcher =    fmMatcherAnd(list(fmMatcherInteractionType(body_id,antennae_id),fmMatcherAntDistanceSmallerThan(AntDistanceSmallerThan),fmMatcherAntDistanceGreaterThan(AntDistanceGreaterThan))))
         
         
         ##  convert POSIX format to raw secs since 1.1.1970; brute force for match.closest with collisions
-        interacts_AUTO_REP_PER$interactions$start_secs  <- as.numeric(interacts_AUTO_REP_PER$interactions$start)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
-        interacts_AUTO_REP_PER$interactions$end_secs     <- as.numeric(interacts_AUTO_REP_PER$interactions$end) 
+        interacts_AUTO_REP_PER$interactions$int_start_secs  <- as.numeric(interacts_AUTO_REP_PER$interactions$start)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
+        interacts_AUTO_REP_PER$interactions$int_end_secs     <- as.numeric(interacts_AUTO_REP_PER$interactions$end) 
         ## now round these decimal seconds to 3 d.p.
-        interacts_AUTO_REP_PER$interactions$start_secs   <- round(interacts_AUTO_REP_PER$interactions$start_secs,   N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
-        interacts_AUTO_REP_PER$interactions$end_secs     <- round(interacts_AUTO_REP_PER$interactions$end_secs, N_DECIMALS)
+        interacts_AUTO_REP_PER$interactions$int_start_secs   <- round(interacts_AUTO_REP_PER$interactions$int_start_secs,   N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
+        interacts_AUTO_REP_PER$interactions$int_end_secs     <- round(interacts_AUTO_REP_PER$interactions$int_end_secs, N_DECIMALS)
         
         interacts_AUTO_REP_PER$interactions $pair <- paste(interacts_AUTO_REP_PER$interactions$ant1, interacts_AUTO_REP_PER$interactions$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
         
@@ -610,8 +616,8 @@ for (REPLICATE in c("R3SP","R9SP"))
           if (nrow(interacts_AUTO_REP_PER_PAIR)>2) ## need at least two inteactions to have an inter-interaction interval
             {
             ## measure inter-interaction interval
-            Inter_Interact_Interval <- interacts_AUTO_REP_PER_PAIR$end_secs   [2:nrow(interacts_AUTO_REP_PER_PAIR)] - 
-                                       interacts_AUTO_REP_PER_PAIR$start_secs [1:(nrow(interacts_AUTO_REP_PER_PAIR)-1)]
+            Inter_Interact_Interval <- interacts_AUTO_REP_PER_PAIR$int_end_secs   [2:nrow(interacts_AUTO_REP_PER_PAIR)] - 
+                                       interacts_AUTO_REP_PER_PAIR$int_start_secs [1:(nrow(interacts_AUTO_REP_PER_PAIR)-1)]
             ## get mean interval for this pair
             Mean_Interval <- mean(Inter_Interact_Interval, na.rm=T)
             Min_Interval <- min(Inter_Interact_Interval, na.rm=T)  ## SHOUL DNEVER BE LOWER THAN MAX_INTERACTION_GAP
@@ -646,15 +652,15 @@ for (REPLICATE in c("R3SP","R9SP"))
          for (I in 1:nrow(summary_MAN_REP_PER))  ## loop across each (time-aggregated) manually-labelled behaviour
             {
             ## Find start and end times of each *aggregated* **MANUALLY-LABELLED** interaction
-            Man_Start <- summary_MAN_REP_PER$interaction_start_secs [I] - Buffer
-            Man_Stop  <- summary_MAN_REP_PER$interaction_stop_secs [I]  + Buffer
+            Man_Start <- summary_MAN_REP_PER$int_start_secs [I] - Buffer
+            Man_Stop  <- summary_MAN_REP_PER$int_end_secs [I]  + Buffer
             
             ## extract manual participants for the Ith interaction in the auto interactions
             Man_Pair <- summary_MAN_REP_PER$pair [I]
           
             ## look for the Ith MANUAL interaction in the AUTOMATIC list
-            interacts_AUTO_REP_PER_OVERLAP <- interacts_AUTO_REP_PER$interactions [ interacts_AUTO_REP_PER$interactions$start_secs >= Man_Start &
-                                                                                    interacts_AUTO_REP_PER$interactions$end_secs   <= Man_Stop & 
+            interacts_AUTO_REP_PER_OVERLAP <- interacts_AUTO_REP_PER$interactions [ interacts_AUTO_REP_PER$interactions$int_start_secs >= Man_Start &
+                                                                                    interacts_AUTO_REP_PER$interactions$int_end_secs   <= Man_Stop & 
                                                                                     interacts_AUTO_REP_PER$interactions $pair      == Man_Pair  , ]
             ## stack the auto interactions when there's a match with the manual summary interaction
             if (nrow(interacts_AUTO_REP_PER_OVERLAP)>0)
@@ -665,7 +671,7 @@ for (REPLICATE in c("R3SP","R9SP"))
             }#I
        
         ## what is the overlap in seconds?
-        interacts_AUTO_REP_PER_OVERLAP_ALL$Duration <- interacts_AUTO_REP_PER_OVERLAP_ALL$end_secs - interacts_AUTO_REP_PER_OVERLAP_ALL$start_secs
+        interacts_AUTO_REP_PER_OVERLAP_ALL$Duration <- interacts_AUTO_REP_PER_OVERLAP_ALL$int_end_secs - interacts_AUTO_REP_PER_OVERLAP_ALL$int_start_secs
         
         ## the observed overlap time
         Overlap <- sum(interacts_AUTO_REP_PER_OVERLAP_ALL$Duration)
@@ -675,11 +681,33 @@ for (REPLICATE in c("R3SP","R9SP"))
         ## stack
         Sensitivity <- rbind(Sensitivity, data.frame(REPLICATE, PERIOD, Buffer, MAX_INTERACTION_GAP, GrandMeanInterval, GrandMinInterval, Overlap, Expectation, Hit_Rate=100 * (Overlap/Expectation)) )
 
+        
+        #plot the interactions by pair as timeline
+        #ADD: put interacts_AUTO_REP_PER and summary_MAN_REP_PER together with flag AUTO or MANUAL, than use flag to colur/dodge
+        #HOW TO: change time names to make them match, then bind (careful)
+        #generate 1 plot per every iteration 
+        
+        ggplot(summary_MAN_REP_PER) +
+          geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs)) +#,
+          labs(title = "Grooming by pair",
+               subtitle = paste(unique(REPLICATE),unique(PERIOD))) +
+          theme_minimal()
+        #colour = as.factor(flag)), # + geom_col(position = "dodge")  dodge by auto or manual
+        #size = I(5)) 
+  
+        ggplot(interacts_AUTO_REP_PER$interactions) +
+          geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs)) +#,
+          labs(title = "Grooming by pair") +#,
+        #subtitle = paste(unique(REPLICATE),unique(PERIOD))) +
+        theme_minimal()
+        
       }
     }
     
     ## Select ONLY those AUTO interactions that are INSIDE the manual interactions
     plot( Sensitivity[Sensitivity$Buffer==0 , c("MAX_INTERACTION_GAP","Buffer","GrandMinInterval","Overlap","Hit_Rate")])    
+    
+    
     
     ########################################################################################################################
     ########################################################################################################################
