@@ -52,6 +52,7 @@ library(bit64)
 library(nanotime)
 library(MALDIquant)
 library(stringr)
+library(data.table)
 
 # ## TEMPORARY - Hard code plotrix function
 # std.error <- function (x, na.rm) 
@@ -664,15 +665,21 @@ for (REPLICATE in c("R3SP","R9SP"))
             ## extract manual participants for the Ith interaction in the auto interactions
             Man_Pair <- summary_MAN_REP_PER$pair [I]
           
+            
             ## look for the Ith MANUAL interaction in the AUTOMATIC list
-            interacts_AUTO_REP_PER_OVERLAP <- interacts_AUTO_REP_PER$interactions [ interacts_AUTO_REP_PER$interactions$int_start_secs >= Man_Start &
-                                                                                    interacts_AUTO_REP_PER$interactions$int_end_secs   <= Man_Stop & 
-                                                                                    interacts_AUTO_REP_PER$interactions $pair      == Man_Pair  , ]
+            interacts_AUTO_REP_PER_OVERLAP <- unique(interacts_AUTO_REP_PER$interactions [ interacts_AUTO_REP_PER$interactions$int_start_secs >= Man_Start &
+                                                                                           interacts_AUTO_REP_PER$interactions$int_end_secs   <= Man_Stop & 
+                                                                                           interacts_AUTO_REP_PER$interactions $pair      == Man_Pair , ])
+            
+       
+            
             ## stack the auto interactions when there's a match with the manual summary interaction
             if (nrow(interacts_AUTO_REP_PER_OVERLAP)>0)
               {
               interacts_AUTO_REP_PER_OVERLAP_ALL <- rbind(interacts_AUTO_REP_PER_OVERLAP_ALL, 
                                                           interacts_AUTO_REP_PER_OVERLAP)
+              
+              interacts_AUTO_REP_PER_OVERLAP_ALL <- unique(interacts_AUTO_REP_PER_OVERLAP_ALL)
               }
             }#I
        
@@ -688,9 +695,67 @@ for (REPLICATE in c("R3SP","R9SP"))
         Sensitivity <- rbind(Sensitivity, data.frame(REPLICATE, PERIOD, Buffer, MAX_INTERACTION_GAP, GrandMeanInterval, GrandMinInterval, Overlap, Expectation, Hit_Rate=100 * (Overlap/Expectation)) )
 
         
+
+#####################################################################################
+        
+        #oder dataframe to make it work with Fuzzy matcher which needs sorted dataframes
+        sum_MAN_REP_PER_ord <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_start_secs)),]
+        sum_MAN_REP_PER_ord1 <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_end_secs)),]
+
+        TOLERANCE <- 5 #number of seconds of tolerance window, is like the previous buffer
+        FUZZY_INT_MATCH <- TRUE
+        A_in_M_OVERLAP_ALL <- NULL
+        if (FUZZY_INT_MATCH==TRUE)
+        {
+          for (I in 1:nrow(summary_MAN_REP_PER))  ## loop across each (time-aggregated) manually-labelled behaviour
+          {
+            ## Find start and end times of each *aggregated* **MANUALLY-LABELLED** interaction
+            Man_Start <- summary_MAN_REP_PER$int_start_secs [I]
+            Man_Stop  <- summary_MAN_REP_PER$int_end_secs [I]
+
+            ## extract manual participants for the Ith interaction in the auto interactions
+            Man_Pair <- summary_MAN_REP_PER$pair [I]
+
+          ### TRUE POSITIVES
+          # match.start and end
+          #start
+          A_in_M_rows_start <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_start_secs,
+                                                                                         table = sum_MAN_REP_PER_ord$int_start_secs , tolerance = TOLERANCE)
+                                                                           & interacts_AUTO_REP_PER$interactions $pair == Man_Pair  , ])
+          #end
+          A_in_M_rows_end   <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_end_secs,
+                                                                                         table = sum_MAN_REP_PER_ord1$int_end_secs , tolerance = TOLERANCE)
+                                                                           & interacts_AUTO_REP_PER$interactions $pair == Man_Pair  , ])
+          #issue raise with times, drop them
+          A_in_M_rows_end <-subset(A_in_M_rows_end, select = -c(start,end))
+          A_in_M_rows_start <-subset(A_in_M_rows_start, select = -c(start,end))
+
+          A_in_M_OVERLAP <- generics::intersect(A_in_M_rows_start, A_in_M_rows_end)
+          #remove empty rows (all NA's)
+          A_in_M_OVERLAP <- A_in_M_OVERLAP[rowSums(is.na(A_in_M_OVERLAP)) != ncol(A_in_M_OVERLAP),]
+          
+          #### A_in_M ARE TRUE POSITIVES  -> ROWS IN BOTH AUTO E MAN
+        
+        ## stack the auto interactions when there's a match with the manual summary interaction
+        if (nrow(A_in_M_OVERLAP)>0)
+        {
+          A_in_M_OVERLAP_ALL <- rbind(A_in_M_OVERLAP_ALL, 
+                                                      A_in_M_OVERLAP)
+          A_in_M_OVERLAP_ALL <- unique(A_in_M_OVERLAP_ALL)
+        }
+      }#I
+    }#FUZZY_INT_MATCH    
+
+ #FALSE NEGATIVE RATE
+
+        ####ERRORRRRRR AUTO_IN_MANUAL SHOULD BE LESS OR EQUAL TO SUMMARY_MANUAL!!!!! DUPS AND NAS ARE REMOVED, WHAT'S HAPPENING???         
+ nrow(A_in_M_OVERLAP_ALL) 
+ nrow(summary_MAN_REP_PER)
+        
+        
+######################################################################################        
+
         #plot the interactions by pair as timeline
-        #ADD: put interacts_AUTO_REP_PER and summary_MAN_REP_PER together with flag AUTO or MANUAL, than use flag to colur/dodge
-        #HOW TO: change time names to make them match, then bind (careful)
         #generate 1 plot per every iteration 
         summary_MAN_REP_PER_sub <- summary_MAN_REP_PER[,c("REPLICATE","PERIOD","pair","int_start_secs","int_end_secs")] ; summary_MAN_REP_PER_sub$flag <- "manual"
         interacts_AUTO_REP_PER_sub <- interacts_AUTO_REP_PER$interactions[,c("pair","int_start_secs","int_end_secs")] ; interacts_AUTO_REP_PER_sub$flag <- "auto"
@@ -705,11 +770,12 @@ for (REPLICATE in c("R3SP","R9SP"))
  
         pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcherCapTypeAntDists.pdf", sep = "_"), width=10, height=60)
         #ADD CAPSULES SIZE USED BY MODIFING THE OUTPUT OF CapsuleDef
-        CapsuleDef
+        #CapsuleDef
         ggplot(AUTO_MAN_REP_PER) +
-          geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs,colour = flag),size=4,alpha = 0.5) +
+          geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs,colour = flag),size=3,alpha = 0.5) +
           theme(panel.background = element_rect(fill = 'white', colour = 'black')) +
-          labs(title = paste("Grooming by pair" ,unique(REPLICATE),unique(PERIOD),"- MAN vs AUTO"),subtitle = paste("Nrows auto detected:" ,NROW(summary_MAN_REP_PER),"Nrows manual annotated:" ,NROW(interacts_AUTO_REP_PER$interactions),"\nMaxIntGap",MAX_INTERACTION_GAP, "s" )) +
+          labs(title = paste("Grooming by pair" ,unique(REPLICATE),unique(PERIOD),"- MAN vs AUTO"),
+               subtitle = paste("Nrows auto detected:" ,NROW(summary_MAN_REP_PER),"Nrows manual annotated:" ,NROW(interacts_AUTO_REP_PER$interactions),"\nMaxIntGap",MAX_INTERACTION_GAP, "s" )) +
           scale_color_manual(values = c("manual" = "black",
                                          "auto"="grey"))
         dev.off()
