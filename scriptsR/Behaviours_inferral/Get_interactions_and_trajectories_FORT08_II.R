@@ -91,24 +91,25 @@ max_gap         <- fmHour(24*365)   ## important parameter to set! Set a maximum
 desired_step_length_time    <- 0.125 ###in seconds, the desired step length for the analysis
 
 ####### navigate to folder containing myrmidon file
-if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Documents/Ants_behaviour_analysis/"}
+if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Documents/Ants_behaviour_analysis"}
 if (USER=="Tom")     {WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"}
 
 DATADIR <- paste(WORKDIR,"Data",sep="/")
 SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
 
 ## perform analyses on annotation data
-source(paste(SCRIPTDIR,"Annotations_analysis.R",sep="/"))
+#source(paste(SCRIPTDIR,"Annotations_analysis.R",sep="/"))
+
+#load only the training dataset
+annotations <- read.csv(paste(DATADIR,"/annotations_TRAINING_DATASET.csv",sep = ""), sep = ",")
+annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
 
 
 ### start fresh
 interaction_MANUAL    <- NULL
 summary_MANUAL        <- NULL
 Sensitivity           <- data.frame()
-
-
-pdf(file=paste(DATADIR,"Interactions_Collsions_plots_25Jan2021.pdf", sep = ""), width=6, height=4.5)
-par(mfrow=c(2,3), mai=c(0.3,0.3,0.4,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
 
 
 for (REPLICATE in c("R3SP","R9SP")) 
@@ -128,7 +129,9 @@ for (REPLICATE in c("R3SP","R9SP"))
   ###tag statistics
   tag_stats <- fmQueryComputeTagStatistics(e)
   
-
+  pdf(file=paste(DATADIR,"Interactions_Collsions_plots_25Jan2021.pdf", sep = ""), width=6, height=4.5)
+  par(mfrow=c(2,3), mai=c(0.3,0.3,0.4,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
+  
   for (PERIOD in c("pre","post"))
     {
     print(paste("Replicate",REPLICATE, PERIOD))
@@ -140,11 +143,23 @@ for (REPLICATE in c("R3SP","R9SP"))
     #time_stop  <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + (34*60)  ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
     time_stop  <- fmTimeCreate(max(annotations$T_stop_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
     
+    
+    ###############################################################################
+    ###### IDENTIFY FRAMES ########################################################
+    ###############################################################################
+    IdentifyFrames      <- fmQueryIdentifyFrames(e,start=time_start, end=time_stop)
+    IF_frames           <- IdentifyFrames$frames
+    #Assign a frame to each time since start and use it as baseline for all matching and computation
+    
+    IF_frames$frame_num <- seq.int(nrow(IF_frames))
+    
     ###############################################################################
     ###### READING COLLISIONS #####################################################
     ###############################################################################
     
     collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)   ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
+    collisions$frames$frame_num <- seq.int(nrow(IF_frames))
+    
     
     # time_X  <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + 3  ) ###experiment start time ####arbitrary time in the correct format + (N mins * N seconds)
     # IdentifyFrames <- fmQueryIdentifyFrames(e, start=time_start, end=time_X)
@@ -190,20 +205,16 @@ for (REPLICATE in c("R3SP","R9SP"))
     # summaryTrajectory    <- summaryTrajectory_body
     # trajectories           <- trajectories_body
     # interactions           <- interactions_body
-    # 
-    
     
     ###############################################################################
     ###### READING TRAJECTORIES ###################################################
     ###############################################################################
-    
+    ?fmQueryComputeAntTrajectories
     #COMPUTE TRAJECTORIES  
     positions <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = TRUE) #set true to obtain the zone of the ant
-    #print(head(postions))
-  
-    ######### no subsetting - take the entire tracking period
-    # positions <- fmQueryComputeAntTrajectories(e,start = e$getDataInformations()$details$tdd.start[1],end = e$getDataInformations()$details$tdd.end[3],maximumGap = max_gap,computeZones = FALSE) #set true to obtain the zone of the ant
-    # ?fmQueryComputeAntTrajectories
+    positions$trajectories_summary$frame_num <- NA
+    #assign starting frame number
+    positions$trajectories_summary["frame_num"] <- lapply(positions$trajectories_summary["start"], function(x) IF_frames$frame_num[match(x, IF_frames$time)])
 
     ###WARNING!!!!!
     ###in this particular example the values in antID are consecutive (1 to 22), and so positions$trajectories[[1]] will correspond to the trajectory of ant 1
@@ -213,11 +224,6 @@ for (REPLICATE in c("R3SP","R9SP"))
     positions$trajectories_summary$antID_str <- paste("ant_",positions$trajectories_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
     names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
     ##and now we can extract each ant trajectory using the character ID stored in antID_str - it's much safer!
-    
-    # #unlisting the trajectories 
-    # library(data.table)
-    # trajectories_unlist <- as.data.frame(rbindlist(positions$trajectories,use.names=TRUE,idcol=TRUE))
-    # write.csv(trajectories_unlist, file=paste(e$getDataInformations()[["details"]][["tdd.URI"]],'trajectories_30min.csv'),row.names = FALSE) #specify name of the block better!
     
     trajectories_summary <- positions$trajectories_summary
     
@@ -235,8 +241,29 @@ for (REPLICATE in c("R3SP","R9SP"))
       First_Obs_Time <- as.POSIXct(positions$trajectories_summary$start [which(positions$trajectories_summary$antID_str==AntID)], tz="GMT",origin = "1970-01-01 00:00:00") ## find the first time after the user defined time_start_ISO that this ant was seen
       print(paste("Adding first obs time", First_Obs_Time, "to the time-zeroed trajectory of ant", AntID))
       positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin = "1970-01-01 00:00:00")  + First_Obs_Time ##convert back to UNIX time  
-      }
+    }
+    
+    
+    ## Add ant_x names and times to the positions to convert from FRAME since the start of the experiment, to FRAMES
+    ##############################Zeroed frame#######################################################
+    
+    for (A in positions$trajectories_summary$antID)
+    {
+      AntID <- paste("ant_",A,sep="") 
+      First_Obs_Frame <- positions$trajectories_summary$frame_num [which(positions$trajectories_summary$antID_str==AntID)] ## find the first time after the user defined time_start_ISO that this ant was seen
+      print(paste("Adding first obs FRAME", First_Obs_Frame, "to the time-zeroed trajectory of ant", AntID))
+      
+      positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin = "1970-01-01 00:00:00")  + First_Obs_Time ##convert back to UNIX time  
+    }
    
+    
+    # Hi everyone, is there any known way of obtaining the frame number associated with each ant trajectory in fmQueryComputeAntTrajectories$trajectories instead of just the trajectory $time (the offset from the trajectory $start time in seconds) in R? The only convoluted way of doing this that we can think of involves:
+    #   Generating a frame N in fmQueryIdentifyFrames$frames that corresponds to the row number
+    # Creating a new zeroed-time since the start of the exp by  summing the cumulated differences between each pair of consecutive frames (to account for the time mismatch)
+    # looping through each ant looking at the $start time in $trajectories_summary, then subtracting the $frames zeroed-time  corresponding to the $start time from the zeroed-time column itself (New-Zeroed-time) and assigning the corresponding frame N when the New-Zeroed-time and $time correspond.
+    # 
+    # 
+    
     #check that milliseconds are preserved after adding the ant's time_start_ISO #positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
     
     ###############################################################################
@@ -702,7 +729,7 @@ for (REPLICATE in c("R3SP","R9SP"))
         sum_MAN_REP_PER_ord <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_start_secs)),]
         sum_MAN_REP_PER_ord1 <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_end_secs)),]
 
-        TOLERANCE <- 5 #number of seconds of tolerance window, is like the previous buffer
+        TOLERANCE <- 20 #number of seconds of tolerance window, is like the previous buffer
         FUZZY_INT_MATCH <- TRUE
         A_in_M_OVERLAP_ALL <- NULL
         if (FUZZY_INT_MATCH==TRUE)
@@ -748,19 +775,36 @@ for (REPLICATE in c("R3SP","R9SP"))
 
  #FALSE NEGATIVE RATE
 
-        ####ERRORRRRRR AUTO_IN_MANUAL SHOULD BE LESS OR EQUAL TO SUMMARY_MANUAL!!!!! DUPS AND NAS ARE REMOVED, WHAT'S HAPPENING???         
+ ####ERRORRRRRR AUTO_IN_MANUAL SHOULD BE LESS OR EQUAL TO SUMMARY_MANUAL!!!!! DUPS AND NAS ARE REMOVED, WHAT'S HAPPENING???         
+ #cure momentarily by trimming auto$duration < manual$duration
  nrow(A_in_M_OVERLAP_ALL) 
  nrow(summary_MAN_REP_PER)
-        
+ 
+ summary_MAN_REP_PER$Duration <- summary_MAN_REP_PER$int_end_secs - summary_MAN_REP_PER$int_start_secs
+ A_in_M_OVERLAP_ALL$Duration <- A_in_M_OVERLAP_ALL$int_end_secs - A_in_M_OVERLAP_ALL$int_start_secs
+ 
+ min(summary_MAN_REP_PER$Duration)
+ min(A_in_M_OVERLAP_ALL$Duration)
+ 
+ min( summary_MAN_REP_PER$Duration[summary_MAN_REP_PER$Duration!=min(summary_MAN_REP_PER$Duration)] )
+ 
+ MIN_TRIM <- min( summary_MAN_REP_PER$Duration[summary_MAN_REP_PER$Duration!=min(summary_MAN_REP_PER$Duration)] )
+ A_in_M_OVERLAP_ALL_trim <- A_in_M_OVERLAP_ALL[which(A_in_M_OVERLAP_ALL$Duration > MIN_TRIM),]
+
+ 
+ hist(summary_MAN_REP_PER$Duration,breaks = 30)
+ hist(A_in_M_OVERLAP_ALL$Duration,breaks = 30)
+ hist(A_in_M_OVERLAP_ALL_trim$Duration,breaks = 30)
         
 ######################################################################################        
 
         #plot the interactions by pair as timeline
         #generate 1 plot per every iteration 
         summary_MAN_REP_PER_sub <- summary_MAN_REP_PER[,c("REPLICATE","PERIOD","pair","int_start_secs","int_end_secs")] ; summary_MAN_REP_PER_sub$flag <- "manual"
-        interacts_AUTO_REP_PER_sub <- interacts_AUTO_REP_PER$interactions[,c("pair","int_start_secs","int_end_secs")] ; interacts_AUTO_REP_PER_sub$flag <- "auto"
+        interacts_AUTO_REP_PER_sub <- A_in_M_OVERLAP_ALL_trim[,c("pair","int_start_secs","int_end_secs")] ; interacts_AUTO_REP_PER_sub$flag <- "auto"
         AUTO_MAN_REP_PER <- dplyr::bind_rows(summary_MAN_REP_PER_sub,interacts_AUTO_REP_PER_sub) #use bind_rows to keep rep info https://stackoverflow.com/questions/42887217/difference-between-rbind-and-bind-rows-in-r
-        
+        # AUTO_MAN_REP_PER$int_end_secs <- AUTO_MAN_REP_PER$int_end_secs-min(AUTO_MAN_REP_PER$int_start_secs)
+        # AUTO_MAN_REP_PER$int_start_secs <- AUTO_MAN_REP_PER$int_start_secs-min(AUTO_MAN_REP_PER$int_start_secs)
         
         # ggplot(summary_MAN_REP_PER) +
         #   geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs)) +#,
@@ -768,17 +812,17 @@ for (REPLICATE in c("R3SP","R9SP"))
         #        subtitle = paste(unique(REPLICATE),unique(PERIOD))) +
         #   theme_minimal()
  
-        pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcherCapTypeAntDists.pdf", sep = "_"), width=10, height=60)
+        #pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcherCapTypeAntDists.pdf", sep = "_"), width=10, height=60)
         #ADD CAPSULES SIZE USED BY MODIFING THE OUTPUT OF CapsuleDef
         #CapsuleDef
         ggplot(AUTO_MAN_REP_PER) +
           geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs,colour = flag),size=3,alpha = 0.5) +
           theme(panel.background = element_rect(fill = 'white', colour = 'black')) +
           labs(title = paste("Grooming by pair" ,unique(REPLICATE),unique(PERIOD),"- MAN vs AUTO"),
-               subtitle = paste("Nrows auto detected:" ,NROW(summary_MAN_REP_PER),"Nrows manual annotated:" ,NROW(interacts_AUTO_REP_PER$interactions),"\nMaxIntGap",MAX_INTERACTION_GAP, "s" )) +
-          scale_color_manual(values = c("manual" = "black",
-                                         "auto"="grey"))
-        dev.off()
+               subtitle = paste("Nrows auto detected:" ,NROW(summary_MAN_REP_PER),"Nrows manual annotated:" ,NROW(A_in_M_OVERLAP_ALL_trim),"\nMaxIntGap",MAX_INTERACTION_GAP, "s" )) +
+          scale_color_manual(values = c("manual" = "red",
+                                         "auto"="black"))
+       # dev.off()
         
       }
     }
