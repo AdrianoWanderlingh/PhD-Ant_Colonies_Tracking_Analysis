@@ -31,13 +31,13 @@ library(gtools) # to convert p.values in stars
 library(pbkrtest)
 
 #annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
-annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_dropped_useless_cols.csv",sep = ""), sep = ",")
+annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
 
 annotations$Behaviour <- as.character(annotations$Behaviour)
 annotations$Actor <- as.character(annotations$Actor)
 annotations$Receiver <- as.character(annotations$Receiver)
 #call treatment as period
-colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
+#colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
 
 
 #convert Zulu time to GMT
@@ -48,30 +48,64 @@ annotations$duration <- as.numeric(annotations$T_stop_UNIX - annotations$T_start
 # see if milliseconds are shown (number of decimals represented by the number after %OS)
 format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
 
+
+# ######## truncate behaviours longer than 4 minutes (240/60 sec) for work on Interactions_and_trajectories
+###   NEVER USED YET!
+# 
+# MAX_LENGTH <- 240
+# annotations_max4min <- annotations
+# 
+# annotations_max4min$stop_num <- as.numeric(annotations_max4min$T_stop_UNIX)
+# hist(annotations_max4min $duration)
+# # replace the row value with 0 if the
+# # data element at col index 2 is divisible
+# # by 2 looping over the rows of data frame
+# for (i in 1:nrow(annotations_max4min)){
+#   
+#   
+#   if(annotations_max4min[i,"duration"]>MAX_LENGTH){
+#     
+#     # replace the value with 
+#     annotations_max4min[i,"stop_num"]<-  annotations_max4min[i,"stop_num"] - annotations_max4min[i,"duration"] + MAX_LENGTH
+#   }
+# }
+# 
+# 
+# annotations_max4min$T_stop_UNIX  <- as.POSIXct(annotations_max4min$stop_num,  origin="1970-01-01", tz="GMT" )
+# annotations_max4min$duration <- as.numeric(annotations_max4min$T_stop_UNIX - annotations_max4min$T_start_UNIX)
+# 
+# annotations_max4min$duration <- as.numeric(annotations_max4min$T_stop_UNIX - annotations_max4min$T_start_UNIX)
+# 
+# 
+# annotations_max4min[which(annotations_max4min$duration>120 & annotations_max4min$Behaviour=="G"),]
+
+
+
+
 ###### THIS SECTION HAS BEEN USED TO CLEAN THE DATASET /R3SP_R9SP_All_data_dropped_useless_cols.csv.
 ###### SUCH DATASET THEN UNDERWENT MANUAL MANIPULATION AS A RESULT OF CROSS-VALIDATION BY ADRIANO
 ###### AND WAS SAVED AS FOLLOWS Data/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv
 
-#remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
-#this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
-annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
-
-#remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
-annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start_UNIX","T_stop_UNIX","Behaviour","treatment_rep")]),]
-
-#Summary counts of behaviour frequency
-Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
-Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
-Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
-#check how many cases have been removed
-Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
-Counts_by_Behaviour
-
-#see total final numer of behaviours
-Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
-
-#Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below!
-annotations <- annotations_drop_all_dup
+# #remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
+# #this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
+# annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
+# 
+# #remove duplicates of non-directed behaviours as Trophalllaxis based on multiple columns check
+# annotations_drop_all_dup <- annotations_drop_G_A[!duplicated(annotations_drop_G_A[,c("T_start_UNIX","T_stop_UNIX","Behaviour","treatment_rep")]),]
+# 
+# #Summary counts of behaviour frequency
+# Counts_by_Behaviour              <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations); colnames(Counts_by_Behaviour) [match("treatment_rep",colnames(Counts_by_Behaviour))] <- "Count"
+# Counts_by_Behaviour_drop_G_A     <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_G_A); colnames(Counts_by_Behaviour_drop_G_A) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_G_A))] <- "Count_drop_G_A"
+# Counts_by_Behaviour_drop_all_dup <- aggregate(treatment_rep ~ Behaviour + period, FUN=length, annotations_drop_all_dup); colnames(Counts_by_Behaviour_drop_all_dup) [match("treatment_rep",colnames(Counts_by_Behaviour_drop_all_dup))] <- "Count_drop_all_dup"
+# #check how many cases have been removed
+# Counts_by_Behaviour <- cbind(Counts_by_Behaviour, Count_drop_G_A = Counts_by_Behaviour_drop_G_A$Count_drop_G_A, Count_drop_all_dup = Counts_by_Behaviour_drop_all_dup$Count_drop_all_dup)
+# Counts_by_Behaviour
+# 
+# #see total final numer of behaviours
+# Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
+# 
+# #Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below!
+# annotations <- annotations_drop_all_dup
 
 # #SAVE THE NEW ANNOTATION FILE 
 # write.csv(annotations,"/home/cf19810/Dropbox/Ants_behaviour_analysis/Data/R3SP_R9SP_All_data_FINAL_script_output.csv")
@@ -94,8 +128,6 @@ annotations <- annotations_drop_all_dup
 # - many FrontRest Events are antennation events
 # - TRUNCATE all events over 2mins (done later in the script)
 # - Remove queen from counts (a mislabeled event of SG was Queen SG)
-
-
 
 
 ## count the number of observations of each behaviour - WARNING; some behavs not observed e.g. before the treatment (period), so will need to account for that (next step)
@@ -489,31 +521,43 @@ beh_dist_hist <- ggplot(annotations,aes(x=duration))+geom_histogram()+facet_grid
   ggtitle("Behaviour duration distribution")
 beh_dist_hist
 
-##############################################
-######CROSS-CHECK ANNOTATIONS ################
-##############################################
-
-#The createDataPartition() function is meant to subset a dataset without losing the probability distribution of your target variable.
-annotations$RowID <- seq.int(nrow(annotations))
-annotations$BEH_AW <- NA
-annotations$RowID<- as.character(annotations$RowID)
-str(annotations)
-
-library("caret")
-my.ids <- createDataPartition(annotations$Behaviour, p = 0.5)
-annotations_subset <- annotations[as.numeric(my.ids[[1]]), ]
-
-#create 25% set as first step of Cross Validation agreement, if agreement is high stop here, else continue check on the larger set 
-my.ids2 <- createDataPartition(annotations_subset$Behaviour, p = 0.5)
-annotations_subset2 <- annotations_subset[as.numeric(my.ids2[[1]]), ]
+# ##############################################
+# ######CROSS-CHECK ANNOTATIONS ################
+# ##############################################
+# 
+# #The createDataPartition() function is meant to subset a dataset without losing the probability distribution of your target variable.
+# annotations$RowID <- seq.int(nrow(annotations))
+# #annotations$BEH_AW <- NA
+# annotations$RowID<- as.character(annotations$RowID)
+# str(annotations)
+# 
+# library("caret")
+# my.ids <- createDataPartition(annotations$Behaviour, p = 0.5)
+# annotations_subset <- annotations[as.numeric(my.ids[[1]]), ]
+# # 
+# # #create 25% set as first step of Cross Validation agreement, if agreement is high stop here, else continue check on the larger set
+# # my.ids2 <- createDataPartition(annotations_subset$Behaviour, p = 0.5)
+# # annotations_subset2 <- annotations_subset[as.numeric(my.ids2[[1]]), ]
 # 
 # #You can check the distribution of your target variable in the population and in your subset.
 # par(mfrow = c(1,3))
 # barplot(table(annotations$Behaviour), main = "full dataset")
 # barplot(table(annotations_subset$Behaviour), main = "subset 50%")
-# barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
+# #barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
+# 
+# print("COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOURAL LABELS")
+# 
+# #ANNOTATIONS SUBSET FOR AUTOMATIC INTERACTION SELECTION TESTS
+# write.csv(annotations_subset, paste(DATADIR,"/annotations_TRAINING_DATASET_2.csv",sep=""))
+# #save test dataset
+# annotations_test <- annotations[-as.numeric(my.ids[[1]]), ]
+# write.csv(annotations_test, paste(DATADIR,"/annotations_TEST_DATASET_2.csv",sep=""))
+# 
+# table(  paste(annotations_subset$RowID) %in% 
+#           paste(annotations_test$RowID) )
+# 
+# dev.off()
 
-print("COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOUR LABELS")
 
 
 # avoid file overwriting!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
