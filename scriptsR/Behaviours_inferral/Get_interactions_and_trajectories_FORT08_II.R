@@ -63,6 +63,7 @@ MAX_INTERACTION_GAP <- 1
 
 max_gap         <- fmHour(24*365)   ## important parameter to set! Set a maximumGap high enough that no cutting will happen. For example, set it at an entire year: fmHour(24*365)
 desired_step_length_time    <- 0.125 ###in seconds, the desired step length for the analysis
+ANT_LENGHT_PX <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
 
 ####### navigate to folder containing myrmidon file
 if (USER=="Adriano") {WORKDIR <- "/home/cf19810/Documents/Ants_behaviour_analysis"}
@@ -115,9 +116,9 @@ for (REPLICATE in c("R3SP","R9SP"))
     interacts_MAN_REP_PER <- NULL  
     summary_MAN_REP_PER  <- NULL
     ## set experiment time window 
-    time_start <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])) ###experiment start time
+    time_start <- fmTimeCreate(min(annotations$T_start_UNIX[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])) ###experiment start time
     #time_stop  <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + (34*60)  ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
-    time_stop  <- fmTimeCreate(max(annotations$T_stop_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
+    time_stop  <- fmTimeCreate(max(annotations$T_stop_UNIX[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
     
     ###############################################################################
     ###### IDENTIFY FRAMES ########################################################
@@ -272,7 +273,7 @@ for (REPLICATE in c("R3SP","R9SP"))
         #check start time correspondance
         #print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_FRAME_start, "traj_start", min(traj_ACT$frame,na.rm = TRUE)))
         # # ## Plot trajectories of both actor & receiver, show on the same panel
-        Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
+        Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
         plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
         points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1)
   
@@ -375,8 +376,9 @@ for (REPLICATE in c("R3SP","R9SP"))
         # mean_delta_angles_REC <- mean(traj_REC$delta_angles,na.rm=TRUE)
         # 
         ##define trajectory
-        trajectory_ACT <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y, UNIX_time=as.numeric(traj_ACT$UNIX_time)), spatialUnits = "px",timeUnits="s")
-        trajectory_REC <- TrajFromCoords(data.frame(x=traj_REC$x,y=traj_REC$y, UNIX_time=as.numeric(traj_REC$UNIX_time)), spatialUnits = "px",timeUnits="s")
+        #CHECK THAT THIS IS RIGHT OR DISCARD
+        trajectory_ACT <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y, frames=traj_ACT$frame), spatialUnits = "px",timeUnits="frames")
+        trajectory_REC <- TrajFromCoords(data.frame(x=traj_REC$x,y=traj_REC$y, frames=traj_REC$frame), spatialUnits = "px",timeUnits="frames")
 
         #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
         ### total distance moved
@@ -423,7 +425,9 @@ for (REPLICATE in c("R3SP","R9SP"))
         
         ## measure the length *in seconds* of the interaction between ACT & REC
         # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
-        interaction_length_secs <-  (max(traj_BOTH$frame, na.rm=T) - min(traj_BOTH$frame, na.rm=T))/8  ## 21 Jan 2022
+        int_start_frame <- min(traj_BOTH$frame, na.rm=T)
+        int_end_frame <- max(traj_BOTH$frame, na.rm=T)
+        interaction_length_secs <-  (int_end_frame - int_start_frame)/8  ## 21 Jan 2022
         
         prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
         prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x)) / 8)  / interaction_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
@@ -472,13 +476,13 @@ for (REPLICATE in c("R3SP","R9SP"))
                    # mean_accel_pxpersec2_ACT=mean_accel_pxpersec2_ACT, mean_accel_pxpersec2_REC=mean_accel_pxpersec2_REC,
                    # #median_accel_ACT=median_accel_ACT,median_accel_REC=median_accel_REC,
                    # rmsd_px_ACT=rmsd_px_ACT,rmsd_px_REC=rmsd_px_REC,
-                   int_start_secs, int_end_secs, interaction_length_secs,
+                   int_start_frame , int_end_frame, interaction_length_secs,
                    prop_time_undetected_ACT, prop_time_undetected_REC,
                    # strghtline_dist_px=strghtline_dist_px,
                    #when adding a new variable, it must be included in the reshape rule for data plotting
                    stringsAsFactors = F)
          
-        #NO UNIX TIME BUT TIME SINCE START OF INTERACTION. interaction AREA= NEST, FORAGING delete x y coords
+        #NO UNIX TIME BUT FRAMES. interaction AREA= NEST, FORAGING delete x y coords
         interacts_MAN_ROW <- data.frame(REPLICATE=REPLICATE,PERIOD=PERIOD,ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,
                                            traj_BOTH,
                                            stringsAsFactors = F)
@@ -493,6 +497,9 @@ for (REPLICATE in c("R3SP","R9SP"))
     ## stack
     interaction_MANUAL <- rbind(interaction_MANUAL, interacts_MAN_REP_PER)
     summary_MANUAL     <- rbind(summary_MANUAL,       summary_MAN_REP_PER)
+    
+    ##}
+    #}
     
     #store these elsewhere as they are generated by the last iteration of the outer loop.
     #ONCE ANNOTATION FILE IS DONE FOR GOOD, PUT THEM AMONG THE VARIABLES ON TOP AS NUMERIC VALUE KEEPING THE FORMULA COMMENTED 
@@ -512,7 +519,6 @@ for (REPLICATE in c("R3SP","R9SP"))
     #########################################################################################
     
     #fmMatcherAntAngleSmallerThan(), fmMatcherAntAngleGreaterThan() 
-    #fmMatcherAntDisplacement()
     capsules  <- e$antShapeTypeNames
     names(capsules) <- as.character( 1:length(capsules))
     antennae_id <- as.numeric(names(capsules)[[which(capsules=="antennae")]])
@@ -522,8 +528,11 @@ for (REPLICATE in c("R3SP","R9SP"))
     matcherCapType <- fmMatcherInteractionType(body_id,antennae_id)
     matcherCapTypeAntDists <- fmMatcherAnd(list(fmMatcherInteractionType(body_id,antennae_id),
                                  fmMatcherAntDistanceSmallerThan(AntDistanceSmallerThan),
-                                 fmMatcherAntDistanceGreaterThan(AntDistanceGreaterThan))) 
-    #NOTES:
+                                 fmMatcherAntDistanceGreaterThan(AntDistanceGreaterThan)
+                                  ))     #check every 5 seconds if ant has displaced more than ANT_LENGHT_PX 
+    #fmMatcherAntDisplacement(ANT_LENGHT_PX, 52)
+    
+    #NOTES: THESE MAY ALL BE WRONG!!!!
     # - adding AntDistances removes false positives but has no effect on false negatives
     # - with MaxGap=5 there is a reduction in f.neg. and f. positives compared to MaxGap=10
     # - with MaxGap=3 there is a reduction in f.neg. and f. positives compared to MaxGap=5
@@ -542,14 +551,22 @@ for (REPLICATE in c("R3SP","R9SP"))
                                                                 reportFullTrajectories = T,
                                                                 matcher = matcherCapTypeAntDists)
         
-        ##  convert POSIX format to raw secs since 1.1.1970; brute force for match.closest with collisions
-        interacts_AUTO_REP_PER$interactions$int_start_secs  <- as.numeric(interacts_AUTO_REP_PER$interactions$start)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
-        interacts_AUTO_REP_PER$interactions$int_end_secs     <- as.numeric(interacts_AUTO_REP_PER$interactions$end) 
-        ## now round these decimal seconds to 3 d.p.
-        interacts_AUTO_REP_PER$interactions$int_start_secs   <- round(interacts_AUTO_REP_PER$interactions$int_start_secs,   N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
-        interacts_AUTO_REP_PER$interactions$int_end_secs     <- round(interacts_AUTO_REP_PER$interactions$int_end_secs, N_DECIMALS)
+        # ##  convert POSIX format to raw secs since 1.1.1970; brute force for match.closest with collisions
+        # interacts_AUTO_REP_PER$interactions$int_start_secs  <- as.numeric(interacts_AUTO_REP_PER$interactions$start)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
+        # interacts_AUTO_REP_PER$interactions$int_end_secs     <- as.numeric(interacts_AUTO_REP_PER$interactions$end) 
+        # ## now round these decimal seconds to 3 d.p.
+        # interacts_AUTO_REP_PER$interactions$int_start_secs   <- round(interacts_AUTO_REP_PER$interactions$int_start_secs,   N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
+        # interacts_AUTO_REP_PER$interactions$int_end_secs     <- round(interacts_AUTO_REP_PER$interactions$int_end_secs, N_DECIMALS)
+        
+        ## Assign frame number
+        interacts_AUTO_REP_PER$interactions["int_start_frame"]   <- lapply(interacts_AUTO_REP_PER$interactions["start"] , function(x) IF_frames$frame_num[match(x, IF_frames$time)])
+        interacts_AUTO_REP_PER$interactions["int_end_frame"]   <- lapply(interacts_AUTO_REP_PER$interactions["end"] , function(x) IF_frames$frame_num[match(x, IF_frames$time)])
         
         interacts_AUTO_REP_PER$interactions $pair <- paste(interacts_AUTO_REP_PER$interactions$ant1, interacts_AUTO_REP_PER$interactions$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
+        
+        interacts_AUTO_REP_PER$interactions$Duration <- interacts_AUTO_REP_PER$interactions$int_end_frame - interacts_AUTO_REP_PER$interactions$int_start_frame
+        hist(interacts_AUTO_REP_PER$interactions$Duration,breaks = 30)
+        nrow(interacts_AUTO_REP_PER$interactions)
         
         ## CHECK WHAT MAX_INTERACTION_GAP is doing - mean interval between successive interactions for a pair {A,B}
         PairInterInteractInterv <- data.frame(Pair=unique(interacts_AUTO_REP_PER$interactions$pair))  ## 1 element per pair
@@ -563,8 +580,8 @@ for (REPLICATE in c("R3SP","R9SP"))
           if (nrow(interacts_AUTO_REP_PER_PAIR)>2) ## need at least two inteactions to have an inter-interaction interval
             {
             ## measure inter-interaction interval
-            Inter_Interact_Interval <- interacts_AUTO_REP_PER_PAIR$int_end_secs   [2:nrow(interacts_AUTO_REP_PER_PAIR)] - 
-                                       interacts_AUTO_REP_PER_PAIR$int_start_secs [1:(nrow(interacts_AUTO_REP_PER_PAIR)-1)]
+            Inter_Interact_Interval <- interacts_AUTO_REP_PER_PAIR$int_end_frame   [2:nrow(interacts_AUTO_REP_PER_PAIR)] - 
+                                       interacts_AUTO_REP_PER_PAIR$int_start_frame [1:(nrow(interacts_AUTO_REP_PER_PAIR)-1)]
             ## get mean interval for this pair
             Mean_Interval <- mean(Inter_Interact_Interval, na.rm=T)
             Min_Interval <- min(Inter_Interact_Interval, na.rm=T)  ## SHOUL DNEVER BE LOWER THAN MAX_INTERACTION_GAP
@@ -589,19 +606,20 @@ for (REPLICATE in c("R3SP","R9SP"))
         
          ## TRUE POSITIVE RATE
          interacts_AUTO_REP_PER_OVERLAP_ALL <- NULL
+         Buffer <- 0
          for (I in 1:nrow(summary_MAN_REP_PER))  ## loop across each (time-aggregated) manually-labelled behaviour
             {
             ## Find start and end times of each *aggregated* **MANUALLY-LABELLED** interaction
-            Man_Start <- summary_MAN_REP_PER$int_start_secs [I] - Buffer
-            Man_Stop  <- summary_MAN_REP_PER$int_end_secs [I]  + Buffer
+            Man_Start <- summary_MAN_REP_PER$int_start_frame [I] - Buffer
+            Man_Stop  <- summary_MAN_REP_PER$int_end_frame [I]  + Buffer
             
             ## extract manual participants for the Ith interaction in the auto interactions
             Man_Pair <- summary_MAN_REP_PER$pair [I]
           
             
             ## look for the Ith MANUAL interaction in the AUTOMATIC list
-            interacts_AUTO_REP_PER_OVERLAP <- unique(interacts_AUTO_REP_PER$interactions [ interacts_AUTO_REP_PER$interactions$int_start_secs >= Man_Start &
-                                                                                           interacts_AUTO_REP_PER$interactions$int_end_secs   <= Man_Stop & 
+            interacts_AUTO_REP_PER_OVERLAP <- unique(interacts_AUTO_REP_PER$interactions [ interacts_AUTO_REP_PER$interactions$int_start_frame >= Man_Start &
+                                                                                           interacts_AUTO_REP_PER$interactions$int_end_frame   <= Man_Stop & 
                                                                                            interacts_AUTO_REP_PER$interactions $pair      == Man_Pair , ])
             
        
@@ -617,7 +635,7 @@ for (REPLICATE in c("R3SP","R9SP"))
             }#I
        
         ## what is the overlap in seconds?
-        interacts_AUTO_REP_PER_OVERLAP_ALL$Duration <- interacts_AUTO_REP_PER_OVERLAP_ALL$int_end_secs - interacts_AUTO_REP_PER_OVERLAP_ALL$int_start_secs
+        interacts_AUTO_REP_PER_OVERLAP_ALL$Duration <- interacts_AUTO_REP_PER_OVERLAP_ALL$int_end_frame - interacts_AUTO_REP_PER_OVERLAP_ALL$int_start_frame
         
         ## the observed overlap time
         Overlap <- sum(interacts_AUTO_REP_PER_OVERLAP_ALL$Duration)
@@ -632,8 +650,8 @@ for (REPLICATE in c("R3SP","R9SP"))
 #####################################################################################
         
         #oder dataframe to make it work with Fuzzy matcher which needs sorted dataframes
-        sum_MAN_REP_PER_ord <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_start_secs)),]
-        sum_MAN_REP_PER_ord1 <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_end_secs)),]
+        sum_MAN_REP_PER_ord <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_start_frame)),]
+        sum_MAN_REP_PER_ord1 <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_end_frame)),]
 
         TOLERANCE <- 20 #number of seconds of tolerance window, is like the previous buffer
         FUZZY_INT_MATCH <- TRUE
@@ -643,8 +661,8 @@ for (REPLICATE in c("R3SP","R9SP"))
           for (I in 1:nrow(summary_MAN_REP_PER))  ## loop across each (time-aggregated) manually-labelled behaviour
           {
             ## Find start and end times of each *aggregated* **MANUALLY-LABELLED** interaction
-            Man_Start <- summary_MAN_REP_PER$int_start_secs [I]
-            Man_Stop  <- summary_MAN_REP_PER$int_end_secs [I]
+            Man_Start <- summary_MAN_REP_PER$int_start_frame [I]
+            Man_Stop  <- summary_MAN_REP_PER$int_end_frame [I]
 
             ## extract manual participants for the Ith interaction in the auto interactions
             Man_Pair <- summary_MAN_REP_PER$pair [I]
@@ -652,12 +670,12 @@ for (REPLICATE in c("R3SP","R9SP"))
           ### TRUE POSITIVES
           # match.start and end
           #start
-          A_in_M_rows_start <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_start_secs,
-                                                                                         table = sum_MAN_REP_PER_ord$int_start_secs , tolerance = TOLERANCE)
+          A_in_M_rows_start <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_start_frame,
+                                                                                         table = sum_MAN_REP_PER_ord$int_start_frame , tolerance = TOLERANCE)
                                                                            & interacts_AUTO_REP_PER$interactions $pair == Man_Pair  , ])
           #end
-          A_in_M_rows_end   <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_end_secs,
-                                                                                         table = sum_MAN_REP_PER_ord1$int_end_secs , tolerance = TOLERANCE)
+          A_in_M_rows_end   <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_end_frame,
+                                                                                         table = sum_MAN_REP_PER_ord1$int_end_frame , tolerance = TOLERANCE)
                                                                            & interacts_AUTO_REP_PER$interactions $pair == Man_Pair  , ])
           #issue raise with times, drop them
           A_in_M_rows_end <-subset(A_in_M_rows_end, select = -c(start,end))
@@ -686,8 +704,8 @@ for (REPLICATE in c("R3SP","R9SP"))
  nrow(A_in_M_OVERLAP_ALL) 
  nrow(summary_MAN_REP_PER)
  
- summary_MAN_REP_PER$Duration <- summary_MAN_REP_PER$int_end_secs - summary_MAN_REP_PER$int_start_secs
- A_in_M_OVERLAP_ALL$Duration <- A_in_M_OVERLAP_ALL$int_end_secs - A_in_M_OVERLAP_ALL$int_start_secs
+ summary_MAN_REP_PER$Duration <- summary_MAN_REP_PER$int_end_frame - summary_MAN_REP_PER$int_start_frame
+ A_in_M_OVERLAP_ALL$Duration <- A_in_M_OVERLAP_ALL$int_end_frame - A_in_M_OVERLAP_ALL$int_start_frame
  
  min(summary_MAN_REP_PER$Duration)
  min(A_in_M_OVERLAP_ALL$Duration)
@@ -706,14 +724,14 @@ for (REPLICATE in c("R3SP","R9SP"))
 
         #plot the interactions by pair as timeline
         #generate 1 plot per every iteration 
-        summary_MAN_REP_PER_sub <- summary_MAN_REP_PER[,c("REPLICATE","PERIOD","pair","int_start_secs","int_end_secs")] ; summary_MAN_REP_PER_sub$flag <- "manual"
-        interacts_AUTO_REP_PER_sub <- A_in_M_OVERLAP_ALL_trim[,c("pair","int_start_secs","int_end_secs")] ; interacts_AUTO_REP_PER_sub$flag <- "auto"
+        summary_MAN_REP_PER_sub <- summary_MAN_REP_PER[,c("REPLICATE","PERIOD","pair","int_start_frame","int_end_frame")] ; summary_MAN_REP_PER_sub$flag <- "manual"
+        interacts_AUTO_REP_PER_sub <- A_in_M_OVERLAP_ALL_trim[,c("pair","int_start_frame","int_end_frame")] ; interacts_AUTO_REP_PER_sub$flag <- "auto"
         AUTO_MAN_REP_PER <- dplyr::bind_rows(summary_MAN_REP_PER_sub,interacts_AUTO_REP_PER_sub) #use bind_rows to keep rep info https://stackoverflow.com/questions/42887217/difference-between-rbind-and-bind-rows-in-r
-        # AUTO_MAN_REP_PER$int_end_secs <- AUTO_MAN_REP_PER$int_end_secs-min(AUTO_MAN_REP_PER$int_start_secs)
-        # AUTO_MAN_REP_PER$int_start_secs <- AUTO_MAN_REP_PER$int_start_secs-min(AUTO_MAN_REP_PER$int_start_secs)
+        # AUTO_MAN_REP_PER$int_end_frame <- AUTO_MAN_REP_PER$int_end_frame-min(AUTO_MAN_REP_PER$int_start_frame)
+        # AUTO_MAN_REP_PER$int_start_frame <- AUTO_MAN_REP_PER$int_start_frame-min(AUTO_MAN_REP_PER$int_start_frame)
         
         # ggplot(summary_MAN_REP_PER) +
-        #   geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs)) +#,
+        #   geom_linerange(aes(y = pair, xmin = int_start_frame, xmax = int_end_frame)) +#,
         #   labs(title = "Grooming by pair",
         #        subtitle = paste(unique(REPLICATE),unique(PERIOD))) +
         #   theme_minimal()
@@ -722,7 +740,7 @@ for (REPLICATE in c("R3SP","R9SP"))
         #ADD CAPSULES SIZE USED BY MODIFING THE OUTPUT OF CapsuleDef
         #CapsuleDef
         ggplot(AUTO_MAN_REP_PER) +
-          geom_linerange(aes(y = pair, xmin = int_start_secs, xmax = int_end_secs,colour = flag),size=3,alpha = 0.5) +
+          geom_linerange(aes(y = pair, xmin = int_start_frame, xmax = int_end_frame,colour = flag),size=3,alpha = 0.5) +
           theme(panel.background = element_rect(fill = 'white', colour = 'black')) +
           labs(title = paste("Grooming by pair" ,unique(REPLICATE),unique(PERIOD),"- MAN vs AUTO"),
                subtitle = paste("Nrows auto detected:" ,NROW(summary_MAN_REP_PER),"Nrows manual annotated:" ,NROW(A_in_M_OVERLAP_ALL_trim),"\nMaxIntGap",MAX_INTERACTION_GAP, "s" )) +
@@ -758,16 +776,15 @@ for (REPLICATE in c("R3SP","R9SP"))
     # collisions_frames$UNIX_time <- as.POSIXct(collisions_frames$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
     
     ## for reliable matching with the events in interactions, above (don't trust POSIX times!)
-    collisions_frames$UNIX_secs <- round(as.numeric(collisions_frames$time),N_DECIMALS)
-    
+    #collisions_frames$UNIX_secs <- round(as.numeric(collisions_frames$time),N_DECIMALS)
+
     ###let's view the first few lines of collisions
     head(collisions_frames) 
     head(collisions_coll) ###columns giving the ID of the two colliding ants, the zone where they are, the types of collisions (all types), and the frames_row_index referring to which frame that collision was detected in (matches the list indices in collisions_positions)
     head(collisions_positions)
-    ?fmQueryCollideFrames
     #use rownames of collision_frames to filter frames of collisions according to collisions-coll (which acts as a Look Up Table)
-    #add frames_row_index
-    collisions_frames$frames_row_index <- rownames(collisions_frames)
+    #rename frame_num for the merging
+    collisions_frames$frames_row_index <- collisions_frames$frame_num
     
     #merge collisions_frame and coll_coll based on index
     collisions_merge <- merge(collisions_coll, collisions_frames[,-match(c("height","width"),colnames(collisions_frames))], by="frames_row_index")
