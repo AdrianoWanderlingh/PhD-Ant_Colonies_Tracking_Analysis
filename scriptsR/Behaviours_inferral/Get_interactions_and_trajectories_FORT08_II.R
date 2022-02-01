@@ -1,13 +1,12 @@
 ##########################################################################################
 ############## THIS VERSION IS FORT 0.8.1 COMPATIBLE #####################################
 ##########################################################################################
-
 #this should be the version of the script maintained for long term use.
+#"https://formicidae-tracker.github.io/myrmidon/docs/latest/api/index.html"
 
 rm(list=(c("e")))
 gc()
 rm(list=ls())
-
 
 ## custom arrows function 
 ## quiver plot for vectors
@@ -34,9 +33,6 @@ else {vector()}}
 #change system of coords
 Orientation.diff        <- function(x)  { c( x[-nrow(x), "angle"] - x[-1, "angle"], NA)}
 
-
-#"https://formicidae-tracker.github.io/myrmidon/docs/latest/api/index.html"
-
 ######load necessary libraries
 library(adehabitatHR) ####for home range and trajectory analyses
 library(FortMyrmidon) ####R bindings
@@ -53,28 +49,6 @@ library(nanotime)
 library(MALDIquant)
 library(stringr)
 library(data.table)
-
-# ## TEMPORARY - Hard code plotrix function
-# std.error <- function (x, na.rm) 
-# {
-#   vn <- function(x) return(sum(!is.na(x)))
-#   dimx <- dim(x)
-#   if (is.null(dimx)) {
-#     stderr <- sd(x, na.rm = TRUE)
-#     vnx <- vn(x)
-#   }
-#   else {
-#     if (is.data.frame(x)) {
-#       vnx <- unlist(sapply(x, vn))
-#       stderr <- unlist(sapply(x, sd, na.rm = TRUE))
-#     }
-#     else {
-#       vnx <- unlist(apply(x, 2, vn))
-#       stderr <- unlist(apply(x, 2, sd, na.rm = TRUE))
-#     }
-#   }
-#   return(stderr/sqrt(vnx))
-# }
 
 ## PARAMETERS
 USER            <- "Adriano"
@@ -102,15 +76,17 @@ SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
 
 #load only the training dataset
 annotations <- read.csv(paste(DATADIR,"/annotations_TRAINING_DATASET.csv",sep = ""), sep = ",")
+#transform zulu time in GMT
 annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
 annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-
+#assign time in sec 
+annotations$T_start_sec <- round(as.numeric(annotations$T_start_UNIX),N_DECIMALS)
+annotations$T_stop_sec <- round(as.numeric(annotations$T_stop_UNIX),N_DECIMALS)
 
 ### start fresh
 interaction_MANUAL    <- NULL
 summary_MANUAL        <- NULL
 Sensitivity           <- data.frame()
-
 
 for (REPLICATE in c("R3SP","R9SP")) 
   {
@@ -143,129 +119,67 @@ for (REPLICATE in c("R3SP","R9SP"))
     #time_stop  <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + (34*60)  ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
     time_stop  <- fmTimeCreate(max(annotations$T_stop_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
     
-    
     ###############################################################################
     ###### IDENTIFY FRAMES ########################################################
     ###############################################################################
     IdentifyFrames      <- fmQueryIdentifyFrames(e,start=time_start, end=time_stop)
     IF_frames           <- IdentifyFrames$frames
-    #Assign a frame to each time since start and use it as baseline for all matching and computation
-    
+    # Assign a frame to each time since start and use it as baseline for all matching and computation
     IF_frames$frame_num <- seq.int(nrow(IF_frames))
     
+    # assign a time in sec to match annotation time (UNIX hard to use for class mismatch)
+    IF_frames$time_sec <- round(as.numeric(IF_frames$time),N_DECIMALS)
+ 
+    #assign frame numbering to annotations 
+    annotations$frame_start <- match.closest(x = annotations$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
+    annotations$frame_stop  <- match.closest(x = annotations$T_stop_sec, table = IF_frames$time_sec, tolerance = 0.05)
+    
+    # Creating a new zeroed-time since the start of the exp by  summing the cumulated differences between each pair of consecutive frames (to account for the time mismatch)
+    IF_frames$cum_diff <- c(0, with(IF_frames, diff(time)))
+    IF_frames$cum_diff <- cumsum(IF_frames$cum_diff)
+
     ###############################################################################
     ###### READING COLLISIONS #####################################################
     ###############################################################################
-    
     collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)   ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
     collisions$frames$frame_num <- seq.int(nrow(IF_frames))
-    
-    
-    # time_X  <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + 3  ) ###experiment start time ####arbitrary time in the correct format + (N mins * N seconds)
-    # IdentifyFrames <- fmQueryIdentifyFrames(e, start=time_start, end=time_X)
-    # ?fmQueryIdentifyFrames
-    
-    
-    # 
-    # ####In the example above we have not specified a matcher, i.e. all intersections between all types of capsules have been considered
-    # ####But in many cases we will be interested in a specific type of interactions. 
-    # #### For example: we may be interested only in interactions involving the intersection between body shapes
-    # ###First we need to figure out the index of the shape corresponding to body shape
-    # capsules  <- antShapeTypeNames(e)
-    # body_id <- capsules[which(capsules$name=="Body"),"typeID"]
-    # ###Then we will specify a matcher in which we are interested in interactions involving capsule 1 for both anta: fmMatcherInteractionType(body_id,body_id)
-    # ##for more info, type:
-    # ?fmMatcherInteractionType
-    # 
-    # ##Let's re-run interactions with that matcher:
-    # interactions_body       <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherInteractionType(body_id,body_id))
-    # summaryTrajectory_body      <- interactions_body$summaryTrajectory  
-    # trajectories_body            <- interactions_body$trajectories       
-    # interactions_body            <- interactions_body$interactions     
-    # 
-    # ###we could also be interested in antennations, i.e. interactions where the antenna of one ant touches the body of the others
-    # antenna_id <- capsules[which(capsules$name=="Antenna"),"typeID"]
-    # interactions_antennations            <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherInteractionType(body_id,antenna_id))
-    # summaryTrajectory_antennations       <- interactions_antennations$summaryTrajectory  
-    # trajectories_antennations            <- interactions_antennations$trajectories       
-    # interactions_antennations            <- interactions_antennations$interactions     
-    # 
-    # 
-    # ###we can also combine several matchers 
-    # ###for example, if we want interactions that involve either body/body or antenna/body interasections:
-    # ? fmMatcherOr 
-    # interactions_body_or_antennations           <- fmQueryComputeAntInteractions(e,start=time_start, end=time_stop,maximumGap =fmSecond(10),reportTrajectories = T,matcher = fmMatcherOr(list(fmMatcherInteractionType(body_id,body_id),fmMatcherInteractionType(body_id,antenna_id))))
-    # summaryTrajectory_body_or_antennations      <- interactions_body_or_antennations$summaryTrajectory  
-    # trajectories_body_or_antennations           <- interactions_body_or_antennations$trajectories       
-    # interactions_body_or_antennations           <- interactions_body_or_antennations$interactions     
-    # nrow(interactions_body_or_antennations) ###49886 antennations or body/body contacts - indicating that most bioy/body interactions were included within the antennations only
-    # 
-    # 
-    # ###for the rest, let's focus on the body-body interactions - for simplicity, I will rename them without suffix
-    # summaryTrajectory    <- summaryTrajectory_body
-    # trajectories           <- trajectories_body
-    # interactions           <- interactions_body
     
     ###############################################################################
     ###### READING TRAJECTORIES ###################################################
     ###############################################################################
-    ?fmQueryComputeAntTrajectories
     #COMPUTE TRAJECTORIES  
     positions <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = TRUE) #set true to obtain the zone of the ant
     positions$trajectories_summary$frame_num <- NA
     #assign starting frame number
     positions$trajectories_summary["frame_num"] <- lapply(positions$trajectories_summary["start"], function(x) IF_frames$frame_num[match(x, IF_frames$time)])
-
-    ###WARNING!!!!!
-    ###in this particular example the values in antID are consecutive (1 to 22), and so positions$trajectories[[1]] will correspond to the trajectory of ant 1
-    ### but imagine you had to delete an ant in fort-studio and the antID list "jumped" from 10 to 12 (so it would be 1,...10 then 12...23)
-    ### then the 22nd object of trajectory list would not be the trajectory of ant 22 but of ant 23. That is not fool proof, but very risky!
-    ##so what I suggest you do immediately after computing your positions object:
+    
+    ## immediately after computing your positions object:
     positions$trajectories_summary$antID_str <- paste("ant_",positions$trajectories_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
     names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
-    ##and now we can extract each ant trajectory using the character ID stored in antID_str - it's much safer!
-    
+
     trajectories_summary <- positions$trajectories_summary
     
-    #generate reproducible example
-    #dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
-    #positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
-  
-    # because time gaps are not fixed (not exactly 0.125) every x frames (~800/1000) there is a time mismatch at the third decimal place
-    #[787]  98.250995  98.375997  98.500998  98.625999  *98.751000*  98.876002
-    
-    ## Add ant_x names and times to the positions to convert from time since the start of the experiment, to UNIX time
-    for (A in positions$trajectories_summary$antID)
-      {
-      AntID <- paste("ant_",A,sep="") 
-      First_Obs_Time <- as.POSIXct(positions$trajectories_summary$start [which(positions$trajectories_summary$antID_str==AntID)], tz="GMT",origin = "1970-01-01 00:00:00") ## find the first time after the user defined time_start_ISO that this ant was seen
-      print(paste("Adding first obs time", First_Obs_Time, "to the time-zeroed trajectory of ant", AntID))
-      positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin = "1970-01-01 00:00:00")  + First_Obs_Time ##convert back to UNIX time  
-    }
-    
-    
     ## Add ant_x names and times to the positions to convert from FRAME since the start of the experiment, to FRAMES
-    ##############################Zeroed frame#######################################################
-    
     for (A in positions$trajectories_summary$antID)
     {
-      AntID <- paste("ant_",A,sep="") 
-      First_Obs_Frame <- positions$trajectories_summary$frame_num [which(positions$trajectories_summary$antID_str==AntID)] ## find the first time after the user defined time_start_ISO that this ant was seen
+      AntID                         <- paste("ant_",A,sep="") 
+      First_Obs_Frame               <- positions$trajectories_summary$frame_num [which(positions$trajectories_summary$antID_str==AntID)]
+      IF_frames$new_zero_diff  <- IF_frames$cum_diff - IF_frames[IF_frames$frame_num==First_Obs_Frame,"cum_diff"] #subtracting the $frames zeroed-time  corresponding to the $start time from the zeroed-time column itself (New-Zeroed-time)
       print(paste("Adding first obs FRAME", First_Obs_Frame, "to the time-zeroed trajectory of ant", AntID))
-      
-      positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin = "1970-01-01 00:00:00")  + First_Obs_Time ##convert back to UNIX time  
+      #assign corresponding frame N when the New-Zeroed-time and $time correspond, closest.match 0.05 (well inside the 0.125 frame length in sec)
+      positions$trajectories[[AntID]]$frame <- match.closest(x = positions$trajectories[[AntID]]$time, table = IF_frames$new_zero_diff, tolerance = 0.05)
+      IF_frames$new_zero_diff <- NA
     }
-   
     
-    # Hi everyone, is there any known way of obtaining the frame number associated with each ant trajectory in fmQueryComputeAntTrajectories$trajectories instead of just the trajectory $time (the offset from the trajectory $start time in seconds) in R? The only convoluted way of doing this that we can think of involves:
-    #   Generating a frame N in fmQueryIdentifyFrames$frames that corresponds to the row number
-    # Creating a new zeroed-time since the start of the exp by  summing the cumulated differences between each pair of consecutive frames (to account for the time mismatch)
-    # looping through each ant looking at the $start time in $trajectories_summary, then subtracting the $frames zeroed-time  corresponding to the $start time from the zeroed-time column itself (New-Zeroed-time) and assigning the corresponding frame N when the New-Zeroed-time and $time correspond.
-    # 
-    # 
-    
-    #check that milliseconds are preserved after adding the ant's time_start_ISO #positions$trajectories[["ant_27"]][[2,"UNIX_time"]]-positions$trajectories[["ant_27"]][[1,"UNIX_time"]]
-    
+    # ## Add ant_x names and times to the positions to convert from time since the start of the experiment, to UNIX time
+    # for (A in positions$trajectories_summary$antID)
+    #   {
+    #   AntID <- paste("ant_",A,sep="") 
+    #   First_Obs_Time <- as.POSIXct(positions$trajectories_summary$start [which(positions$trajectories_summary$antID_str==AntID)], tz="GMT",origin = "1970-01-01 00:00:00") ## find the first time after the user defined time_start_ISO that this ant was seen
+    #   print(paste("Adding first obs time", First_Obs_Time, "to the time-zeroed trajectory of ant", AntID))
+    #   positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin = "1970-01-01 00:00:00")  + First_Obs_Time ##convert back to UNIX time  
+    # }
+
     ###############################################################################
     ###### extract ant trajectories from hand-annotated data ######################
     ###############################################################################
@@ -284,8 +198,8 @@ for (REPLICATE in c("R3SP","R9SP"))
         ACT <- annot_BEH$Actor[ROW]
         REC <- annot_BEH$Receiver[ROW]
      
-        ENC_TIME_start <- annot_BEH$T_start_UNIX[ROW]
-        ENC_TIME_stop  <- annot_BEH$T_stop_UNIX[ROW]
+        ENC_FRAME_start <- annot_BEH$frame_start[ROW]
+        ENC_FRAME_stop  <- annot_BEH$frame_stop[ROW]
         
         Act_Name <- paste("ant",ACT,sep="_")
         Rec_Name <- paste("ant",REC,sep="_")
@@ -295,13 +209,13 @@ for (REPLICATE in c("R3SP","R9SP"))
         traj_ACT <-  positions$trajectories[[Act_Name]]
         traj_REC <-  positions$trajectories[[Rec_Name]]
         
-        ##  convert POSIX format to raw secs since 1.1.1970; brute force for match.closest with collisions
-        traj_ACT$UNIX_secs <- as.numeric(traj_ACT$UNIX_time)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
-        traj_REC$UNIX_secs <- as.numeric(traj_REC$UNIX_time) 
-        ## now round these decimal seconds to 3 d.p.
-        traj_ACT$UNIX_secs <- round(traj_ACT$UNIX_secs,N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
-        traj_REC$UNIX_secs <- round(traj_REC$UNIX_secs,N_DECIMALS)
-        
+        # ##  convert POSIX format to raw secs since 1.1.1970; brute force for match.closest with collisions
+        # traj_ACT$UNIX_secs <- as.numeric(traj_ACT$UNIX_time)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
+        # traj_REC$UNIX_secs <- as.numeric(traj_REC$UNIX_time) 
+        # ## now round these decimal seconds to 3 d.p.
+        # traj_ACT$UNIX_secs <- round(traj_ACT$UNIX_secs,N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
+        # traj_REC$UNIX_secs <- round(traj_REC$UNIX_secs,N_DECIMALS)
+        # 
         ## remove 'time' column as it is confusing - it's not a common time
         traj_ACT$time <- NULL
         traj_REC$time <- NULL
@@ -311,8 +225,8 @@ for (REPLICATE in c("R3SP","R9SP"))
         # points(y ~ x, traj_REC, pch=".", col=rgb(1,0,0,0.3,1))
          
         ## subset the trajectories of both actor & receiver using the start & end times
-        traj_ACT <- traj_ACT [ which(traj_ACT$UNIX_time >= ENC_TIME_start & traj_ACT$UNIX_time <= ENC_TIME_stop),]
-        traj_REC <- traj_REC [ which(traj_REC$UNIX_time >= ENC_TIME_start & traj_REC$UNIX_time <= ENC_TIME_stop),]
+        traj_ACT <- traj_ACT [ which(traj_ACT$frame >= ENC_FRAME_start & traj_ACT$frame <= ENC_FRAME_stop),]
+        traj_REC <- traj_REC [ which(traj_REC$frame >= ENC_FRAME_start & traj_REC$frame <= ENC_FRAME_stop),]
         
         ## For some reason, the 4th decimal place of the UNIX times (thousandths of a sec) for two individuals seen in a given frame are not identical; cbind(format(traj_ACT$UNIX_time, "%Y-%m-%d %H:%M:%OS4"), format(traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS4"))
         ## so eliminate the 4th-nth decimal place ; retains accuract to a thousandth-of-a-second
@@ -320,8 +234,7 @@ for (REPLICATE in c("R3SP","R9SP"))
         # traj_REC$UNIX_time <- format(traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
         # print(table(substr(x =  format( traj_ACT$UNIX_time, "%OS6"), start = 7, stop = 7)))
         # print(table(substr(x =  format( traj_REC$UNIX_time, "%OS6"), start = 7, stop = 7)))
-        
-      #   
+
       #   ## .. and convert back to POSIX format, durr
       #   traj_ACT$UNIX_time <- as.POSIXct(traj_ACT$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
       #   traj_REC$UNIX_time <- as.POSIXct(traj_REC$UNIX_time , tz = "GMT", origin = "1970-01-01 00:00:00")
@@ -357,8 +270,7 @@ for (REPLICATE in c("R3SP","R9SP"))
         
         
         #check start time correspondance
-        # print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_TIME_start, "traj_start", min(traj_ACT$UNIX_time,na.rm = TRUE)))
-        # 
+        #print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_FRAME_start, "traj_start", min(traj_ACT$frame,na.rm = TRUE)))
         # # ## Plot trajectories of both actor & receiver, show on the same panel
         Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
         plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
@@ -367,7 +279,6 @@ for (REPLICATE in c("R3SP","R9SP"))
         #plot angles of both actor & receiver
         #plot(angle ~ time, traj_ACT, col=rgb(0,0,1,0.3,1), main=paste("angle_rad",BEH,", Act:",ACT, "Rec:",REC, ENC_TIME_start, "-", ENC_TIME_stop)) #,xlim = c(0,500),ylim = c(0,2*pi))
         #points(angle ~ time, traj_REC, col=rgb(1,0,0,0.3,1))
-        
         
         ##################
         ## INDIVIDUAL TRAJECTORY MEASURES
@@ -504,7 +415,7 @@ for (REPLICATE in c("R3SP","R9SP"))
      
         #merge trajectories matching by time
         # traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("UNIX_time"))  ## CAREFUL NOT TO INCLUDE 'time' AS IF THE FIRST OBSERVATION TIME OF ACT & REC IS NOT IDENTICAL, THEN MERGE WILL TREAT THE SAME UNIX TIME AS DIFFERENT ...
-        traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("UNIX_secs"))  ## 21 Jan 2022: Changed to sue raw unix seconds to allow simpler matching below (posix formats cause problems with the matching...)
+        traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("frame"))  ## 21 Jan 2022: Changed to sue raw unix seconds to allow simpler matching below (posix formats cause problems with the matching...)
         
         
         ## merge drops the column attributes - add back the POSIX time format 
@@ -512,13 +423,8 @@ for (REPLICATE in c("R3SP","R9SP"))
         
         ## measure the length *in seconds* of the interaction between ACT & REC
         # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
-        int_start_secs  <- min(traj_BOTH$UNIX_secs, na.rm=T)
-        int_end_secs   <- max(traj_BOTH$UNIX_secs, na.rm=T)
-        interaction_length_secs <-  max(traj_BOTH$UNIX_secs, na.rm=T) - min(traj_BOTH$UNIX_secs, na.rm=T)  ## 21 Jan 2022
+        interaction_length_secs <-  (max(traj_BOTH$frame, na.rm=T) - min(traj_BOTH$frame, na.rm=T))/8  ## 21 Jan 2022
         
-        ## CAREFUL - this is wrong, as traj_BOTH does NOT CONTAIN blank rows for frames whenneither Act or REC were seen - need to use interaction_length_secs
-        # prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x))) / length(traj_BOTH$ACT.x)
-        # prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x))) / length(traj_BOTH$REC.x)
         prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
         prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x)) / 8)  / interaction_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
        
@@ -1315,6 +1221,7 @@ dev.off()
 # #rad to deg
 # rad * 180/pi
 
+  
 
 #dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
 #positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
