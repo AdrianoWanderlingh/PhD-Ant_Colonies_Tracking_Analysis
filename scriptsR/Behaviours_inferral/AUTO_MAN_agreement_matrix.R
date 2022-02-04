@@ -16,9 +16,9 @@ ids_pairs <- subset(allpairs,select = "pair")
 
 
 # # initialize interaction matrix each rows represent a binary array, one for each ids pairs, with 1s on the interactions and 0s elsewhere
-int_mat_manual <- matrix(0L, nrow = dim(ids_pairs)[1], ncol = (dim(IF_frames)[1] + 2))
+int_mat_manual <- matrix(0L, nrow = dim(ids_pairs)[1], ncol = (dim(IF_frames)[1] ))
 rownames(int_mat_manual) <- ids_pairs$pair
-colnames(int_mat_manual) <- c(min(IF_frames$frame_num)-1, IF_frames$frame_num,max(IF_frames$frame_num)+1)
+colnames(int_mat_manual) <- c(IF_frames$frame_num)
 
 int_mat_auto <- int_mat_manual#matrix(0L, nrow = dim(ids_pairs)[1], ncol = (dim(IF_frames)[1] + 2))
 # rownames(int_mat_auto) <- ids_pairs$pair
@@ -31,13 +31,13 @@ int_mat_auto <- int_mat_manual#matrix(0L, nrow = dim(ids_pairs)[1], ncol = (dim(
 for (i in 1:nrow(summary_MAN_REP_PER))
 {
   PAIR <- summary_MAN_REP_PER$pair[i]
-  int_mat_manual[PAIR,] <- int_mat_manual[PAIR,] + c(rep(0,( summary_MAN_REP_PER$int_start_frame[i])),
+  int_mat_manual[PAIR,] <- int_mat_manual[PAIR,] + c(rep(0,( summary_MAN_REP_PER$int_start_frame[i]-1)),
                                                      rep(1,(summary_MAN_REP_PER$int_end_frame[i]) - summary_MAN_REP_PER$int_start_frame[i] + 1),
-                                                     rep(0,(length(IF_frames$frame_num) - summary_MAN_REP_PER$int_end_frame[i] + 1)))
+                                                     rep(0,(length(IF_frames$frame_num) - summary_MAN_REP_PER$int_end_frame[i])))
 }
 
 
-## ADRIANO TO CHECK WHY THESE ARE NOT EQUAL:
+## ADRIANO TO CHECK WHY THESE ARE NOT EQUAL: IT IS RIGHT TO NOT BE EQUAL BECAUSE....
 sum(summary_MAN_REP_PER$interaction_length_secs*8)
 sum(int_mat_manual)
 
@@ -52,10 +52,14 @@ sum(int_mat_manual)
 for (i in 1:nrow(interacts_AUTO_REP_PER$interactions))
   {  
   PAIR <- interacts_AUTO_REP_PER$interactions$pair[i]
-  int_mat_auto[PAIR,] <- int_mat_auto[PAIR,] + c(rep(0,( interacts_AUTO_REP_PER$interactions$int_start_frame[i])),
+  int_mat_auto[PAIR,] <- int_mat_auto[PAIR,] + c(rep(0,( interacts_AUTO_REP_PER$interactions$int_start_frame[i]-1)),
                                                      rep(1,(interacts_AUTO_REP_PER$interactions$int_end_frame[i]) - interacts_AUTO_REP_PER$interactions$int_start_frame[i] + 1),
-                                                     rep(0,(length(IF_frames$frame_num) - interacts_AUTO_REP_PER$interactions$int_end_frame[i] + 1)))
+                                                     rep(0,(length(IF_frames$frame_num) - interacts_AUTO_REP_PER$interactions$int_end_frame[i])))
   }
+
+
+sum(interacts_AUTO_REP_PER$interactions$Duration) #already in frames
+sum(int_mat_auto)
 
 # int_mat_manual_sparse <- as(int_mat_manual, "dgRMatrix")  # compressed sparse row CSR. CSR is faster for retrieving rows
 # int_mat_auto_sparse <- as(int_mat_auto, "dgRMatrix")
@@ -96,7 +100,7 @@ interacts_AUTO_REP_PER$interactions$Hit [which(abs(interacts_AUTO_REP_PER$intera
 
 ## visualise the cutoffs
 par(mfrow=c(3,1))
-hist(interacts_AUTO_REP_PER$interactions$disagreement,                                                    main="All disagreements", breaks=seq(-1,1,0.05)); abline(v=0, lty=2)
+hist(log(interacts_AUTO_REP_PER$interactions$disagreement),                                                    main="All disagreements (log)", breaks=seq(-1,1,0.05)); abline(v=0, lty=2)
 hist(interacts_AUTO_REP_PER$interactions$disagreement[which(interacts_AUTO_REP_PER$interactions$Hit==1)], main="hits",              breaks=seq(-1,1,0.05), col=2, xlim=c(-1,1)); abline(v=0, lty=2)
 hist(interacts_AUTO_REP_PER$interactions$disagreement[which(interacts_AUTO_REP_PER$interactions$Hit==0)], main="misses",            breaks=seq(-1,1,0.05), col=4, xlim=c(-1,1)); abline(v=0, lty=2)
 
