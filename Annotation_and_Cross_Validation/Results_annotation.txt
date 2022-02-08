@@ -1,0 +1,35 @@
+NOTES:
+- exclude 1-2 secs SelfGrooming
+- check all Aggreession events
+- many FrontRest Events are antennation events
+- TRUNCATE all events over 2mins
+- Remove queen from counts (a mislabeled event of SG was Queen SG)
+- SelfGrooming, of course, does not exclude capsule overlap
+
+> Counts_25percent
+   Behaviour IsEqual Tot.cases prop_correct
+1          A       3         4    0.7500000
+2         CB       3         3    1.0000000
+3         CR      17        17    1.0000000
+4         FR      21        26    0.8076923
+5          G      29        29    1.0000000
+6         GQ       1         1    1.0000000
+7         SG     254       255    0.9960784
+8          T       9        11    0.8181818 
+9         TB       7         7    1.0000000
+10        TQ       1         1    1.0000000
+
+
+
+> annotation_val[which(is.na(annotation_val$IsEqual)),]
+       X Behaviour Actor Receiver Focal          T_start           T_stop period treatment_rep  duration RowID BEH_AW                                           notes IsEqual
+51  1660        SG    27       31    27 27/04/2021 11:11 27/04/2021 11:12   post          R9SP  5.750054  1360    ANT                             ANTENNATION EXCLUDE    <NA>
+80   715         G    23        8    23 16/03/2021 12:37 16/03/2021 12:37   post          R3SP 11.125133   581   <NA>                         NOT CLEAR â€“ ELIMINATE    <NA>
+144 1577        FR    19       31    19 27/04/2021 11:22 27/04/2021 11:22   post          R9SP  5.124931  1300    ANT                             ANTENNATION EXCLUDE    <NA>
+150  470         A    18        7    18 16/03/2021 12:23 16/03/2021 12:23   post          R3SP  3.500036   379 A OR G UNSURE, should be discarded. Check all A events    <NA>
+236 1507         T    11       22    11 27/04/2021 11:23 27/04/2021 11:24   post          R9SP 63.000597  1235     FR                                                    <NA>
+281 1142        FR     6       26     6 27/04/2021 11:07 27/04/2021 11:07   post          R9SP  6.125072   944    ANT                             ANTENNATION EXCLUDE    <NA>
+307  582        FR     4       28     4 16/03/2021 12:30 16/03/2021 12:30   post          R3SP  9.750103   476      T                                                    <NA>
+316  324        FR     3        6     3 16/03/2021 12:25 16/03/2021 12:25   post          R3SP 13.875030   287      T                                                    <NA>
+338  574        FR     2       24     2 16/03/2021 12:38 16/03/2021 12:38   post          R3SP 10.875096   469      T                                                    <NA>
+354  764         T     1        6     1 26/04/2021 11:10 26/04/2021 11:11    pre          R9SP 74.500298   618     TQ                                                    <NA>
