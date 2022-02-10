@@ -135,6 +135,7 @@ for(BH in unique(interacts_MAN_REP_PER$BEH))
     
   }
 }
+dev.off()
 
 ## if the missing rows occur when the distance between Act & Rec is large, check:
 interacts_MAN_REP_PER$types_present_absent <- "absent"
@@ -165,3 +166,69 @@ boxplot(straightline_dist_px ~ types_present_absent, interacts_MAN_REP_PER)
 # 
 # tail(format(collisions_merge_SELECTED$UNIX_secs, "%Y-%m-%d %H:%M:%OS6"),10)
 # tail(format(interactio_data_SELECTED$UNIX_secs, "%Y-%m-%d %H:%M:%OS6"),10)
+
+
+
+################# SCRAPS ##########################
+
+# #later on, deparse the capsule information to add it as an individual-linked row value in the interaction data.
+# #the structure for a 3-1, 1-1, could look like this:
+# capsules_example <- read.table(textConnection('
+# time  ACT_caps1  ACT_caps2  ACT_caps2  REC_caps1  REC_caps2 REC_caps3
+# 21211 1 0 1 2 0 0
+# 21212 1 0 1 2 0 0
+# '), header=TRUE)
+# #not very convinced that it would work, maybe is better to avoid full deparsing into multiple columns
+# 
+# some workaround has to be done to ensure that the ant (ACT-REC) is assigned the right capsule from the pair
+#unlist(strsplit(interacts_AUTO_REP_PER$types[4],","))[2]
+
+
+
+#----------------------------------------------------------------
+
+#FIND HOW CAPSULES ARE SPATIALLY ARRANGED COMPARED TO TAG POSITION TO MAKE POSSIBLE TO CALCULATE distance between interacting ants's capsules AND use that as a variable
+
+#THE FOLLOWING BIT OF CODE COMES FROM THE AUTOMATIC ANGLE DETERMINATION SCRIPT. IT HELPS TO UNDERSTAND HOW TO ACCESS
+# CAPSULE PARTS. USE BITS OF IT TO GET CAPSULE GEOMETRIES, THEIR POSITION IN SPACE AND TO CALCULATE DISTANCE AMONG 
+# VARIOUS CAPSULES DURING INTERACTIONS (IE. HEAD-ABDOMEN DISTANCE DURING GROOMING)
+# 
+# oriented_metadata <- NULL
+# capsule_list <- list()
+# #for (myrmidon_file in data_list){
+# experiment_name <- unlist(strsplit(MyrmidonCapsuleFile,split="/"))[length(unlist(strsplit(MyrmidonCapsuleFile,split="/")))]
+# oriented_data <- fmExperimentOpen(MyrmidonCapsuleFile) #this step is already performed at the beginning
+# oriented_ants <- oriented_data$ants
+# capsule_names <- oriented_data$antShapeTypeNames
+# for (ant in oriented_ants){
+#   ###extract ant length and capsules
+#   #ant_length_px <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_px)
+#   capsules      <- ant$capsules
+#   for (caps in 1:length(capsules)){
+#     capsule_name  <- capsule_names[[capsules[[caps]]$type]]
+#     capsule_coord <- capsules[[caps]]$capsule
+#     capsule_info <- data.frame(experiment = experiment_name,
+#                                antID      = ant$ID,
+#                                c1x = capsule_coord$c1[1],
+#                                c1y = capsule_coord$c1[2],
+#                                c2x = capsule_coord$c2[1],
+#                                c2y = capsule_coord$c2[2],
+#                                r1  = capsule_coord$r1[1],
+#                                r2   = capsule_coord$r2[1]
+#     )
+#     
+#     if (!capsule_name %in%names(capsule_list)){ ###if this is the first time we encounter this capsule, add it to capsule list...
+#       capsule_list <- c(capsule_list,list(capsule_info)) 
+#       if(length(names(capsule_list))==0){
+#         names(capsule_list) <- capsule_name
+#       }else{
+#         names(capsule_list)[length(capsule_list)] <- capsule_name
+#       }
+#     }else{###otherwise, add a line to the existing dataframe within capsule_list
+#       capsule_list[[capsule_name]] <- rbind(capsule_list[[capsule_name]] , capsule_info)
+#     }
+#   }
+# }
+# 
+# 
+#----------------------------------------------------------------

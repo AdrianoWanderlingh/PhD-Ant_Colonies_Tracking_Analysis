@@ -14,6 +14,12 @@ Movement.angle.diff     <- function(x)  {
   c( atan(x[-nrow(x), "x"] / x[-nrow(x), "y"]) - atan(x[-1, "x"] / x[-1, "y"]), NA)}
 else {vector()}}
 
+#change system of coords
+
+#Orientation.diff 
+Orientation.diff        <- function(x)  { c( x[-nrow(x), "angle"] - x[-1, "angle"], NA)}
+
+
 ## custom arrows function 
 ## quiver plot for vectors
 arrows.az <- function(x, y, azimuth, rho, HeadWidth, ..., units=c("degrees", "radians"), Kol, Lwd)
@@ -26,8 +32,6 @@ arrows.az <- function(x, y, azimuth, rho, HeadWidth, ..., units=c("degrees", "ra
          ..., col=Kol, lwd=Lwd)
 }
 
-#change system of coords
-Orientation.diff        <- function(x)  { c( x[-nrow(x), "angle"] - x[-1, "angle"], NA)}
 
 ######load necessary libraries
 library(adehabitatHR) ####for home range and trajectory analyses
@@ -48,12 +52,12 @@ library(data.table)
 
 #SOURCES ON/OFF
 run_collisions          <- FALSE
-run_AUTO_MAN_agreement  <- FALSE
+run_AUTO_MAN_agreement  <- TRUE
 run_Parameters_plots    <- FALSE
 
 
 ## PARAMETERS
-USER            <- "Adriano"
+USER <- "Adriano"
 Xmin <- 2000
 Xmax <- 7900
 Ymin <- 0000
@@ -96,7 +100,13 @@ annotations$T_stop_sec <- round(as.numeric(annotations$T_stop_UNIX),N_DECIMALS)
 ### start fresh
 interaction_MANUAL    <- NULL
 summary_MANUAL        <- NULL
+interaction_AUTO      <- NULL
 Sensitivity           <- data.frame()
+
+#set plots parameters (for plotting coords)
+pdf(file=paste(DATADIR,"Interactions_plots_8feb2022.pdf", sep = ""), width=6, height=4.5)
+par(mfrow=c(2,3), mai=c(0.3,0.3,0.4,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
+
 
 for (REPLICATE in c("R3SP","R9SP")) 
   {
@@ -251,171 +261,10 @@ for (REPLICATE in c("R3SP","R9SP"))
         interacts_AUTO_REP_PER$interactions $pair <- paste(interacts_AUTO_REP_PER$interactions$ant1, interacts_AUTO_REP_PER$interactions$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
         
         interacts_AUTO_REP_PER$interactions$Duration <- interacts_AUTO_REP_PER$interactions$int_end_frame - interacts_AUTO_REP_PER$interactions$int_start_frame
-        hist(interacts_AUTO_REP_PER$interactions$Duration,breaks = 30)
+        #hist(interacts_AUTO_REP_PER$interactions$Duration,breaks = 30)
         nrow(interacts_AUTO_REP_PER$interactions)
-        
-        # ##  convert POSIX format to raw secs since 1.1.1970; brute force for match.closest with collisions
-        # interacts_AUTO_REP_PER$interactions$int_start_secs  <- as.numeric(interacts_AUTO_REP_PER$interactions$start)  ## yes, it looks like the milisecs are gone, but they are there; traj_ACT$UNIX_secs
-        # interacts_AUTO_REP_PER$interactions$int_end_secs     <- as.numeric(interacts_AUTO_REP_PER$interactions$end) 
-        # ## now round these decimal seconds to 3 d.p.
-        # interacts_AUTO_REP_PER$interactions$int_start_secs   <- round(interacts_AUTO_REP_PER$interactions$int_start_secs,   N_DECIMALS) ## eliminates the 'noise' below the 3rd d.p., and leaves each frame existing just once, see: table(traj_ACT$UNIX_secs)
-        # interacts_AUTO_REP_PER$interactions$int_end_secs     <- round(interacts_AUTO_REP_PER$interactions$int_end_secs, N_DECIMALS)
-      
-        # ## CHECK WHAT MAX_INTERACTION_GAP is doing - mean interval between successive interactions for a pair {A,B}
-        # PairInterInteractInterv <- data.frame(Pair=unique(interacts_AUTO_REP_PER$interactions$pair))  ## 1 element per pair
-        # PairInterInteractInterv$Mean_Interval <- NA
-        # PairInterInteractInterv$Min_Interval <- NA
-        # for (PR in PairInterInteractInterv$Pair)
-        #   {
-        #   ## extract successive interactions for PR
-        #   interacts_AUTO_REP_PER_PAIR <- interacts_AUTO_REP_PER$interactions [ which(interacts_AUTO_REP_PER$interactions$pair==PR),] 
-        #   
-        #   if (nrow(interacts_AUTO_REP_PER_PAIR)>2) ## need at least two inteactions to have an inter-interaction interval
-        #     {
-        #     ## measure inter-interaction interval
-        #     Inter_Interact_Interval <- interacts_AUTO_REP_PER_PAIR$int_end_frame   [2:nrow(interacts_AUTO_REP_PER_PAIR)] - 
-        #                                interacts_AUTO_REP_PER_PAIR$int_start_frame [1:(nrow(interacts_AUTO_REP_PER_PAIR)-1)]
-        #     ## get mean interval for this pair
-        #     Mean_Interval <- mean(Inter_Interact_Interval, na.rm=T)
-        #     Min_Interval <- min(Inter_Interact_Interval, na.rm=T)  ## SHOUL DNEVER BE LOWER THAN MAX_INTERACTION_GAP
-        #     PairInterInteractInterv$Mean_Interval [which(PairInterInteractInterv==PR)] <-  Mean_Interval
-        #     PairInterInteractInterv$Min_Interval  [which(PairInterInteractInterv==PR)] <-  Min_Interval
-        #     }
-        #   }
-        # GrandMeanInterval <- mean(PairInterInteractInterv$Min_Interval, na.rm=T)
-        # GrandMinInterval  <- min(PairInterInteractInterv$Min_Interval, na.rm=T)
-        # 
 
-        # summaryTrajectory_all       <- interacts_AUTO_REP_PER$summaryTrajectory  ## same object as positions$trajectory_summary described above - however here it will have many more rows given that the trajectories will be broken whenever there is a 10 second non-detection gap for an ant.
-        # ## therefore in this case my trick with ant_ID_str won't work - it only works if there's exactly one trajectory as ants in the data
-        # ## so I would NOT use the output of this function to analyse trajectories
-        # trajectories_all           <- interacts_AUTO_REP_PER$trajectories       ## same object as positions$trajectories described above - but containing more objects for the same reason as stated above
-        # interacts_AUTO_REP_PER            <- interacts_AUTO_REP_PER$interactions       ## data frame containing all interactions
-        # 
-        
-        ########################################################################################################################
-        ################# cross reference manually-laeblled start & end times with auto interactions ###########################
-        ########################################################################################################################
-#         
-#          ## TRUE POSITIVE RATE
-#          interacts_AUTO_REP_PER_OVERLAP_ALL <- NULL
-#          Buffer <- 0
-#          for (I in 1:nrow(summary_MAN_REP_PER))  ## loop across each (time-aggregated) manually-labelled behaviour
-#             {
-#             ## Find start and end times of each *aggregated* **MANUALLY-LABELLED** interaction
-#             Man_Start <- summary_MAN_REP_PER$int_start_frame [I] - Buffer
-#             Man_Stop  <- summary_MAN_REP_PER$int_end_frame [I]  + Buffer
-#             
-#             ## extract manual participants for the Ith interaction in the auto interactions
-#             Man_Pair <- summary_MAN_REP_PER$pair [I]
-#           
-#             
-#             ## look for the Ith MANUAL interaction in the AUTOMATIC list
-#             interacts_AUTO_REP_PER_OVERLAP <- unique(interacts_AUTO_REP_PER$interactions [ interacts_AUTO_REP_PER$interactions$int_start_frame >= Man_Start &
-#                                                                                            interacts_AUTO_REP_PER$interactions$int_end_frame   <= Man_Stop & 
-#                                                                                            interacts_AUTO_REP_PER$interactions $pair      == Man_Pair , ])
-#             
-#        
-#             
-#             ## stack the auto interactions when there's a match with the manual summary interaction
-#             if (nrow(interacts_AUTO_REP_PER_OVERLAP)>0)
-#               {
-#               interacts_AUTO_REP_PER_OVERLAP_ALL <- rbind(interacts_AUTO_REP_PER_OVERLAP_ALL, 
-#                                                           interacts_AUTO_REP_PER_OVERLAP)
-#               
-#               interacts_AUTO_REP_PER_OVERLAP_ALL <- unique(interacts_AUTO_REP_PER_OVERLAP_ALL)
-#               }
-#             }#I
-#        
-#         ## what is the overlap in seconds?
-#         interacts_AUTO_REP_PER_OVERLAP_ALL$Duration <- interacts_AUTO_REP_PER_OVERLAP_ALL$int_end_frame - interacts_AUTO_REP_PER_OVERLAP_ALL$int_start_frame
-#         
-#         ## the observed overlap time
-#         Overlap <- sum(interacts_AUTO_REP_PER_OVERLAP_ALL$Duration)
-#         
-#         ## what is the expected interaction time ?
-#         Expectation <- sum(summary_MAN_REP_PER$interaction_length_secs)
-#         ## stack
-#         Sensitivity <- rbind(Sensitivity, data.frame(REPLICATE, PERIOD, Buffer, MAX_INTERACTION_GAP, GrandMeanInterval, GrandMinInterval, Overlap, Expectation, Hit_Rate=100 * (Overlap/Expectation)) )
-# 
-#         
-# 
-# #####################################################################################
-#         
-#         #oder dataframe to make it work with Fuzzy matcher which needs sorted dataframes
-#         sum_MAN_REP_PER_ord <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_start_frame)),]
-#         sum_MAN_REP_PER_ord1 <- summary_MAN_REP_PER[with(summary_MAN_REP_PER, order(int_end_frame)),]
-# 
-#         TOLERANCE <- 20 #number of seconds of tolerance window, is like the previous buffer
-#         FUZZY_INT_MATCH <- TRUE
-#         A_in_M_OVERLAP_ALL <- NULL
-#         if (FUZZY_INT_MATCH==TRUE)
-#         {
-#           for (I in 1:nrow(summary_MAN_REP_PER))  ## loop across each (time-aggregated) manually-labelled behaviour
-#           {
-#             ## Find start and end times of each *aggregated* **MANUALLY-LABELLED** interaction
-#             Man_Start <- summary_MAN_REP_PER$int_start_frame [I]
-#             Man_Stop  <- summary_MAN_REP_PER$int_end_frame [I]
-# 
-#             ## extract manual participants for the Ith interaction in the auto interactions
-#             Man_Pair <- summary_MAN_REP_PER$pair [I]
-# 
-#           ### TRUE POSITIVES
-#           # match.start and end
-#           #start
-#           A_in_M_rows_start <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_start_frame,
-#                                                                                          table = sum_MAN_REP_PER_ord$int_start_frame , tolerance = TOLERANCE)
-#                                                                            & interacts_AUTO_REP_PER$interactions $pair == Man_Pair  , ])
-#           #end
-#           A_in_M_rows_end   <- unique(interacts_AUTO_REP_PER$interactions[ match.closest(x =     interacts_AUTO_REP_PER$interactions$int_end_frame,
-#                                                                                          table = sum_MAN_REP_PER_ord1$int_end_frame , tolerance = TOLERANCE)
-#                                                                            & interacts_AUTO_REP_PER$interactions $pair == Man_Pair  , ])
-#           #issue raise with times, drop them
-#           A_in_M_rows_end <-subset(A_in_M_rows_end, select = -c(start,end))
-#           A_in_M_rows_start <-subset(A_in_M_rows_start, select = -c(start,end))
-# 
-#           A_in_M_OVERLAP <- generics::intersect(A_in_M_rows_start, A_in_M_rows_end)
-#           #remove empty rows (all NA's)
-#           A_in_M_OVERLAP <- A_in_M_OVERLAP[rowSums(is.na(A_in_M_OVERLAP)) != ncol(A_in_M_OVERLAP),]
-#           
-#           #### A_in_M ARE TRUE POSITIVES  -> ROWS IN BOTH AUTO E MAN
-#         
-#         ## stack the auto interactions when there's a match with the manual summary interaction
-#         if (nrow(A_in_M_OVERLAP)>0)
-#         {
-#           A_in_M_OVERLAP_ALL <- rbind(A_in_M_OVERLAP_ALL, 
-#                                                       A_in_M_OVERLAP)
-#           A_in_M_OVERLAP_ALL <- unique(A_in_M_OVERLAP_ALL)
-#         }
-#       }#I
-#     }#FUZZY_INT_MATCH    
-# 
-#  #FALSE NEGATIVE RATE
-# 
-#  ####ERRORRRRRR AUTO_IN_MANUAL SHOULD BE LESS OR EQUAL TO SUMMARY_MANUAL!!!!! DUPS AND NAS ARE REMOVED, WHAT'S HAPPENING???         
-#  #cure momentarily by trimming auto$duration < manual$duration
-#  nrow(A_in_M_OVERLAP_ALL) 
-#  nrow(summary_MAN_REP_PER)
-#  
-#  summary_MAN_REP_PER$Duration <- summary_MAN_REP_PER$int_end_frame - summary_MAN_REP_PER$int_start_frame
-#  A_in_M_OVERLAP_ALL$Duration <- A_in_M_OVERLAP_ALL$int_end_frame - A_in_M_OVERLAP_ALL$int_start_frame
-#  
-#  min(summary_MAN_REP_PER$Duration)
-#  min(A_in_M_OVERLAP_ALL$Duration)
-#  
-#  min( summary_MAN_REP_PER$Duration[summary_MAN_REP_PER$Duration!=min(summary_MAN_REP_PER$Duration)] )
-#  
-#  MIN_TRIM <- min( summary_MAN_REP_PER$Duration[summary_MAN_REP_PER$Duration!=min(summary_MAN_REP_PER$Duration)] )
-#  A_in_M_OVERLAP_ALL_trim <- A_in_M_OVERLAP_ALL[which(A_in_M_OVERLAP_ALL$Duration > MIN_TRIM),]
-# 
-#  
-#  hist(summary_MAN_REP_PER$Duration,breaks = 30)
-#  hist(A_in_M_OVERLAP_ALL$Duration,breaks = 30)
-#  hist(A_in_M_OVERLAP_ALL_trim$Duration,breaks = 30)
-#         
-######################################################################################        
-
-        pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcher_CapTypeAntDistsDispl.pdf", sep = "_"), width=10, height=60)
+        #pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcher_CapTypeAntDistsDispl.pdf", sep = "_"), width=10, height=60)
         #plot the interactions by pair as timeline
         #generate 1 plot per every iteration 
         summary_MAN_REP_PER_sub <- summary_MAN_REP_PER[,c("REPLICATE","PERIOD","pair","int_start_frame","int_end_frame")] ; summary_MAN_REP_PER_sub$flag <- "manual"
@@ -430,7 +279,7 @@ for (REPLICATE in c("R3SP","R9SP"))
                subtitle = paste("Nrows auto detected:" ,NROW(interacts_AUTO_REP_PER$interactions),"Nrows manual annotated:" ,NROW(summary_MAN_REP_PER),"\nMaxIntGap",MAX_INTERACTION_GAP, "s","Capsule file =",CapsuleDef )) +
           scale_color_manual(values = c("manual" = "red",
                                          "auto"="black"))
-       #dev.off()
+  
         
       #}#MAX_INTERACTION_GAP
     #}#Buffer
@@ -443,7 +292,10 @@ for (REPLICATE in c("R3SP","R9SP"))
     ###### AUTO_MAN AGREEMENT MATRIX ##############################################
     ###############################################################################
     if (run_AUTO_MAN_agreement){source(paste(SCRIPTDIR,"BEH_Auto_Man_agreement_matrix_fort081.R",sep="/"))}
-  
+    
+    #stack ComputeAntInteractions with extra info calculated in agreement matrix
+    interaction_AUTO <- rbind(interaction_AUTO, interacts_AUTO_REP_PER$interactions)
+        
     
     ###############################################################################
     ###### COLLISIONS #############################################################
@@ -469,6 +321,48 @@ for (REPLICATE in c("R3SP","R9SP"))
 dev.off()
 
 
+###############################################################################
+###### AUTO-MAN DISAGREEMENT PLOT #############################################
+###############################################################################
+
+## visualise the cutoffs
+## Make y-axis logarithmic in histogram and fix issues for 0 occurences with log
+par(mfrow=c(3,1))
+#all
+hist.data = hist(interaction_AUTO$disagreement, breaks=seq(-1,0,0.05), plot=F)
+hist.data$counts <- replace(log10(hist.data$counts), log10(hist.data$counts)==-Inf, 0)
+highestCount <- max(hist.data$counts)
+plot(hist.data, main="All disagreements (log)",
+     sub = paste("N.AUTO TOT",length(interaction_AUTO$Hit)),
+     ylab='log10(Frequency)', xlab=" AUTO-MAN disagreement rate ", ylim=c(0,highestCount)); abline(v=-THRESH, lty=2)
+
+#True Positives
+hist.data1 = hist(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==1)], breaks=seq(-1,0,0.05), plot=F)
+hist.data1$counts <- replace(log10(hist.data1$counts), log10(hist.data1$counts)==-Inf, 0)
+plot(hist.data1, main="True Positives",
+     sub = paste("N.AUTO",length(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==1)]),"/ N.MANUAL",length(summary_MAN_REP_PER)),
+     ylab='log10(Frequency)',xlab=" AUTO-MAN agreement rate ", col=2, ylim=c(0,highestCount), xlim=c(-1,0)); abline(v=-THRESH, lty=2) #breaks=seq(-1,1,0.05)
+
+#False Positives
+hist.data1 = hist(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==0)], breaks=seq(-1,0,0.05), plot=F)
+hist.data1$counts <- replace(log10(hist.data1$counts), log10(hist.data1$counts)==-Inf, 0)
+plot(hist.data1, main="False Positives",
+     sub = paste("N.AUTO",length(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==0)])),
+     ylab='log10(Frequency)', xlab=" AUTO-MAN disagreement rate ",col=4, ylim=c(0,highestCount),xlim=c(-1,0)); abline(v=-THRESH, lty=2) #breaks=seq(-1,1,0.05)
+
+mtext(paste("VARS: MaxIntGap",MAX_INTERACTION_GAP, "s",", Capsule file =",CapsuleDef ), side = 3, line = -1.5, outer = TRUE)
+
+
+  
+# THESE CAN BE PLOTTED TOGHETER WITH VARIABLES PLOTS FOR ALL.
+# TO COMPARE PLOTS FOR THE FALSE POSITIVES (but also for the F negs) YOU WILL NEED TO RECALCULATE ALL VARS FOR THE AUTO FILE AS DONE FOR THE MAN FILE (brutal copy_paste to begin with)
+# AFTER THE MATRIX CALCULATION HAS APPENDED AGREEMENT COLUMNS, AND TO GENERATE PCAs (2 - FALSE POS, FALSE NEG, AGREEing - per every particular parameter of ComputeANTInteraction ) with subsets of the AGREEMENT COL = 0 or 1.
+# ATTENTION:  FALSE NEGATIVES CAN BE GENERATED BY CREATING INVERSE DISAGREEMENT FOR LOOP (SEE ROW 77-84 PF AGREEMENT MATRIX SCRIPT)
+
+
+
+
+
 
 ###################### TO DOS ##############################
 ############################################################
@@ -491,8 +385,6 @@ dev.off()
 #check
 unique(interaction_MANUAL$PERIOD)
 unique(interaction_MANUAL$REPLICATE)
-min(interaction_MANUAL$UNIX_time)
-max(interaction_MANUAL$UNIX_time)
 
 ###############################################################################
 ###### PARAMETERS PLOTS #######################################################
@@ -503,79 +395,15 @@ if (run_Parameters_plots){source(paste(SCRIPTDIR,"BEH_Parameters_plots_fort081.R
 
 
 
-  rm(list=(c("e")))
-  gc()
+  # rm(list=(c("e")))
+  # gc()
   
   
   
   
   
   
-  
-################# SCRAPS ##########################
-  
-  # #later on, deparse the capsule information to add it as an individual-linked row value in the interaction data.
-  # #the structure for a 3-1, 1-1, could look like this:
-  # capsules_example <- read.table(textConnection('
-  # time  ACT_caps1  ACT_caps2  ACT_caps2  REC_caps1  REC_caps2 REC_caps3
-  # 21211 1 0 1 2 0 0
-  # 21212 1 0 1 2 0 0
-  # '), header=TRUE)
-  # #not very convinced that it would work, maybe is better to avoid full deparsing into multiple columns
-  # 
-  # some workaround has to be done to ensure that the ant (ACT-REC) is assigned the right capsule from the pair
-  #unlist(strsplit(interacts_AUTO_REP_PER$types[4],","))[2]
-  
-  
-  
-  #----------------------------------------------------------------
-  
-  #FIND HOW CAPSULES ARE SPATIALLY ARRANGED COMPARED TO TAG POSITION TO MAKE POSSIBLE TO CALCULATE distance between interacting ants's capsules AND use that as a variable
-  
-  #THE FOLLOWING BIT OF CODE COMES FROM THE AUTOMATIC ANGLE DETERMINATION SCRIPT. IT HELPS TO UNDERSTAND HOW TO ACCESS
-  # CAPSULE PARTS. USE BITS OF IT TO GET CAPSULE GEOMETRIES, THEIR POSITION IN SPACE AND TO CALCULATE DISTANCE AMONG 
-  # VARIOUS CAPSULES DURING INTERACTIONS (IE. HEAD-ABDOMEN DISTANCE DURING GROOMING)
-  # 
-  # oriented_metadata <- NULL
-  # capsule_list <- list()
-  # #for (myrmidon_file in data_list){
-  # experiment_name <- unlist(strsplit(MyrmidonCapsuleFile,split="/"))[length(unlist(strsplit(MyrmidonCapsuleFile,split="/")))]
-  # oriented_data <- fmExperimentOpen(MyrmidonCapsuleFile) #this step is already performed at the beginning
-  # oriented_ants <- oriented_data$ants
-  # capsule_names <- oriented_data$antShapeTypeNames
-  # for (ant in oriented_ants){
-  #   ###extract ant length and capsules
-  #   #ant_length_px <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_px)
-  #   capsules      <- ant$capsules
-  #   for (caps in 1:length(capsules)){
-  #     capsule_name  <- capsule_names[[capsules[[caps]]$type]]
-  #     capsule_coord <- capsules[[caps]]$capsule
-  #     capsule_info <- data.frame(experiment = experiment_name,
-  #                                antID      = ant$ID,
-  #                                c1x = capsule_coord$c1[1],
-  #                                c1y = capsule_coord$c1[2],
-  #                                c2x = capsule_coord$c2[1],
-  #                                c2y = capsule_coord$c2[2],
-  #                                r1  = capsule_coord$r1[1],
-  #                                r2   = capsule_coord$r2[1]
-  #     )
-  #     
-  #     if (!capsule_name %in%names(capsule_list)){ ###if this is the first time we encounter this capsule, add it to capsule list...
-  #       capsule_list <- c(capsule_list,list(capsule_info)) 
-  #       if(length(names(capsule_list))==0){
-  #         names(capsule_list) <- capsule_name
-  #       }else{
-  #         names(capsule_list)[length(capsule_list)] <- capsule_name
-  #       }
-  #     }else{###otherwise, add a line to the existing dataframe within capsule_list
-  #       capsule_list[[capsule_name]] <- rbind(capsule_list[[capsule_name]] , capsule_info)
-  #     }
-  #   }
-  # }
-  # 
-  # 
-  #----------------------------------------------------------------
-  
+ 
   
 # 
 # x <- 1

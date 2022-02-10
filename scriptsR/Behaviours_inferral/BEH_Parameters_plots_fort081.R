@@ -97,16 +97,17 @@ interaction_data_G <- interaction_data_G[which(!is.na(interaction_data_G$value))
 
 #set up plot
 
-pdf(file=paste(DATADIR,"TEST_TEST_2.pdf", sep = ""), width=1.7, height=3.1)
-par(mfrow=c(2,6), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
-#par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+# pdf(file=paste(DATADIR,"TEST_TEST_2.pdf", sep = ""), width=1.7, height=3.1)
+# par(mfrow=c(2,6), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+# #par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+# 
+# 
+# ggplot(data=interaction_data_G,
+#        aes(x=frame, y=value, colour=variable)) + facet_wrap(variable ~ .,scales="free",ncol = 1) + theme(legend.position = "none") +
+#   geom_line(size=0.8)
+# 
+# dev.off()
 
-
-ggplot(data=interaction_data_G,
-       aes(x=frame, y=value, colour=variable)) + facet_wrap(variable ~ .,scales="free",ncol = 1) + theme(legend.position = "none") +
-  geom_line(size=0.8)
-
-dev.off()
 
 ###plot divided by variable and Role for Grooming
 # vars_plot_G <- ggplot(interaction_data_G, aes(frame, fill = BEH)) +
