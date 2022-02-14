@@ -143,7 +143,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
   if (nrow(traj_ACT)>1)
     {
       # variation of movement angle frame by frame
-      traj_ACT$Movement_angle_difference <- Movement.angle.diff(x = traj_ACT) ## To check that this function works, run this: traj_ACT$Movement_angle_difference_CHECK <- NA; for (i in 1: (nrow(traj_ACT)-1)) {traj_ACT$Movement_angle_difference_CHECK[i]   <- atan(traj_ACT[i, "x"] / traj_ACT[i, "y"]) -  atan(traj_ACT[i+1, "x"] / traj_ACT[i+1, "y"])}
+      traj_ACT$Movement_angle_difference_ACT <- Movement.angle.diff(x = traj_ACT) ## To check that this function works, run this: traj_ACT$Movement_angle_difference_CHECK <- NA; for (i in 1: (nrow(traj_ACT)-1)) {traj_ACT$Movement_angle_difference_CHECK[i]   <- atan(traj_ACT[i, "x"] / traj_ACT[i, "y"]) -  atan(traj_ACT[i+1, "x"] / traj_ACT[i+1, "y"])}
       ## and take the absolute value of the 'movement angle'
       #traj_ACT$Movement_angle_difference_ABS <- abs(traj_ACT$Movement_angle_difference)
       # variation of Orientation angle frame by frame
@@ -155,7 +155,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
     if (nrow(traj_REC)>1)
     {
       # variation of movement angle frame by frame
-      traj_REC$Movement_angle_difference <- Movement.angle.diff(x = traj_REC)## anticlockwise turning ants have POSTIVE values of Movement.angle.diff & vice-versa - see sanity check above
+      traj_REC$Movement_angle_difference_REC <- Movement.angle.diff(x = traj_REC)## anticlockwise turning ants have POSTIVE values of Movement.angle.diff & vice-versa - see sanity check above
       #traj_REC$Movement_angle_difference_ABS <- abs(traj_REC$Movement_angle_difference)
       traj_REC$Orientation_diff <- Orientation.diff(x = traj_REC)
       
@@ -269,19 +269,19 @@ for (BEH in c("G"))#,"T","FR","CR"))
     #speed
     traj_BOTH$ACT.speed_PxPerSec  <- c( with(traj_BOTH, c(NA,(sqrt(diff(ACT.x)^2 + diff(ACT.y)^2))) / time_interval))
     traj_BOTH$REC.speed_PxPerSec  <- c( with(traj_BOTH, c(NA,(sqrt(diff(REC.x)^2 + diff(REC.y)^2))) / time_interval))
-    mean_accel_pxpersec2_ACT      <- mean(traj_BOTH$ACT.speed_PxPerSec, na.rm=T) 
-    mean_accel_pxpersec2_REC      <- mean(traj_BOTH$REC.speed_PxPerSec, na.rm=T) 
+    mean_speed_pxpersec_ACT       <- mean(traj_BOTH$ACT.speed_PxPerSec, na.rm=T) 
+    mean_speed_pxpersec_REC       <- mean(traj_BOTH$REC.speed_PxPerSec, na.rm=T) 
     #  acceleration
     traj_BOTH$ACT.accel_PxPerSec2 <- c( with(traj_BOTH, c(NA,(diff(ACT.speed_PxPerSec))) / time_interval))
     traj_BOTH$REC.accel_PxPerSec2 <- c( with(traj_BOTH, c(NA,(diff(REC.speed_PxPerSec))) / time_interval))
-    mean_accel_ACT                <- mean(traj_BOTH$ACT.accel_PxPerSec2, na.rm=T)
-    mean_accel_REC                <- mean(traj_BOTH$REC.accel_PxPerSec2, na.rm=T) 
+    mean_accel_pxpersec2_ACT      <- mean(traj_BOTH$ACT.accel_PxPerSec2, na.rm=T)
+    mean_accel_pxpersec2_REC      <- mean(traj_BOTH$REC.accel_PxPerSec2, na.rm=T) 
 
     # jerk (diff in accelerations)
-    traj_BOTH$ACT.jerk_PxPerSec2 <- c( with(traj_BOTH, c(NA,(diff(ACT.accel_PxPerSec2))) / time_interval))
-    traj_BOTH$REC.jerk_PxPerSec2 <- c( with(traj_BOTH, c(NA,(diff(REC.accel_PxPerSec2))) / time_interval))
-    mean_jerk_ACT                <- mean( traj_BOTH$ACT.jerk_PxPerSec2, na.rm=T)
-    mean_jerk_REC                <- mean( traj_BOTH$REC.jerk_PxPerSec2, na.rm=T)
+    traj_BOTH$ACT.jerk_PxPerSec3 <- c( with(traj_BOTH, c(NA,(diff(ACT.accel_PxPerSec2))) / time_interval))
+    traj_BOTH$REC.jerk_PxPerSec3 <- c( with(traj_BOTH, c(NA,(diff(REC.accel_PxPerSec2))) / time_interval))
+    mean_jerk_PxPerSec3_ACT      <- mean( traj_BOTH$ACT.jerk_PxPerSec3, na.rm=T)
+    mean_jerk_PxPerSec3_REC      <- mean( traj_BOTH$REC.jerk_PxPerSec3, na.rm=T)
     ##################
     ## INTERACTING PAIR TRAJECTORY MEASURES
     
@@ -290,6 +290,11 @@ for (BEH in c("G"))#,"T","FR","CR"))
     mean_strghtline_dist_px <- mean(traj_BOTH$straightline_dist_px, na.rm=TRUE)
     #angular difference
     traj_BOTH$Orient_angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
+    mean_orient_angle_diff <-  mean(traj_BOTH$Orient_angle_diff, na.rm=TRUE)
+    
+    traj_BOTH$Movement_angle_diff <- abs((traj_BOTH$Movement_angle_difference_REC - pi) - (traj_BOTH$Movement_angle_difference_ACT -pi)) %% (2*pi)
+    mean_movement_angle_diff <-  mean(traj_BOTH$Movement_angle_diff, na.rm=TRUE)
+    
     
     ###############
     
@@ -298,13 +303,14 @@ for (BEH in c("G"))#,"T","FR","CR"))
                                   mean_angle_ACT, mean_angle_REC,
                                   mean_delta_angles_ACT, mean_delta_angles_REC,
                                   moved_distance_px_ACT, moved_distance_px_REC,
+                                  mean_speed_pxpersec_ACT, mean_speed_pxpersec_REC,
                                   mean_accel_pxpersec2_ACT, mean_accel_pxpersec2_REC,
-                                  mean_accel_ACT, mean_accel_REC,
-                                  mean_jerk_ACT, mean_jerk_REC,
+                                  mean_jerk_PxPerSec3_ACT, mean_jerk_PxPerSec3_REC,
                                   rmsd_px_ACT,rmsd_px_REC,
                                   int_start_frame , int_end_frame, interaction_length_secs,
                                   prop_time_undetected_ACT, prop_time_undetected_REC,
-                                  mean_strghtline_dist_px,
+                                  mean_strghtline_dist_px, 
+                                  mean_orient_angle_diff, mean_movement_angle_diff,
                                   #when adding a new variable, it must be included in the reshape rule for data plotting
                                   stringsAsFactors = F)
     

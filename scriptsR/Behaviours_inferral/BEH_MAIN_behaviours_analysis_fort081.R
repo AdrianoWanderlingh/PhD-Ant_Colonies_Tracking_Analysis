@@ -130,8 +130,11 @@ for (REPLICATE in c("R3SP","R9SP"))
     {
     print(paste("Replicate",REPLICATE, PERIOD))
     ## Prepare empty within-replicate/period data object
-    interacts_MAN_REP_PER <- NULL  
-    summary_MAN_REP_PER  <- NULL
+    interacts_MAN_REP_PER       <- NULL  
+    summary_MAN_REP_PER         <- NULL
+    
+    interacts_AUTO_REP_PER_FULL <- NULL
+    summary_AUTO_REP_PER        <- NULL
     ## set experiment time window 
     time_start <- fmTimeCreate(min(annotations$T_start_UNIX[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])) ###experiment start time
     #time_stop  <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + (34*60)  ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
@@ -143,7 +146,7 @@ for (REPLICATE in c("R3SP","R9SP"))
     IdentifyFrames      <- fmQueryIdentifyFrames(e,start=time_start, end=time_stop)
     IF_frames           <- IdentifyFrames$frames
     # Assign a frame to each time since start and use it as baseline for all matching and computation
-    IF_frames$frame_num <- seq.int(nrow(IF_frames))
+    IF_frames$frame_num <- as.numeric(seq.int(nrow(IF_frames)))
     
     # assign a time in sec to match annotation time (UNIX hard to use for class mismatch)
     IF_frames$time_sec <- round(as.numeric(IF_frames$time),N_DECIMALS)
@@ -159,8 +162,9 @@ for (REPLICATE in c("R3SP","R9SP"))
     ###############################################################################
     ###### READING COLLISIONS #####################################################
     ###############################################################################
-    collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)   ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
-    collisions$frames$frame_num <- seq.int(nrow(IF_frames))
+    if (run_collisions){
+     collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)   ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
+     collisions$frames$frame_num <- seq.int(nrow(IF_frames)) }
     
     ###############################################################################
     ###### READING TRAJECTORIES ###################################################
@@ -199,9 +203,9 @@ for (REPLICATE in c("R3SP","R9SP"))
     #   positions$trajectories[[AntID]] $UNIX_time <- as.POSIXct(positions$trajectories[[AntID]]$time, tz="GMT",origin = "1970-01-01 00:00:00")  + First_Obs_Time ##convert back to UNIX time  
     # }
 
-    ###############################################################################
-    ###### EXTRACT ANT TRAJECTORIES FROM MANUALLY-ANNOTATED DATA ##################
-    ###############################################################################
+    ######################################################################################
+    ###### EXTRACT ANT TRAJECTORIES FROM MANUALLY-ANNOTATED DATA AND CALC PARAMETERS #####
+    ######################################################################################
     source(paste(SCRIPTDIR,"BEH_Traj_from_Man_annotations_fort081.R",sep="/"))
     
     
@@ -263,6 +267,12 @@ for (REPLICATE in c("R3SP","R9SP"))
         interacts_AUTO_REP_PER$interactions$Duration <- interacts_AUTO_REP_PER$interactions$int_end_frame - interacts_AUTO_REP_PER$interactions$int_start_frame
         #hist(interacts_AUTO_REP_PER$interactions$Duration,breaks = 30)
         nrow(interacts_AUTO_REP_PER$interactions)
+        
+        ######################################################################################
+        ###### CALC PARAMETERS FOR AUTOMATIC INTERACTIONS ####################################
+        ######################################################################################
+        source(paste(SCRIPTDIR,"BEH_Parameters_Auto_fort081.R",sep="/"))
+      
 
         #pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcher_CapTypeAntDistsDispl.pdf", sep = "_"), width=10, height=60)
         #plot the interactions by pair as timeline
@@ -279,7 +289,6 @@ for (REPLICATE in c("R3SP","R9SP"))
                subtitle = paste("Nrows auto detected:" ,NROW(interacts_AUTO_REP_PER$interactions),"Nrows manual annotated:" ,NROW(summary_MAN_REP_PER),"\nMaxIntGap",MAX_INTERACTION_GAP, "s","Capsule file =",CapsuleDef )) +
           scale_color_manual(values = c("manual" = "red",
                                          "auto"="black"))
-  
         
       #}#MAX_INTERACTION_GAP
     #}#Buffer
@@ -353,15 +362,20 @@ plot(hist.data1, main="False Positives",
 mtext(paste("VARS: MaxIntGap",MAX_INTERACTION_GAP, "s",", Capsule file =",CapsuleDef ), side = 3, line = -1.5, outer = TRUE)
 
 
-  
-# THESE CAN BE PLOTTED TOGHETER WITH VARIABLES PLOTS FOR ALL.
-# TO COMPARE PLOTS FOR THE FALSE POSITIVES (but also for the F negs) YOU WILL NEED TO RECALCULATE ALL VARS FOR THE AUTO FILE AS DONE FOR THE MAN FILE (brutal copy_paste to begin with)
+# TO COMPARE PLOTS FOR THE FALSE POSITIVES (but also for the F negs) YOU WILL NEED TO USE vars from THE AUTO FILE
 # AFTER THE MATRIX CALCULATION HAS APPENDED AGREEMENT COLUMNS, AND TO GENERATE PCAs (2 - FALSE POS, FALSE NEG, AGREEing - per every particular parameter of ComputeANTInteraction ) with subsets of the AGREEMENT COL = 0 or 1.
 # ATTENTION:  FALSE NEGATIVES CAN BE GENERATED BY CREATING INVERSE DISAGREEMENT FOR LOOP (SEE ROW 77-84 PF AGREEMENT MATRIX SCRIPT)
 
 
+#ADD ANOTHER CAPSULE DEF FOR TESTING
+# DECIDE A RANGE OF PARAMS FOR COMPUTEANTINTERACTS
 
 
+#pca of summary_AUTO_INT
+
+
+
+#PCA
 
 
 ###################### TO DOS ##############################
