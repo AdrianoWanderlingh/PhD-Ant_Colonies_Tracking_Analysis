@@ -49,10 +49,11 @@ library(nanotime)
 library(MALDIquant)
 library(stringr)
 library(data.table)
+library(fields)
 
 #SOURCES ON/OFF
 run_collisions          <- FALSE
-run_AUTO_MAN_agreement  <- TRUE
+run_AUTO_MAN_agreement  <- FALSE
 run_Parameters_plots    <- FALSE
 
 
@@ -137,8 +138,10 @@ for (REPLICATE in c("R3SP","R9SP"))
     summary_AUTO_REP_PER        <- NULL
     ## set experiment time window 
     time_start <- fmTimeCreate(min(annotations$T_start_UNIX[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])) ###experiment start time
+    #time_stop <- fmTimeCreate(min(annotations$T_start_UNIX[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])+3) ###experiment start time
     #time_stop  <- fmTimeCreate(min(annotations$T_start_[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) + (34*60)  ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
     time_stop  <- fmTimeCreate(max(annotations$T_stop_UNIX[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD]) ) ###experiment stop time ####arbitrary time in the correct format + (N mins * N seconds)
+  
     
     ###############################################################################
     ###### IDENTIFY FRAMES ########################################################
@@ -193,7 +196,7 @@ for (REPLICATE in c("R3SP","R9SP"))
       positions$trajectories[[AntID]]$frame <- match.closest(x = positions$trajectories[[AntID]]$time, table = IF_frames$new_zero_diff, tolerance = 0.05)
       IF_frames$new_zero_diff <- NA
     }
-    
+    AntID <- NULL; First_Obs_Frame <- NULL
     # ## Add ant_x names and times to the positions to convert from time since the start of the experiment, to UNIX time
     # for (A in positions$trajectories_summary$antID)
     #   {
@@ -207,13 +210,6 @@ for (REPLICATE in c("R3SP","R9SP"))
     ###### EXTRACT ANT TRAJECTORIES FROM MANUALLY-ANNOTATED DATA AND CALC PARAMETERS #####
     ######################################################################################
     source(paste(SCRIPTDIR,"BEH_Traj_from_Man_annotations_fort081.R",sep="/"))
-    
-    
-    #create new variable by pasting ant numbers "low,high" for summary_MAN_REP_PER
-    summary_MAN_REP_PER$ant1 <- as.numeric(gsub("ant_","", summary_MAN_REP_PER$Act_Name))
-    summary_MAN_REP_PER$ant2 <- as.numeric(gsub("ant_","", summary_MAN_REP_PER$Rec_Name))
-    ## the ant 1 & ant 2 labels are not strictly ascending, so sort them so ant 1 alwasy < ant 2
-    summary_MAN_REP_PER$pair <- apply(summary_MAN_REP_PER[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
     
     ## stack
     interaction_MANUAL <- rbind(interaction_MANUAL, interacts_MAN_REP_PER)
@@ -258,37 +254,61 @@ for (REPLICATE in c("R3SP","R9SP"))
                                                                 reportFullTrajectories = T,
                                                                 matcher = matcherCapTypeAntDists)
         
-        ## Assign frame number
+
+        #assign starting frame number to $trajectories
+        interacts_AUTO_REP_PER$trajectories_summary["frame_num"] <- lapply(interacts_AUTO_REP_PER$trajectories_summary["start"], function(x) IF_frames$frame_num[match(x, IF_frames$time)])
+        ## immediately after computing your interacts_AUTO_REP_PER object:
+        interacts_AUTO_REP_PER$trajectories_summary$antID_str <- paste("ant_",interacts_AUTO_REP_PER$trajectories_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
+        names(interacts_AUTO_REP_PER$trajectories)       <- interacts_AUTO_REP_PER$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
+        ## Add ant_x names and times to the interacts_AUTO_REP_PER to convert from FRAME since the start of the experiment, to FRAMES
+        ##creates a ID string for each ant in $interactions
+        interacts_AUTO_REP_PER$interactions$ant1ID_str <- paste("ant_",interacts_AUTO_REP_PER$interactions$ant1,sep="")
+        interacts_AUTO_REP_PER$interactions$ant2ID_str <- paste("ant_",interacts_AUTO_REP_PER$interactions$ant2,sep="")
+        
+        for (i in 1:nrow(interacts_AUTO_REP_PER$trajectories_summary))
+        {
+          ANTID_STR                         <- paste("ant_",interacts_AUTO_REP_PER$trajectories_summary$antID[i],sep="") 
+          First_Obs_Frame               <- min(interacts_AUTO_REP_PER$trajectories_summary$frame_num [which(interacts_AUTO_REP_PER$trajectories_summary$antID_str==ANTID_STR)])
+          #min(interacts_AUTO_REP_PER$trajectories_summary$frame_num [which(interacts_AUTO_REP_PER$trajectories_summary$antID_str==ANTID_STR)])
+          IF_frames$new_zero_diff  <- IF_frames$cum_diff - IF_frames[IF_frames$frame_num==First_Obs_Frame,"cum_diff"] #subtracting the $frames zeroed-time  corresponding to the $start time from the zeroed-time column itself (New-Zeroed-time)
+          print(paste("Adding first obs FRAME", First_Obs_Frame, "to the time-zeroed trajectory of ant", ANTID_STR))
+          #assign corresponding frame N when the New-Zeroed-time and $time correspond, closest.match 0.05 (well inside the 0.125 frame length in sec)
+          interacts_AUTO_REP_PER$trajectories[[ANTID_STR]]$frame <- match.closest(x = interacts_AUTO_REP_PER$trajectories[[ANTID_STR]]$time, table = IF_frames$new_zero_diff, tolerance = 0.05)
+          IF_frames$new_zero_diff <- NA
+        } 
+        AntID <- NULL; First_Obs_Frame <- NULL
+       
+        # Assign frame number to $interactions
         interacts_AUTO_REP_PER$interactions["int_start_frame"]   <- lapply(interacts_AUTO_REP_PER$interactions["start"] , function(x) IF_frames$frame_num[match(x, IF_frames$time)])
         interacts_AUTO_REP_PER$interactions["int_end_frame"]   <- lapply(interacts_AUTO_REP_PER$interactions["end"] , function(x) IF_frames$frame_num[match(x, IF_frames$time)])
-        
+        # Assign interaction pair
         interacts_AUTO_REP_PER$interactions $pair <- paste(interacts_AUTO_REP_PER$interactions$ant1, interacts_AUTO_REP_PER$interactions$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
-        
+        #calc duration (not including extremes,e.g. end frame not included)
         interacts_AUTO_REP_PER$interactions$Duration <- interacts_AUTO_REP_PER$interactions$int_end_frame - interacts_AUTO_REP_PER$interactions$int_start_frame
         #hist(interacts_AUTO_REP_PER$interactions$Duration,breaks = 30)
-        nrow(interacts_AUTO_REP_PER$interactions)
-        
+
+
         ######################################################################################
         ###### CALC PARAMETERS FOR AUTOMATIC INTERACTIONS ####################################
         ######################################################################################
         source(paste(SCRIPTDIR,"BEH_Parameters_Auto_fort081.R",sep="/"))
       
 
-        #pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcher_CapTypeAntDistsDispl.pdf", sep = "_"), width=10, height=60)
-        #plot the interactions by pair as timeline
-        #generate 1 plot per every iteration 
-        summary_MAN_REP_PER_sub <- summary_MAN_REP_PER[,c("REPLICATE","PERIOD","pair","int_start_frame","int_end_frame")] ; summary_MAN_REP_PER_sub$flag <- "manual"
-        interacts_AUTO_REP_PER_sub <- interacts_AUTO_REP_PER$interactions[,c("pair","int_start_frame","int_end_frame")] ; interacts_AUTO_REP_PER_sub$flag <- "auto"
-        AUTO_MAN_REP_PER <- dplyr::bind_rows(summary_MAN_REP_PER_sub,interacts_AUTO_REP_PER_sub) #use bind_rows to keep rep info https://stackoverflow.com/questions/42887217/difference-between-rbind-and-bind-rows-in-r
- 
-        
-        ggplot(AUTO_MAN_REP_PER) +
-          geom_linerange(aes(y = pair, xmin = int_start_frame, xmax = int_end_frame,colour = flag),size=3,alpha = 0.5) +
-          theme(panel.background = element_rect(fill = 'white', colour = 'black')) +
-          labs(title = paste("Grooming by pair" ,unique(REPLICATE),unique(PERIOD),"- MAN vs AUTO"),
-               subtitle = paste("Nrows auto detected:" ,NROW(interacts_AUTO_REP_PER$interactions),"Nrows manual annotated:" ,NROW(summary_MAN_REP_PER),"\nMaxIntGap",MAX_INTERACTION_GAP, "s","Capsule file =",CapsuleDef )) +
-          scale_color_manual(values = c("manual" = "red",
-                                         "auto"="black"))
+        # #pdf(file=paste(DATADIR,"Interactions","AUTO_MAN_REP_PER","Gap",MAX_INTERACTION_GAP,"matcher_CapTypeAntDistsDispl.pdf", sep = "_"), width=10, height=60)
+        # #plot the interactions by pair as timeline
+        # #generate 1 plot per every iteration 
+        # summary_MAN_REP_PER_sub <- summary_MAN_REP_PER[,c("REPLICATE","PERIOD","pair","int_start_frame","int_end_frame")] ; summary_MAN_REP_PER_sub$flag <- "manual"
+        # interacts_AUTO_REP_PER_sub <- interacts_AUTO_REP_PER$interactions[,c("pair","int_start_frame","int_end_frame")] ; interacts_AUTO_REP_PER_sub$flag <- "auto"
+        # AUTO_MAN_REP_PER <- dplyr::bind_rows(summary_MAN_REP_PER_sub,interacts_AUTO_REP_PER_sub) #use bind_rows to keep rep info https://stackoverflow.com/questions/42887217/difference-between-rbind-and-bind-rows-in-r
+        # 
+        # 
+        # ggplot(AUTO_MAN_REP_PER) +
+        #   geom_linerange(aes(y = pair, xmin = int_start_frame, xmax = int_end_frame,colour = flag),size=3,alpha = 0.5) +
+        #   theme(panel.background = element_rect(fill = 'white', colour = 'black')) +
+        #   labs(title = paste("Grooming by pair" ,unique(REPLICATE),unique(PERIOD),"- MAN vs AUTO"),
+        #        subtitle = paste("Nrows auto detected:" ,NROW(interacts_AUTO_REP_PER$interactions),"Nrows manual annotated:" ,NROW(summary_MAN_REP_PER),"\nMaxIntGap",MAX_INTERACTION_GAP, "s","Capsule file =",CapsuleDef )) +
+        #   scale_color_manual(values = c("manual" = "red",
+        #                                  "auto"="black"))
         
       #}#MAX_INTERACTION_GAP
     #}#Buffer
@@ -333,35 +353,36 @@ dev.off()
 ###############################################################################
 ###### AUTO-MAN DISAGREEMENT PLOT #############################################
 ###############################################################################
-
-## visualise the cutoffs
-## Make y-axis logarithmic in histogram and fix issues for 0 occurences with log
-par(mfrow=c(3,1))
-#all
-hist.data = hist(interaction_AUTO$disagreement, breaks=seq(-1,0,0.05), plot=F)
-hist.data$counts <- replace(log10(hist.data$counts), log10(hist.data$counts)==-Inf, 0)
-highestCount <- max(hist.data$counts)
-plot(hist.data, main="All disagreements (log)",
-     sub = paste("N.AUTO TOT",length(interaction_AUTO$Hit)),
-     ylab='log10(Frequency)', xlab=" AUTO-MAN disagreement rate ", ylim=c(0,highestCount)); abline(v=-THRESH, lty=2)
-
-#True Positives
-hist.data1 = hist(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==1)], breaks=seq(-1,0,0.05), plot=F)
-hist.data1$counts <- replace(log10(hist.data1$counts), log10(hist.data1$counts)==-Inf, 0)
-plot(hist.data1, main="True Positives",
-     sub = paste("N.AUTO",length(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==1)]),"/ N.MANUAL",length(summary_MAN_REP_PER)),
-     ylab='log10(Frequency)',xlab=" AUTO-MAN agreement rate ", col=2, ylim=c(0,highestCount), xlim=c(-1,0)); abline(v=-THRESH, lty=2) #breaks=seq(-1,1,0.05)
-
-#False Positives
-hist.data1 = hist(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==0)], breaks=seq(-1,0,0.05), plot=F)
-hist.data1$counts <- replace(log10(hist.data1$counts), log10(hist.data1$counts)==-Inf, 0)
-plot(hist.data1, main="False Positives",
-     sub = paste("N.AUTO",length(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==0)])),
-     ylab='log10(Frequency)', xlab=" AUTO-MAN disagreement rate ",col=4, ylim=c(0,highestCount),xlim=c(-1,0)); abline(v=-THRESH, lty=2) #breaks=seq(-1,1,0.05)
-
-mtext(paste("VARS: MaxIntGap",MAX_INTERACTION_GAP, "s",", Capsule file =",CapsuleDef ), side = 3, line = -1.5, outer = TRUE)
-
-
+if (run_AUTO_MAN_agreement)
+  {
+  ## visualise the cutoffs
+  ## Make y-axis logarithmic in histogram and fix issues for 0 occurences with log
+  par(mfrow=c(3,1))
+  #all
+  hist.data = hist(interaction_AUTO$disagreement, breaks=seq(-1,0,0.05), plot=F)
+  hist.data$counts <- replace(log10(hist.data$counts), log10(hist.data$counts)==-Inf, 0)
+  highestCount <- max(hist.data$counts)
+  plot(hist.data, main="All disagreements (log)",
+       sub = paste("N.AUTO TOT",length(interaction_AUTO$Hit)),
+       ylab='log10(Frequency)', xlab=" AUTO-MAN disagreement rate ", ylim=c(0,highestCount)); abline(v=-THRESH, lty=2)
+  
+  #True Positives
+  hist.data1 = hist(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==1)], breaks=seq(-1,0,0.05), plot=F)
+  hist.data1$counts <- replace(log10(hist.data1$counts), log10(hist.data1$counts)==-Inf, 0)
+  plot(hist.data1, main="True Positives",
+       sub = paste("N.AUTO",length(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==1)]),"/ N.MANUAL",length(summary_MAN_REP_PER)),
+       ylab='log10(Frequency)',xlab=" AUTO-MAN agreement rate ", col=2, ylim=c(0,highestCount), xlim=c(-1,0)); abline(v=-THRESH, lty=2) #breaks=seq(-1,1,0.05)
+  
+  #False Positives
+  hist.data1 = hist(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==0)], breaks=seq(-1,0,0.05), plot=F)
+  hist.data1$counts <- replace(log10(hist.data1$counts), log10(hist.data1$counts)==-Inf, 0)
+  plot(hist.data1, main="False Positives",
+       sub = paste("N.AUTO",length(interaction_AUTO$disagreement[which(interaction_AUTO$Hit==0)])),
+       ylab='log10(Frequency)', xlab=" AUTO-MAN disagreement rate ",col=4, ylim=c(0,highestCount),xlim=c(-1,0)); abline(v=-THRESH, lty=2) #breaks=seq(-1,1,0.05)
+  
+  mtext(paste("VARS: MaxIntGap",MAX_INTERACTION_GAP, "s",", Capsule file =",CapsuleDef ), side = 3, line = -1.5, outer = TRUE)
+  
+  }
 # TO COMPARE PLOTS FOR THE FALSE POSITIVES (but also for the F negs) YOU WILL NEED TO USE vars from THE AUTO FILE
 # AFTER THE MATRIX CALCULATION HAS APPENDED AGREEMENT COLUMNS, AND TO GENERATE PCAs (2 - FALSE POS, FALSE NEG, AGREEing - per every particular parameter of ComputeANTInteraction ) with subsets of the AGREEMENT COL = 0 or 1.
 # ATTENTION:  FALSE NEGATIVES CAN BE GENERATED BY CREATING INVERSE DISAGREEMENT FOR LOOP (SEE ROW 77-84 PF AGREEMENT MATRIX SCRIPT)
@@ -371,11 +392,14 @@ mtext(paste("VARS: MaxIntGap",MAX_INTERACTION_GAP, "s",", Capsule file =",Capsul
 # DECIDE A RANGE OF PARAMS FOR COMPUTEANTINTERACTS
 
 
-#pca of summary_AUTO_INT
+#DO PCA OF summary_AUTO_REP_PER
+
+#I'LL START WITH THE PCA FOR summary_MANUAL AS LONG AS THE ISSUE WITH TRAJ_ANT_INT$frame GETS FIXED
 
 
 
-#PCA
+
+
 
 
 ###################### TO DOS ##############################

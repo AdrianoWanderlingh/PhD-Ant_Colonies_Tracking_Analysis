@@ -1,6 +1,7 @@
 ###############################################################################
 ###### extract ant trajectories from hand-annotated data ######################
 ###############################################################################
+print(paste("EXTRACT ANT TRAJ FROM HAND ANNOTATED DATA ",REPLICATE, PERIOD))
 ####First let's extract ant's trajectories
 
 for (BEH in c("G"))#,"T","FR","CR"))
@@ -89,25 +90,25 @@ for (BEH in c("G"))#,"T","FR","CR"))
     #check start time correspondance
     #print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_FRAME_start, "traj_start", min(traj_ACT$frame,na.rm = TRUE)))
     # # ## Plot trajectories of both actor & receiver, show on the same panel
-    Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
-    plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-    points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1)
-    
-    ## show the headings of each ACT
-    arrows.az (x = traj_ACT$x, 
-               y = traj_ACT$y, 
-               azimuth = traj_ACT$angle, 
-               rho = 10,
-               HeadWidth=0.1,
-               units="radians", Kol="blue2", Lwd=1)
-    ## show the headings of each REC
-    arrows.az (x = traj_REC$x, 
-               y = traj_REC$y, 
-               azimuth = traj_REC$angle, 
-               rho = 10,
-               HeadWidth=0.1,
-               units="radians", Kol="red2", Lwd=1)
-    
+    #Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
+    #plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+    #points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1)
+    # 
+    # ## show the headings of each ACT
+    # arrows.az (x = traj_ACT$x, 
+    #            y = traj_ACT$y, 
+    #            azimuth = traj_ACT$angle, 
+    #            rho = 10,
+    #            HeadWidth=0.1,
+    #            units="radians", Kol="blue2", Lwd=1)
+    # ## show the headings of each REC
+    # arrows.az (x = traj_REC$x, 
+    #            y = traj_REC$y, 
+    #            azimuth = traj_REC$angle, 
+    #            rho = 10,
+    #            HeadWidth=0.1,
+    #            units="radians", Kol="red2", Lwd=1)
+    # 
 
     
     ##################
@@ -313,6 +314,41 @@ for (BEH in c("G"))#,"T","FR","CR"))
                                   mean_orient_angle_diff, mean_movement_angle_diff,
                                   #when adding a new variable, it must be included in the reshape rule for data plotting
                                   stringsAsFactors = F)
+    
+    
+    
+    #create new variable by pasting ant numbers "low,high" for summary_MAN_ROW
+    summary_MAN_ROW$ant1 <- as.numeric(gsub("ant_","", summary_MAN_ROW$Act_Name))
+    summary_MAN_ROW$ant2 <- as.numeric(gsub("ant_","", summary_MAN_ROW$Rec_Name))
+    ## the ant 1 & ant 2 labels are not strictly ascending, so sort them so ant 1 alwasy < ant 2
+    summary_MAN_ROW$pair <- apply(summary_MAN_ROW[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
+    
+    
+    ## lets be cautious:
+    StDev_angle_ACT<-NULL 
+    StDev_angle_REC<-NULL 
+    mean_angle_ACT<-NULL 
+    mean_angle_REC<-NULL 
+    mean_delta_angles_ACT<-NULL 
+    mean_delta_angles_REC<-NULL 
+    moved_distance_px_ACT<-NULL 
+    moved_distance_px_REC<-NULL 
+    mean_speed_pxpersec_ACT<-NULL 
+    mean_speed_pxpersec_REC<-NULL 
+    mean_accel_pxpersec2_ACT<-NULL 
+    mean_accel_pxpersec2_REC<-NULL 
+    mean_jerk_PxPerSec3_ACT<-NULL 
+    mean_jerk_PxPerSec3_REC<-NULL 
+    rmsd_px_ACT<-NULL 
+    rmsd_px_REC<-NULL 
+    int_start_frame <-NULL 
+    int_end_frame<-NULL 
+    interaction_length_secs<-NULL 
+    prop_time_undetected_ACT<-NULL 
+    prop_time_undetected_REC<-NULL 
+    mean_strghtline_dist_px<-NULL 
+    mean_orient_angle_diff<-NULL 
+    mean_movement_angle_diff <- NULL
     
     #NO UNIX TIME BUT FRAMES. interaction AREA= NEST, FORAGING delete x y coords
     interacts_MAN_ROW <- data.frame(REPLICATE=REPLICATE,PERIOD=PERIOD,ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,

@@ -1,14 +1,12 @@
 
-######  GETTING VARS OFF INTERACTIONS ######
-
+######  GETTING VARS OFF  AUTO INTERACTIONS ######
+print(paste("GETTING VARS OFF AUTO INTERACTIONS ",REPLICATE, PERIOD))
 #IT HAS TO BE DONE INSIDE THE REP-PER LOOP BEFORE THE interaction_AUTO STACKING
 
 #fmQueryComputeInteractions $interactions
 #interacts_AUTO_REP_PER$interactions
 
 #fmQueryComputeInteractions $trajectories
-int_traj_AUTO_REP_PER <- interacts_AUTO_REP_PER$trajectories
-
 
 # CONSIDER THAT THE REC/ACT IS NOT KNOWN FOR AUTO_INTERACTS SO THE VARIABLES CONSIDERED SHOULD ONLY BE THE ONES NOT LINKED TO 1 SPECIFIC INDIVIDUAL. 
 # USE FOR LOOP  TO CREATE, INTERACTION BY INTERACTION, THE LIST OF PARAMS X Y ANGLE WITH EXP INFOS ATTACHED
@@ -17,16 +15,16 @@ int_traj_AUTO_REP_PER <- interacts_AUTO_REP_PER$trajectories
 
 # FINAL RESULT SHOULD LOOK LIKE interacts_MAN_REP_PER
 for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
-    TRAJ_ANT_list <- list()
+    #TRAJ_ANT_list <- list()
     for (which_ant in c("ant1","ant2")) {
       
       ## extract actor, receiver IDs & start & end times from the hand-annotated data
       #INTER <- interacts_AUTO_REP_PER$interactions[INT,]
       ANT <- interacts_AUTO_REP_PER$interactions[,which_ant][INT]
       
-      #extract frame lenght between start and end (int_start_frame ? int_end_frame)
-      INT_start_frame_ANT <- interacts_AUTO_REP_PER$interactions[,"int_start_frame"][INT]
-      INT_end_frame_ANT <- interacts_AUTO_REP_PER$interactions[,"int_end_frame"][INT]
+      #extract frame length between start and end (int_start_frame ? int_end_frame)
+      #INT_start_frame_ANT <- interacts_AUTO_REP_PER$interactions[,"int_start_frame"][INT]
+      #INT_end_frame_ANT   <- interacts_AUTO_REP_PER$interactions[,"int_end_frame"]  [INT]
       
       ## extract the trajectory for ANT
       #trajectory.row
@@ -39,12 +37,16 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       print(paste("Interaction number",INT,which_ant,ANT,"INT_TRAJ_ROW_ANT",INT_TRAJ_ROW_ANT,"INT_FRAME_start",INT_FRAME_start,"INT_FRAME_end",INT_FRAME_end))
      
       # which_ant.trajectory.row the corresponding index in $trajectory.
-      TRAJ_ANT <- interacts_AUTO_REP_PER$trajectories[[INT_TRAJ_ROW_ANT]]
+      #ISSUE HERE FOR ANT 10 -> NO FRAME INFO
+      #DEPENDS ON THE WAY FRAME INFO IS ASSIGNED
+      TRAJ_ANT     <- interacts_AUTO_REP_PER$trajectories[[INT_TRAJ_ROW_ANT]]
+      
       TRAJ_ANT_INT <- TRAJ_ANT [ which(as.numeric(rownames(TRAJ_ANT)) >= INT_FRAME_start & as.numeric(rownames(TRAJ_ANT)) <= INT_FRAME_end),]
       #add frame info
       #NOTE: ANT1 AND ANT2 TRAJ ARE NOT THE SAME LENGHT (MAYBE FOR MISSED FRAMES?). cHECK FOR GAPS IN TRAJS AND EXPAND GRID FOR MISSIN VALS (TIME >0.125)
       
-      TRAJ_ANT_INT$frame <- as.numeric(seq(INT_start_frame_ANT:INT_end_frame_ANT))
+      #CORRECT!
+      #TRAJ_ANT_INT$frame <- INT_start_frame_ANT : INT_end_frame_ANT
       
       ##################
       ## INDIVIDUAL TRAJECTORY MEASURES
@@ -112,16 +114,31 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       TRAJ_ANT_INT$jerk_PxPerSec3  <- c( with(TRAJ_ANT_INT, c(NA,(diff(accel_PxPerSec2))) / time_interval))
       mean_jerk_PxPerSec3          <- mean( TRAJ_ANT_INT$jerk_PxPerSec3, na.rm=T)
   
-        
-      
+  
       #names(TRAJ_ANT_INT)[names(TRAJ_ANT_INT) == 'x'] <- paste0(which_ant,".x"); names(TRAJ_ANT_INT)[names(TRAJ_ANT_INT) == 'y'] <- paste0(which_ant,".y"); names(TRAJ_ANT_INT)[names(TRAJ_ANT_INT) == 'angle'] <- paste0(which_ant,".angle")
       #assign each which_ant to list
-      TRAJ_ANT_list[[which_ant]] <- TRAJ_ANT_INT
-
+      if (which_ant=="ant1") {
+        TRAJ_ANT_ant1 <-TRAJ_ANT_INT
+      }
+      if (which_ant=="ant2"){
+        TRAJ_ANT_ant2 <-TRAJ_ANT_INT
+      #TRAJ_ANT_list[[which_ant]] <- TRAJ_ANT_INT
+}
   }#which_ant
   
-    # turn your list into a dataframe
-    TRAJ_AUTO_BOTH <- data.frame(TRAJ_ANT_list)
+
+    #rename trajectories columns NOT TO BE MERGED for Act and Rec, all except frame 
+    names(TRAJ_ANT_ant1) <- paste0("ant1." ,names(TRAJ_ANT_ant1))
+    names(TRAJ_ANT_ant2) <- paste0("ant2." ,names(TRAJ_ANT_ant2))
+    names(TRAJ_ANT_ant1)[names(TRAJ_ANT_ant1) == 'ant1.frame'] <-"frame"
+    names(TRAJ_ANT_ant2)[names(TRAJ_ANT_ant2) == 'ant2.frame'] <-"frame"
+  
+    #merge trajectories matching by time
+    TRAJ_AUTO_BOTH <- merge(TRAJ_ANT_ant1, TRAJ_ANT_ant2,all=T, by=c("frame"))
+    TRAJ_ANT_ant1 <- NULL
+    TRAJ_ANT_ant2 <- NULL
+
+    #TRAJ_AUTO_BOTH <- data.frame(TRAJ_ANT_list)
     TRAJ_AUTO_BOTH[c("ant1.time","ant2.time","ant2.zone","ant2.frame")] <- list(NULL)
     names(TRAJ_AUTO_BOTH)[names(TRAJ_AUTO_BOTH) == 'ant1.zone'] <- "zone"; names(TRAJ_AUTO_BOTH)[names(TRAJ_AUTO_BOTH) == 'ant1.frame'] <- "frame"
     #add info from INT
@@ -152,7 +169,8 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
                                   mean_accel_pxpersec2, 
                                   mean_jerk_PxPerSec3, 
                                   rmsd_px,
-                                  INT_start_frame_ANT, INT_end_frame_ANT, interaction_length_secs,
+                                  #int_start_frame, int_end_frame, 
+                                  # interaction_length_secs,  ## need to add this back!
                                   #prop_time_undetected_ANT, prop_time_undetected_REC,
                                   mean_strghtline_dist_px,
                                   mean_orient_angle_diff, mean_movement_angle_diff,
@@ -168,9 +186,9 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
                                      stringsAsFactors = F)
     
     ## Plot trajectories of both actor & receiver, show on the same panel
-    Title <- "Automatic Interactions"
-    plot   (ant1.y ~ ant1.x, TRAJ_AUTO_BOTH, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(TRAJ_AUTO_BOTH$ant1.x,TRAJ_AUTO_BOTH$ant2.x),max(TRAJ_AUTO_BOTH$ant1.x,TRAJ_AUTO_BOTH$ant2.x)),ylim=c(min(TRAJ_AUTO_BOTH$ant1.y,TRAJ_AUTO_BOTH$ant2.y),max(TRAJ_AUTO_BOTH$ant1.y,TRAJ_AUTO_BOTH$ant2.y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-    points (ant2.y~ ant2.x, TRAJ_AUTO_BOTH, type="l", lwd=4,  col="red4",asp=1)
+    #Title <- "Automatic Interactions"
+    #plot   (ant1.y ~ ant1.x, TRAJ_AUTO_BOTH, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(TRAJ_AUTO_BOTH$ant1.x,TRAJ_AUTO_BOTH$ant2.x),max(TRAJ_AUTO_BOTH$ant1.x,TRAJ_AUTO_BOTH$ant2.x)),ylim=c(min(TRAJ_AUTO_BOTH$ant1.y,TRAJ_AUTO_BOTH$ant2.y),max(TRAJ_AUTO_BOTH$ant1.y,TRAJ_AUTO_BOTH$ant2.y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+    #points (ant2.y~ ant2.x, TRAJ_AUTO_BOTH, type="l", lwd=4,  col="red4",asp=1)
     
 
     ## stack -by the end of the loop, this should just contain all events for replicate X, period Y

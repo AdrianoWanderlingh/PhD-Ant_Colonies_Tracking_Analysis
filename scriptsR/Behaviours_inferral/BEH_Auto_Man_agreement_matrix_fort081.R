@@ -1,3 +1,5 @@
+print(paste("AUTO-MAN AGREEMENT MATRIX",REPLICATE, PERIOD))
+
 library(Matrix)
 
 # # pointer to list of all the possible ids pairs ordered 
@@ -54,13 +56,13 @@ int_mat_err <- int_mat_manual - int_mat_auto
 #Calculate the % disagreement per each interaction
 interacts_AUTO_REP_PER$interactions$agreement <- NA
 for (i in 1:nrow(interacts_AUTO_REP_PER$interactions))
-{
+  {
   PAIR <- interacts_AUTO_REP_PER$interactions$pair[i]
   Col_Indices <- interacts_AUTO_REP_PER$interactions$int_start_frame[i] :  interacts_AUTO_REP_PER$interactions$int_end_frame[i]
   Row_Indices <- which(PAIR == rownames(int_mat_err))
   Overlap <- int_mat_err[ Row_Indices, Col_Indices]
   interacts_AUTO_REP_PER$interactions$disagreement[i] <-   sum(Overlap)/length(Overlap)
-}
+  } 
 
 ## visualise the agrement:
 ## An interaction with mean =0 has total agreement (0)
