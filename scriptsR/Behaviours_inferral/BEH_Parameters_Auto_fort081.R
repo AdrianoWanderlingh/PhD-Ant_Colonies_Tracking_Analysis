@@ -20,26 +20,31 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       
       ## extract actor, receiver IDs & start & end times from the hand-annotated data
       #INTER <- interacts_AUTO_REP_PER$interactions[INT,]
-      ANT <- interacts_AUTO_REP_PER$interactions[,which_ant][INT]
+      ANT <- interacts_AUTO_REP_PER$interactions[INT,which_ant]
       
       #extract frame length between start and end (int_start_frame ? int_end_frame)
       #INT_start_frame_ANT <- interacts_AUTO_REP_PER$interactions[,"int_start_frame"][INT]
       #INT_end_frame_ANT   <- interacts_AUTO_REP_PER$interactions[,"int_end_frame"]  [INT]
       
+      # interacts_AUTO_REP_PER$trajectories_summary$ant.row.index <- paste0(interacts_AUTO_REP_PER$trajectories_summary$antID_str,"row",rownames(interacts_AUTO_REP_PER$trajectories_summary))
+      # names(interacts_AUTO_REP_PER$trajectories)                <- paste0(interacts_AUTO_REP_PER$trajectories_summary$antID_str,"row",rownames(interacts_AUTO_REP_PER$trajectories_summary)) ###and use the content of that column to rename the objects within trajectory list
+      # 
+      
       ## extract the trajectory for ANT
       #trajectory.row
-      INT_TRAJ_ROW_ANT <- interacts_AUTO_REP_PER$interactions[,paste0(which_ant,".trajectory.row")][INT]
+      INT_TRAJ_ROW_ANT <- interacts_AUTO_REP_PER$interactions[INT,paste0(which_ant,".trajectory.row")]
+      ANT.ROW.INDEX <- paste0("ant_",ANT,"row",INT_TRAJ_ROW_ANT)
       #trajectory.start
       INT_FRAME_start  <- as.numeric(interacts_AUTO_REP_PER$interactions[,paste0(which_ant,".trajectory.start")][INT])
       #trajectory.end
       INT_FRAME_end  <- as.numeric(interacts_AUTO_REP_PER$interactions[,paste0(which_ant,".trajectory.end")][INT])
       
-      print(paste("Interaction number",INT,which_ant,ANT,"INT_TRAJ_ROW_ANT",INT_TRAJ_ROW_ANT,"INT_FRAME_start",INT_FRAME_start,"INT_FRAME_end",INT_FRAME_end))
+      print(paste("Interaction number",INT,which_ant,ANT,"ANT.ROW.INDEX",ANT.ROW.INDEX,"INT_FRAME_start",INT_FRAME_start,"INT_FRAME_end",INT_FRAME_end))
      
       # which_ant.trajectory.row the corresponding index in $trajectory.
       #ISSUE HERE FOR ANT 10 -> NO FRAME INFO
       #DEPENDS ON THE WAY FRAME INFO IS ASSIGNED
-      TRAJ_ANT     <- interacts_AUTO_REP_PER$trajectories[[INT_TRAJ_ROW_ANT]]
+      TRAJ_ANT     <- interacts_AUTO_REP_PER$trajectories[[ANT.ROW.INDEX]]
       
       TRAJ_ANT_INT <- TRAJ_ANT [ which(as.numeric(rownames(TRAJ_ANT)) >= INT_FRAME_start & as.numeric(rownames(TRAJ_ANT)) <= INT_FRAME_end),]
       #add frame info
@@ -159,6 +164,11 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     TRAJ_AUTO_BOTH$Movement_angle_diff <- abs((TRAJ_AUTO_BOTH$ant2.Movement_angle_difference - pi) - (TRAJ_AUTO_BOTH$ant1.Movement_angle_difference -pi)) %% (2*pi)
     mean_movement_angle_diff <-  mean(TRAJ_AUTO_BOTH$Movement_angle_diff, na.rm=TRUE)
     
+    interaction_length_secs <- ((max(TRAJ_AUTO_BOTH$frame) - min(TRAJ_AUTO_BOTH$frame))+1)/8  ## includes end frame with +1
+    prop_time_undetected_ant1 <- (sum(is.na(TRAJ_AUTO_BOTH$ant1.x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
+    prop_time_undetected_ant2 <- (sum(is.na(TRAJ_AUTO_BOTH$ant2.x)) / 8)  / interaction_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
+    mean_prop_time_undetected <- (prop_time_undetected_ant1+prop_time_undetected_ant2)/2
+    
     ###############
     summary_AUTO_INT <- data.frame(REPLICATE, PERIOD, INT, unique(TRAJ_AUTO_BOTH$ant1), unique(TRAJ_AUTO_BOTH$ant2), unique(TRAJ_AUTO_BOTH$pair),
                                   StDev_angle,
@@ -169,9 +179,9 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
                                   mean_accel_pxpersec2, 
                                   mean_jerk_PxPerSec3, 
                                   rmsd_px,
-                                  #int_start_frame, int_end_frame, 
-                                  # interaction_length_secs,  ## need to add this back!
-                                  #prop_time_undetected_ANT, prop_time_undetected_REC,
+                                  int_start_frame=min(TRAJ_AUTO_BOTH$frame), int_end_frame =max(TRAJ_AUTO_BOTH$frame),
+                                  interaction_length_secs,  
+                                  prop_time_undetected_ant1, prop_time_undetected_ant2, mean_prop_time_undetected,
                                   mean_strghtline_dist_px,
                                   mean_orient_angle_diff, mean_movement_angle_diff,
                                   #when adding a new variable, it must be included in the reshape rule for data plotting
@@ -182,7 +192,7 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.pair.'] <- "pair"
     
     #stack per TRAJ_AUTO_BOTH
-    interacts_AUTO_INT <- data.frame(REPLICATE,PERIOD,INT,TRAJ_AUTO_BOTH,
+    interaction_AUTO_INT <- data.frame(REPLICATE,PERIOD,INT,TRAJ_AUTO_BOTH,
                                      stringsAsFactors = F)
     
     ## Plot trajectories of both actor & receiver, show on the same panel
@@ -192,7 +202,9 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     
 
     ## stack -by the end of the loop, this should just contain all events for replicate X, period Y
-    interacts_AUTO_REP_PER_FULL <- rbind(interacts_AUTO_REP_PER_FULL, interacts_AUTO_INT)
+    if (create_interaction_AUTO_REP_PER) {
+      interactions_AUTO_REP_PER <- rbind(interactions_AUTO_REP_PER, interaction_AUTO_INT)
+    }
     summary_AUTO_REP_PER   <- rbind(summary_AUTO_REP_PER,     summary_AUTO_INT)
     
 }

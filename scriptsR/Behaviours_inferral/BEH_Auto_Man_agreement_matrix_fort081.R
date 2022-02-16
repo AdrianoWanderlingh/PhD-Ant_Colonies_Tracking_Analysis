@@ -36,16 +36,17 @@ sum(summary_MAN_REP_PER$interaction_length_secs*8)
 sum(int_mat_manual)
 
 # # Auto
-for (i in 1:nrow(interacts_AUTO_REP_PER$interactions))
+for (i in 1:nrow(summary_AUTO_REP_PER))
   {  
-  PAIR <- interacts_AUTO_REP_PER$interactions$pair[i]
-  int_mat_auto[PAIR,] <- int_mat_auto[PAIR,] + c(rep(0,( interacts_AUTO_REP_PER$interactions$int_start_frame[i]-1)),
-                                                     rep(1,(interacts_AUTO_REP_PER$interactions$int_end_frame[i]) - interacts_AUTO_REP_PER$interactions$int_start_frame[i] + 1),
-                                                     rep(0,(length(IF_frames$frame_num) - interacts_AUTO_REP_PER$interactions$int_end_frame[i])))
+  PAIR <- summary_AUTO_REP_PER$pair[i]
+  int_mat_auto[PAIR,] <- int_mat_auto[PAIR,] + c(rep(0,( summary_AUTO_REP_PER$int_start_frame[i]-1)),
+                                                     rep(1,(summary_AUTO_REP_PER$int_end_frame[i]) - summary_AUTO_REP_PER$int_start_frame[i] + 1),
+                                                     rep(0,(length(IF_frames$frame_num) - summary_AUTO_REP_PER$int_end_frame[i])))
   }
 
 
 sum(interacts_AUTO_REP_PER$interactions$Duration) #see above why they differ
+sum(summary_AUTO_REP_PER$int_end_frame - summary_AUTO_REP_PER$int_start_frame )
 sum(int_mat_auto)
 
 int_mat_err <- int_mat_manual - int_mat_auto
@@ -54,14 +55,14 @@ int_mat_err <- int_mat_manual - int_mat_auto
 
 
 #Calculate the % disagreement per each interaction
-interacts_AUTO_REP_PER$interactions$agreement <- NA
-for (i in 1:nrow(interacts_AUTO_REP_PER$interactions))
+summary_AUTO_REP_PER$agreement <- NA
+for (i in 1:nrow(summary_AUTO_REP_PER))
   {
-  PAIR <- interacts_AUTO_REP_PER$interactions$pair[i]
-  Col_Indices <- interacts_AUTO_REP_PER$interactions$int_start_frame[i] :  interacts_AUTO_REP_PER$interactions$int_end_frame[i]
+  PAIR <- summary_AUTO_REP_PER$pair[i]
+  Col_Indices <- summary_AUTO_REP_PER$int_start_frame[i] :  summary_AUTO_REP_PER$int_end_frame[i]
   Row_Indices <- which(PAIR == rownames(int_mat_err))
   Overlap <- int_mat_err[ Row_Indices, Col_Indices]
-  interacts_AUTO_REP_PER$interactions$disagreement[i] <-   sum(Overlap)/length(Overlap)
+  summary_AUTO_REP_PER$disagreement[i] <-   sum(Overlap)/length(Overlap)
   } 
 
 ## visualise the agrement:
@@ -71,14 +72,15 @@ for (i in 1:nrow(interacts_AUTO_REP_PER$interactions))
 
 
 ## explore
-#plot(disagreement ~ Duration, interacts_AUTO_REP_PER$interactions); abline(h=0, lty=2)
+#plot(disagreement ~ Duration, summary_AUTO_REP_PER); abline(h=0, lty=2)
 
 ## APPLY THRESHOLDS
 THRESH <- 0.5
-interacts_AUTO_REP_PER$interactions$Hit <- NA
-interacts_AUTO_REP_PER$interactions$Hit [which(abs(interacts_AUTO_REP_PER$interactions$disagreement) <=  THRESH)] <- 1 ## 
-interacts_AUTO_REP_PER$interactions$Hit [which(abs(interacts_AUTO_REP_PER$interactions$disagreement) >   THRESH)] <- 0
+summary_AUTO_REP_PER$Hit <- NA
+summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) <=  THRESH)] <- 1 ## 
+summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) >   THRESH)] <- 0
 
+print(paste("AUTO-MAN AGREEMENT MATRIX",REPLICATE, PERIOD,"PERFORMED"))
 
 # int_err_per_frame.append([(int_mat_err==1).sum() / N_frm, (int_mat_err==-1).sum() / N_frm])
 

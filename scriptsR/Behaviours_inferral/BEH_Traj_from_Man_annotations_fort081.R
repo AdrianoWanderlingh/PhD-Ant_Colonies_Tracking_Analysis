@@ -251,7 +251,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
     # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
     int_start_frame <- min(traj_BOTH$frame, na.rm=T)
     int_end_frame <- max(traj_BOTH$frame, na.rm=T)
-    interaction_length_secs <-  (int_end_frame - int_start_frame)/8  ## 21 Jan 2022
+    interaction_length_secs <-  ((int_end_frame - int_start_frame)+1)/8  ##includes end frame with +1 . 16 Feb 2022
     
     prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
     prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x)) / 8)  / interaction_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
