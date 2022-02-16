@@ -396,6 +396,7 @@ if (run_AUTO_MAN_agreement)
 
 #Save the uber-large output of all cut trajectories as computing takes minutes
 #dput(interaction_AUTO_REP_PER, file = "/home/cf19810/Documents/Ants_behaviour_analysis/Data/interaction_AUTO_REP_PER_16feb22.txt")
+#dput(summary_AUTO_REP_PER, file = "/home/cf19810/Documents/Ants_behaviour_analysis/Data/summary_AUTO_REP_PER_16feb22.txt")
 
 
 
@@ -406,13 +407,6 @@ if (run_AUTO_MAN_agreement)
 
 #ADD ANOTHER CAPSULE DEF FOR TESTING
 # DECIDE A RANGE OF PARAMS FOR COMPUTEANTINTERACTS
-
-
-#DO PCA OF summary_AUTO_REP_PER
-#remove ant names/rep/int/etc in pca (keep only vars)
-
-
-
 
 
 
