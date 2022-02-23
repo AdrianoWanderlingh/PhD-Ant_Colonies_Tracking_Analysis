@@ -75,7 +75,7 @@ for (i in 1:nrow(summary_AUTO_REP_PER))
 #plot(disagreement ~ Duration, summary_AUTO_REP_PER); abline(h=0, lty=2)
 
 ## APPLY THRESHOLDS
-THRESH <- 0.5
+THRESH <- 0.4
 summary_AUTO_REP_PER$Hit <- NA
 summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) <=  THRESH)] <- 1 ## 
 summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) >   THRESH)] <- 0

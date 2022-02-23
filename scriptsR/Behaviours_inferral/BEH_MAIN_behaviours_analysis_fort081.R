@@ -121,7 +121,7 @@ for (REPLICATE in c("R3SP","R9SP"))
   
   ## locate the ant info file for REPLICATE
   MyrmidonCapsuleFile <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T)
-  MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl("Capsule_Zones_defined.myrmidon",MyrmidonCapsuleFile)]
+  MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl("Capsule_Zones_defined_BODY-HEAD.myrmidon",MyrmidonCapsuleFile)]
   e <- fmExperimentOpen(MyrmidonCapsuleFile)
   fmQueryGetDataInformations(e) # $details$tdd.path
   experiment_name <- unlist(strsplit(MyrmidonCapsuleFile,split="/"))[length(unlist(strsplit(MyrmidonCapsuleFile,split="/")))]
@@ -227,12 +227,12 @@ for (REPLICATE in c("R3SP","R9SP"))
     #fmMatcherAntAngleSmallerThan(), fmMatcherAntAngleGreaterThan() 
     capsules  <- e$antShapeTypeNames
     names(capsules) <- as.character( 1:length(capsules))
-    antennae_id <- as.numeric(names(capsules)[[which(capsules=="antennae")]])
+    head_id <- as.numeric(names(capsules)[[which(capsules=="head")]])
     body_id <- as.numeric(names(capsules)[[which(capsules=="body")]])
     
     # body_id <- capsules[which(capsules$name=="body"),"typeID"]
-    matcherCapType <- fmMatcherInteractionType(body_id,antennae_id)
-    matcherCapTypeAntDists <- fmMatcherAnd(list(fmMatcherInteractionType(body_id,antennae_id),
+    matcherCapType <- fmMatcherInteractionType(body_id,head_id)
+    matcherCapTypeAntDists <- fmMatcherAnd(list(fmMatcherInteractionType(body_id,head_id),
                                  fmMatcherAntDistanceSmallerThan(AntDistanceSmallerThan),
                                  fmMatcherAntDistanceGreaterThan(AntDistanceGreaterThan),
                                  fmMatcherAntDisplacement(ANT_LENGHT_PX, MAX_DISPLACEMENT)))     #check every 5 seconds if ant has displaced more than ANT_LENGHT_PX

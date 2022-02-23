@@ -124,8 +124,15 @@ for (BEH in c("G"))#,"T","FR","CR"))
     
     # ADRIANO to double check  wheTHER THE circular average is based on the wrong coordinate systEM - E.G. 0-360 CLOCKWISE !!!!!!!
     
-    mean_angle_ACT                    <-  mean.circular(traj_ACT$angle, na.rm = TRUE) 
-    mean_angle_REC                    <-  mean.circular(traj_REC$angle, na.rm = TRUE)
+    mean_abs_angle_ACT                    <-  mean.circular(abs(traj_ACT$angle), na.rm = TRUE) 
+    mean_abs_angle_REC                    <-  mean.circular(abs(traj_REC$angle), na.rm = TRUE)
+    
+    #turn angles
+    trjACT <- TrajFromCoords(data.frame(traj_ACT$x,traj_ACT$y,traj_ACT$frame))
+    mean_abs_turnAngle_ACT            <- mean.circular(abs(TrajAngles(trjACT)))
+    trjREC <- TrajFromCoords(data.frame(traj_REC$x,traj_REC$y,traj_REC$frame))
+    mean_abs_turnAngle_REC            <- mean.circular(abs(TrajAngles(trjREC)))
+    
     
     #---------------------------------------------------------------------------------
 
@@ -234,7 +241,6 @@ for (BEH in c("G"))#,"T","FR","CR"))
     rmsd_px_ACT                            <-  sqrt(sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x)))
     rmsd_px_REC                            <-  sqrt(sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x)))
     
-    
     #rename trajectories columns NOT TO BE MERGED for Act and Rec
     names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
     names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
@@ -301,7 +307,8 @@ for (BEH in c("G"))#,"T","FR","CR"))
     
     summary_MAN_ROW <- data.frame(REPLICATE, PERIOD, BEH, ROW, Act_Name, Rec_Name, 
                                   StDev_angle_ACT, StDev_angle_REC,
-                                  mean_angle_ACT, mean_angle_REC,
+                                  mean_abs_angle_ACT, mean_abs_angle_REC,
+                                  mean_abs_turnAngle_ACT,mean_abs_turnAngle_REC,
                                   mean_delta_angles_ACT, mean_delta_angles_REC,
                                   moved_distance_px_ACT, moved_distance_px_REC,
                                   mean_speed_pxpersec_ACT, mean_speed_pxpersec_REC,
@@ -327,8 +334,10 @@ for (BEH in c("G"))#,"T","FR","CR"))
     ## lets be cautious:
     StDev_angle_ACT<-NULL 
     StDev_angle_REC<-NULL 
-    mean_angle_ACT<-NULL 
-    mean_angle_REC<-NULL 
+    mean_abs_angle_ACT<-NULL 
+    mean_abs_angle_REC<-NULL 
+    mean_abs_turnAngle_ACT<-NULL
+    mean_abs_turnAngle_REC<-NULL
     mean_delta_angles_ACT<-NULL 
     mean_delta_angles_REC<-NULL 
     moved_distance_px_ACT<-NULL 

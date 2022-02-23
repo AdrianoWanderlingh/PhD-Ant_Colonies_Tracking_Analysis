@@ -1,7 +1,38 @@
-
 ######  GETTING VARS OFF  AUTO INTERACTIONS ######
 print(paste("GETTING VARS OFF AUTO INTERACTIONS ",REPLICATE, PERIOD))
 #IT HAS TO BE DONE INSIDE THE REP-PER LOOP BEFORE THE interaction_AUTO STACKING
+
+
+# WHAT TO DO WHEN IT IS NOT POSSIBLE TO DISCRIMINATE BETWEEN ACTOR AND RECEIVER?
+
+#es.
+#Y <- it is possible to distinguish ACT and REC (CONTAINS EITHER 2-3 OR 3-2)
+#N <- it is NOT possible to distinguish ACT and REC as the int is bidirectional
+# > table(interacts_AUTO_REP_PER$interactions$types)
+# 2-2,2-3          13 Y
+# 2-2,2-3,3-2      10 N
+# 2-2,2-3,3-2,3-3   7 N
+# 2-2,2-3,3-3       4 Y
+# 2-2,3-2          20 Y
+# 2-2,3-2,3-3       1 Y
+# 2-3             226 Y
+# 2-3,3-2          12 N
+# 2-3,3-2,3-3      19 N
+# 2-3,3-3          94 Y
+# 3-2             272 Y
+# 3-2,3-3          78 Y
+# 
+# 
+# 
+
+
+
+
+
+
+
+
+
 
 #fmQueryComputeInteractions $interactions
 #interacts_AUTO_REP_PER$interactions
@@ -16,6 +47,17 @@ print(paste("GETTING VARS OFF AUTO INTERACTIONS ",REPLICATE, PERIOD))
 # FINAL RESULT SHOULD LOOK LIKE interacts_MAN_REP_PER
 for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     #TRAJ_ANT_list <- list()
+    capsule_ANT         <- NULL
+    ROLE                <- NULL
+    StDev_angle         <- NULL
+    mean_abs_angle      <- NULL
+    mean_abs_turnAngle  <- NULL
+    rmsd_px             <- NULL
+    moved_distance_px   <- NULL
+    mean_speed_PxPerSec <- NULL
+    mean_accel_PxPerSec2<- NULL
+    mean_jerk_PxPerSec3 <- NULL
+    mean_turnAngle      <- NULL
     for (which_ant in c("ant1","ant2")) {
       
       ## extract actor, receiver IDs & start & end times from the hand-annotated data
@@ -35,9 +77,9 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       INT_TRAJ_ROW_ANT <- interacts_AUTO_REP_PER$interactions[INT,paste0(which_ant,".trajectory.row")]
       ANT.ROW.INDEX <- paste0("ant_",ANT,"row",INT_TRAJ_ROW_ANT)
       #trajectory.start
-      INT_FRAME_start  <- as.numeric(interacts_AUTO_REP_PER$interactions[,paste0(which_ant,".trajectory.start")][INT])
+      INT_FRAME_start  <- as.numeric(interacts_AUTO_REP_PER$interactions[INT,paste0(which_ant,".trajectory.start")])
       #trajectory.end
-      INT_FRAME_end  <- as.numeric(interacts_AUTO_REP_PER$interactions[,paste0(which_ant,".trajectory.end")][INT])
+      INT_FRAME_end  <- as.numeric(interacts_AUTO_REP_PER$interactions[INT,paste0(which_ant,".trajectory.end")])
       
       print(paste("Interaction number",INT,which_ant,ANT,"ANT.ROW.INDEX",ANT.ROW.INDEX,"INT_FRAME_start",INT_FRAME_start,"INT_FRAME_end",INT_FRAME_end))
      
@@ -47,19 +89,46 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       TRAJ_ANT     <- interacts_AUTO_REP_PER$trajectories[[ANT.ROW.INDEX]]
       
       TRAJ_ANT_INT <- TRAJ_ANT [ which(as.numeric(rownames(TRAJ_ANT)) >= INT_FRAME_start & as.numeric(rownames(TRAJ_ANT)) <= INT_FRAME_end),]
-      #add frame info
-      #NOTE: ANT1 AND ANT2 TRAJ ARE NOT THE SAME LENGHT (MAYBE FOR MISSED FRAMES?). cHECK FOR GAPS IN TRAJS AND EXPAND GRID FOR MISSIN VALS (TIME >0.125)
-      
-      #CORRECT!
-      #TRAJ_ANT_INT$frame <- INT_start_frame_ANT : INT_end_frame_ANT
+
+
+#interacting capsules
+capsules  <- e$antShapeTypeNames
+names(capsules) <- as.character( 1:length(capsules))
+head_id <- names(capsules)[[which(capsules=="head")]]
+body_id <- names(capsules)[[which(capsules=="body")]]
+INT_capsules  <- interacts_AUTO_REP_PER$interactions[INT,"types"]
+#get info only when there are only 2 interacting capsules
+if (!grepl(",",INT_capsules)) {
+  capsule_ANT <- unlist(strsplit(INT_capsules,"-"))
+  if (which_ant=="ant1") {
+    #when body, assign REC_Role. when head, assign ACT_role
+    if (capsule_ANT[1]==body_id) {
+      ROLE[which_ant]  <- "REC"
+    } else { ROLE[which_ant]  <- "ACT"}
+  }
+
+
+  if (which_ant=="ant2"){
+    #when body, assign REC_Role. when head, assign ACT_role
+    if (capsule_ANT[2]==body_id) {
+      ROLE[which_ant]  <- "REC"
+    } else { ROLE[which_ant]  <- "ACT"}
+  }
+}#select only type with a single capsule interacting
+
+
       
       ##################
       ## INDIVIDUAL TRAJECTORY MEASURES
       
       ### angular st.dev 
-      StDev_angle                  <-  angular.deviation(TRAJ_ANT_INT$angle, na.rm = TRUE)
+      StDev_angle[which_ant]      <-  angular.deviation(TRAJ_ANT_INT$angle, na.rm = TRUE)
       #circular average
-      mean_angle                   <-  mean.circular(TRAJ_ANT_INT$angle, na.rm = TRUE) 
+      mean_abs_angle[which_ant]   <-  mean.circular(abs(TRAJ_ANT_INT$angle), na.rm = TRUE)
+      #turn angles
+      trj <- TrajFromCoords(data.frame(TRAJ_ANT_INT$x,TRAJ_ANT_INT$y,TRAJ_ANT_INT$frame))
+      mean_abs_turnAngle[which_ant]              <- mean.circular(abs(TrajAngles(trj)))
+
       
       ## Delta_angles: differential between orientation_angle and movement_angle
       # movement_angle: as the orientation_angle remains the same, the movement_angle can change if the movement is perpendicular to the orientation_angle
@@ -92,7 +161,7 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       ## mean delta_angles
       mean_delta_angles <- mean.circular(TRAJ_ANT_INT$delta_angles,na.rm=TRUE)
       ## root mean square displacement
-      rmsd_px                            <-  sqrt(sum( (TRAJ_ANT_INT$x-mean(TRAJ_ANT_INT$x))^2 + (TRAJ_ANT_INT$y-mean(TRAJ_ANT_INT$y))^2 )/length(na.omit(TRAJ_ANT_INT$x)))
+      rmsd_px[which_ant]                            <-  sqrt(sum( (TRAJ_ANT_INT$x-mean(TRAJ_ANT_INT$x))^2 + (TRAJ_ANT_INT$y-mean(TRAJ_ANT_INT$y))^2 )/length(na.omit(TRAJ_ANT_INT$x)))
 
       # ## measure the length *in seconds* of the interaction between ACT & REC
       # # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
@@ -103,21 +172,22 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       # prop_time_undetected_ANT <- (sum(is.na(TRAJ_ANT_INT$x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
 
       ##### FRAME BY FRAME PARAMETERS
+
       
       # distance walked
       TRAJ_ANT_INT$distance        <- c(NA, with(TRAJ_ANT_INT, (sqrt(diff(x)^2 + diff(y)^2)))) # euclidean distance
-      moved_distance_px            <- sum(TRAJ_ANT_INT$distance,na.rm = T)
+      moved_distance_px[which_ant]            <- sum(TRAJ_ANT_INT$distance,na.rm = T)
       
       TRAJ_ANT_INT$time_interval   <- c(NA, diff(TRAJ_ANT_INT$frame)/8)
       #speed
       TRAJ_ANT_INT$speed_PxPerSec  <- c( with(TRAJ_ANT_INT, c(NA,(sqrt(diff(x)^2 + diff(y)^2))) / time_interval))
-      mean_speed_pxpersec         <- mean(TRAJ_ANT_INT$speed_PxPerSec, na.rm=T) 
+      mean_speed_PxPerSec[which_ant]         <- mean(TRAJ_ANT_INT$speed_PxPerSec, na.rm=T) 
       #  acceleration
       TRAJ_ANT_INT$accel_PxPerSec2 <- c( with(TRAJ_ANT_INT, c(NA,(diff(speed_PxPerSec))) / time_interval))
-      mean_accel_pxpersec2         <- mean(TRAJ_ANT_INT$accel_PxPerSec2, na.rm=T)
+      mean_accel_PxPerSec2[which_ant]         <- mean(TRAJ_ANT_INT$accel_PxPerSec2, na.rm=T)
       # jerk (diff in accelerations)
       TRAJ_ANT_INT$jerk_PxPerSec3  <- c( with(TRAJ_ANT_INT, c(NA,(diff(accel_PxPerSec2))) / time_interval))
-      mean_jerk_PxPerSec3          <- mean( TRAJ_ANT_INT$jerk_PxPerSec3, na.rm=T)
+      mean_jerk_PxPerSec3[which_ant]          <- mean( TRAJ_ANT_INT$jerk_PxPerSec3, na.rm=T)
   
   
       #names(TRAJ_ANT_INT)[names(TRAJ_ANT_INT) == 'x'] <- paste0(which_ant,".x"); names(TRAJ_ANT_INT)[names(TRAJ_ANT_INT) == 'y'] <- paste0(which_ant,".y"); names(TRAJ_ANT_INT)[names(TRAJ_ANT_INT) == 'angle'] <- paste0(which_ant,".angle")
@@ -128,9 +198,17 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       if (which_ant=="ant2"){
         TRAJ_ANT_ant2 <-TRAJ_ANT_INT
       #TRAJ_ANT_list[[which_ant]] <- TRAJ_ANT_INT
-}
+      }
   }#which_ant
   
+    #-----------------------------------------------------------
+    # #assign basing on ROLE
+    # if (which_ant=="ant1") {
+    #   TRAJ_ANT_ant1 <-TRAJ_ANT_INT
+    # }
+    # if (which_ant=="ant2"){
+    #   TRAJ_ANT_ant2 <-TRAJ_ANT_INT
+    # }
 
     #rename trajectories columns NOT TO BE MERGED for Act and Rec, all except frame 
     names(TRAJ_ANT_ant1) <- paste0("ant1." ,names(TRAJ_ANT_ant1))
@@ -171,14 +249,15 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     
     ###############
     summary_AUTO_INT <- data.frame(REPLICATE, PERIOD, INT, unique(TRAJ_AUTO_BOTH$ant1), unique(TRAJ_AUTO_BOTH$ant2), unique(TRAJ_AUTO_BOTH$pair),
-                                  StDev_angle,
-                                  mean_angle,
+                                  StDev_angle[["ant1"]],StDev_angle[["ant2"]],
+                                  mean_abs_angle[["ant1"]],mean_abs_angle[["ant2"]],
+                                  mean_abs_turnAngle[["ant1"]],mean_abs_turnAngle[["ant2"]],
                                   mean_delta_angles, 
-                                  moved_distance_px, 
-                                  mean_speed_pxpersec, 
-                                  mean_accel_pxpersec2, 
-                                  mean_jerk_PxPerSec3, 
-                                  rmsd_px,
+                                  moved_distance_px[["ant1"]], moved_distance_px[["ant2"]],
+                                  mean_speed_PxPerSec[["ant1"]],mean_speed_PxPerSec[["ant2"]],
+                                  mean_accel_PxPerSec2[["ant1"]], mean_accel_PxPerSec2[["ant2"]], 
+                                  mean_jerk_PxPerSec3[["ant1"]], mean_jerk_PxPerSec3[["ant2"]], 
+                                  rmsd_px[["ant1"]],rmsd_px[["ant2"]],
                                   int_start_frame=min(TRAJ_AUTO_BOTH$frame), int_end_frame =max(TRAJ_AUTO_BOTH$frame),
                                   interaction_length_secs,  
                                   prop_time_undetected_ant1, prop_time_undetected_ant2, mean_prop_time_undetected,
@@ -190,6 +269,9 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.ant1.'] <- "ant1"
     names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.ant2.'] <- "ant2"
     names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.pair.'] <- "pair"
+    colnames(summary_AUTO_INT) <- sub("...ant1...", "_ant1", colnames(summary_AUTO_INT))
+    colnames(summary_AUTO_INT) <- sub("...ant2...", "_ant2", colnames(summary_AUTO_INT))
+    
     
     #stack per TRAJ_AUTO_BOTH
     interaction_AUTO_INT <- data.frame(REPLICATE,PERIOD,INT,TRAJ_AUTO_BOTH,
