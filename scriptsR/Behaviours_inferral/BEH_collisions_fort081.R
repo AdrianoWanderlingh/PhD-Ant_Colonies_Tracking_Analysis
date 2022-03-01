@@ -64,36 +64,58 @@ interacts_MAN_REP_PER$ant2 <- gsub("ant_","", interacts_MAN_REP_PER$Rec_Name)
 ## the ant 1 & ant 2 labels are not strictly ascending, so sort them so ant 1 alwasy < ant 2
 interacts_MAN_REP_PER$pair <- apply(interacts_MAN_REP_PER[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
 
-# check that the time formats are the same
-attributes(interacts_MAN_REP_PER$UNIX_time[1])
-attributes(collisions_merge$UNIX_time[1])
+# # check that the time formats are the same
+# attributes(interacts_MAN_REP_PER$UNIX_time[1])
+# attributes(collisions_merge$UNIX_time[1])
+
+# check that the frame formats are the same
+interacts_MAN_REP_PER$frame[1]
+collisions_merge$frame_num[1]
+
 
 ## check that the pair-time combinations in interacts_MAN_REP_PER are in collisions_merge
 table(  paste(interacts_MAN_REP_PER$pair) %in% 
           paste(collisions_merge$pair) )
-table(  paste(interacts_MAN_REP_PER$UNIX_secs) %in% 
-          paste(collisions_merge$UNIX_secs) )
-table(  paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) %in% 
-          paste(collisions_merge$pair,collisions_merge$UNIX_secs) )
-## get a list of the missing pair-time combinations:
-paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) [!paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) %in% paste(collisions_merge$pair,collisions_merge$UNIX_secs) ]
+table(  paste(interacts_MAN_REP_PER$frame) %in% 
+          paste(collisions_merge$frame_num) )
+table(  paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) %in% 
+          paste(collisions_merge$pair,collisions_merge$frame_num) )
+# table(  paste(interacts_MAN_REP_PER$UNIX_secs) %in% 
+#           paste(collisions_merge$UNIX_secs) )
+# table(  paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) %in% 
+#           paste(collisions_merge$pair,collisions_merge$UNIX_secs) )
 
-#join dataframes to have collisions on interacts_MAN_REP_PER  
-#FUNCTION: WHEN pair=pair AND time=UNIX_time -> ASSIGN collisions_merge$types TO interacts_MAN_REP_PER
+## get a list of the missing pair-frame combinations:
+paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) [!paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) %in% paste(collisions_merge$pair,collisions_merge$frame_num) ]
+
+## get a list of the missing pair-time combinations:
+# paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) [!paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) %in% paste(collisions_merge$pair,collisions_merge$UNIX_secs) ]
+
+
+collisions_merge$frame <- collisions_merge$frame_num
+#join dataframes to have collisions on interacts_MAN_REP_PER
 if (FUZZY_MATCH==FALSE)
 {
   interacts_MAN_REP_PER <- plyr::join(x = interacts_MAN_REP_PER, 
-                                      y = collisions_merge[,c("UNIX_secs","pair","types")], 
-                                      by=c("UNIX_secs","pair"), type="left")
+                                      y = collisions_merge[,c("frame","pair","types")], 
+                                      by=c("frame","pair"), type="left")
 }
+
+# #FUNCTION: WHEN pair=pair AND time=UNIX_time -> ASSIGN collisions_merge$types TO interacts_MAN_REP_PER
+# if (FUZZY_MATCH==FALSE)
+# {
+#   interacts_MAN_REP_PER <- plyr::join(x = interacts_MAN_REP_PER, 
+#                                       y = collisions_merge[,c("UNIX_secs","pair","types")], 
+#                                       by=c("UNIX_secs","pair"), type="left")
+# }
 ## alternative: fuzzy match
-if (FUZZY_MATCH==TRUE)
-{
-  I_in_C_rows <- match.closest(x = interacts_MAN_REP_PER$UNIX_secs,
-                               table = collisions_merge$UNIX_secs, tolerance = 0.125)
-  ## copy tpes across
-  interacts_MAN_REP_PER$types  <- collisions_merge$types [I_in_C_rows]
-}
+# if (FUZZY_MATCH==TRUE)
+# {
+#   I_in_C_rows <- match.closest(x = interacts_MAN_REP_PER$UNIX_secs,
+#                                table = collisions_merge$UNIX_secs, tolerance = 0.125)
+#   ## copy tpes across
+#   interacts_MAN_REP_PER$types  <- collisions_merge$types [I_in_C_rows]
+# }
 
 ## PROBLEM: *MANY* rows in interactions aren't present in collisions; plot the spatial interactions to see whether this makes sense or not:
 par(mfrow=c(3,4), mai=c(0.3,0.3,0.4,0.1))
@@ -144,6 +166,39 @@ boxplot(straightline_dist_px ~ types_present_absent, interacts_MAN_REP_PER)
 ### ... so rows in interactions that don't match collisions is not  a function of distance ...
 
 
+#ACCESS THE CAPSULE INFO
+interacts_MAN_REP_PER$REP_PER_R_B <- paste(interacts_MAN_REP_PER$REPLICATE,interacts_MAN_REP_PER$PERIOD,interacts_MAN_REP_PER$ROW,interacts_MAN_REP_PER$BEH,sep="_")
+split_types <- plyr::ldply(strsplit(interacts_MAN_REP_PER$types,"-"), rbind)
+split_types$REP_PER_R_B <- interacts_MAN_REP_PER$REP_PER_R_B
+uniq.split_types <- unique(interacts_MAN_REP_PER$types); uniq.split_types <- uniq.split_types[!is.na(uniq.split_types)]
+
+  REP_PER_R_B <- as.data.frame(unique(split_types$REP_PER_R_B)); names(REP_PER_R_B) <- "ID"
+  # maxSkin<-vector()
+  for (ids in split_types$REP_PER_R_B) {
+    type.1 <- split_types[ids,]
+    type.2 
+    ID <- ids
+    #RISTRUTTURA! IT SHOULD BE SOMETHING SIMPLE
+    #MAYBE THE SPLITTING CAN BE AVOIDED.
+    # LOOP THROUGH IDS AS NOW, THEN GREP ON THE COLUMN BY LOOPING THORUGH uniq.split_types 
+    #EXAMPLE:
+    for (uniq.type in uniq.split_types) {
+      interacts_MAN_REP_PER["types",ID] #probabilmente la funzione non va chimata cosi'. guarda il lavoro in auto_interactions per reference.
+    }
+    
+  }
+  
+
+  
+  REP_PER_R_B$type2<-maxSkin
+
+ 
+
+
+
+#get info only when there are only 2 interacting capsules
+(!grepl(",",INT_capsules)) 
+  capsule_ANT <- unlist(strsplit(INT_capsules,"-"))
 
 #cut collisions for the specific G 1 case
 

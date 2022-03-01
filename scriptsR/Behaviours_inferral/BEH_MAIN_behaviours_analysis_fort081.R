@@ -52,7 +52,7 @@ library(data.table)
 library(fields)
 
 #SOURCES ON/OFF
-run_collisions                      <- FALSE
+run_collisions                      <- TRUE
 run_AUTO_MAN_agreement              <- TRUE #computes agreement matrix
 create_interaction_AUTO_REP_PER     <- FALSE 
 #plots
@@ -68,7 +68,7 @@ Ymin <- 0000
 Ymax <- 5500
 
 N_DECIMALS                  <- 3 ## number of decimals to preserve when rounding to match between interactions & collisions
-FUZZY_MATCH                 <- TRUE  ## fuzzy matching between data frames
+FUZZY_MATCH                 <- FALSE  ## fuzzy matching between data frames in collisions detection
 
 max_gap                     <- fmHour(24*365)   ## important parameter to set! Set a maximumGap high enough that no cutting will happen. For example, set it at an entire year: fmHour(24*365)
 desired_step_length_time    <- 0.125 ###in seconds, the desired step length for the analysis
@@ -171,7 +171,8 @@ for (REPLICATE in c("R3SP","R9SP"))
     ###############################################################################
     if (run_collisions){
      collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)   ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
-     collisions$frames$frame_num <- seq.int(nrow(IF_frames)) }
+     collisions$frames$frame_num <- seq.int(nrow(IF_frames)) 
+     }
     
     ###############################################################################
     ###### READING TRAJECTORIES ###################################################
