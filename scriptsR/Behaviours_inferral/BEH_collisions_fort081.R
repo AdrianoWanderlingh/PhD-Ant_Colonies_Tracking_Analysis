@@ -24,20 +24,20 @@ collisions_coll <- collisions$collisions      #### dataframe containing all dete
 head(collisions_frames) 
 head(collisions_coll) ###columns giving the ID of the two colliding ants, the zone where they are, the types of collisions (all types), and the frames_row_index referring to which frame that collision was detected in (matches the list indices in collisions_positions)
 head(collisions_positions)
+
 #use rownames of collision_frames to filter frames of collisions according to collisions-coll (which acts as a Look Up Table)
-#rename frame_num for the merging
-collisions_frames$frames_row_index <- collisions_frames$frame_num
-
+#rename frame for the merging
+collisions_frames$frame <- collisions_frames$frame_num        ; collisions_frames$frame_num <- NULL
+collisions_coll  $frame <- collisions_coll  $frames_row_index ; collisions_coll  $frames_row_index <- NULL
+  
 #merge collisions_frame and coll_coll based on index
-collisions_merge <- merge(collisions_coll, collisions_frames[,-match(c("height","width"),colnames(collisions_frames))], by="frames_row_index")
-
+collisions_merge <- merge(collisions_coll, collisions_frames[,-match(c("height","width"),colnames(collisions_frames))], by="frame")
 
 #check that to the same frame corresponds the same time
 # format(collisions_merge$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
 # format(collisions_frames$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
 # format(    traj_ACT$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
 # format(    traj_REC$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
-# 
 # format(    traj_BOTH$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
 # format(interacts_MAN_ROW$UNIX_time, "%Y-%m-%d %H:%M:%OS6")
 # 
@@ -59,8 +59,8 @@ str(interacts_MAN_REP_PER)
 collisions_merge $pair <- paste(collisions_merge$ant1, collisions_merge$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
 
 #create new variable by pasting ant numbers "low,high" for interacts_MAN_REP_PER
-interacts_MAN_REP_PER$ant1 <- gsub("ant_","", interacts_MAN_REP_PER$Act_Name)
-interacts_MAN_REP_PER$ant2 <- gsub("ant_","", interacts_MAN_REP_PER$Rec_Name)
+interacts_MAN_REP_PER$ant1 <- as.numeric(gsub("ant_","", interacts_MAN_REP_PER$Act_Name)) ## CRUCIAL TO NSURE THESE ARE CONVERTED TO NUMERIC BEFORE THE NEXT OPERATION TO PRODUCE interacts_MAN_REP_PER$pair, WHICH RELIES ON A **SORT** function!!!
+interacts_MAN_REP_PER$ant2 <- as.numeric(gsub("ant_","", interacts_MAN_REP_PER$Rec_Name))
 ## the ant 1 & ant 2 labels are not strictly ascending, so sort them so ant 1 alwasy < ant 2
 interacts_MAN_REP_PER$pair <- apply(interacts_MAN_REP_PER[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
 
@@ -70,45 +70,95 @@ interacts_MAN_REP_PER$pair <- apply(interacts_MAN_REP_PER[,c("ant1","ant2")],1,f
 
 # check that the frame formats are the same
 interacts_MAN_REP_PER$frame[1]
-collisions_merge$frame_num[1]
+collisions_merge$frame     [1]
 
 
 ## check that the pair-time combinations in interacts_MAN_REP_PER are in collisions_merge
 table(  paste(interacts_MAN_REP_PER$pair) %in% 
           paste(collisions_merge$pair) )
 table(  paste(interacts_MAN_REP_PER$frame) %in% 
-          paste(collisions_merge$frame_num) )
+          paste(collisions_merge$frame) )
 table(  paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) %in% 
-          paste(collisions_merge$pair,collisions_merge$frame_num) )
+          paste(collisions_merge$pair,collisions_merge$frame) )
 # table(  paste(interacts_MAN_REP_PER$UNIX_secs) %in% 
 #           paste(collisions_merge$UNIX_secs) )
 # table(  paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) %in% 
 #           paste(collisions_merge$pair,collisions_merge$UNIX_secs) )
 
 ## get a list of the missing pair-frame combinations:
-paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) [!paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) %in% paste(collisions_merge$pair,collisions_merge$frame_num) ]
+paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) [!paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) %in% paste(collisions_merge$pair,collisions_merge$frame) ]
 
 ## get a list of the missing pair-time combinations:
 # paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) [!paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$UNIX_secs) %in% paste(collisions_merge$pair,collisions_merge$UNIX_secs) ]
 
+## assign the collision types to interacts_MAN_REP_PER, using a loop to subset interacts_MAN_REP_PER$pair by each uique pair to ensure we are matching within pairs 
+interacts_MAN_REP_PER$types <- NA
+PLOT_OVERLAP <- TRUE
+if (PLOT_OVERLAP) {par(mai=c(0.1,0.1,0.17,0), mfrow=c(3,4))}
+for (PR in unique(interacts_MAN_REP_PER$pair))
+  { print(paste("Adding collision capsule types from collisions_merge to interacts_MAN_REP_PER for pair",PAIR))
+  
+  ##  sort the entire data frame subset for pair
+  interacts_MAN_REP_PER_PAIR <- interacts_MAN_REP_PER [which(interacts_MAN_REP_PER$pair==PR),]
+  collisions_merge_PAIR      <- collisions_merge      [which(collisions_merge$pair==PR),]
 
-collisions_merge$frame <- collisions_merge$frame_num
-#join dataframes to have collisions on interacts_MAN_REP_PER
-if (FUZZY_MATCH==FALSE)
-{
-  interacts_MAN_REP_PER <- plyr::join(x = interacts_MAN_REP_PER, 
-                                      y = collisions_merge[,c("frame","pair","types")], 
-                                      by=c("frame","pair"), type="left")
-}
+  ## alternative: fuzzy match to one frame
+  if (FUZZY_MATCH==TRUE)
+    {
+    I_in_C_rows1 <- match.closest(x =    interacts_MAN_REP_PER_PAIR$frame,
+                                 table = collisions_merge_PAIR     $frame, tolerance = 1)
+    ## and add back to interacts_MAN_REP_PER
+    interacts_MAN_REP_PER$types [which(interacts_MAN_REP_PER$pair==PR)] <- collisions_merge_PAIR$types [I_in_C_rows1]
+    ## show the auto (BLACK) - manual (RED) overlap
+    ## OBservation: overall, the black-red corespondence is good, but the auto collisions are too sparse!
+    if (PLOT_OVERLAP) 
+      {
+      plot  (x=collisions_merge_PAIR$frame,      y=rep(0,nrow(collisions_merge_PAIR)), pch="+", main=PR, ylab="", xlab="") ## auto = black
+      points(x=interacts_MAN_REP_PER_PAIR$frame, y=rep(0.5,nrow(interacts_MAN_REP_PER_PAIR)), pch="+", col=2) ## man=red
+      }
+    }
+  }##PR
+
+
+## ADRIANO TO DO: WRAP EVERYTHIN IN AN OUTER LOOP TO PROGRESSIVELY INCREASE THE SIZE OF THE CAPSULES , 
+## SO THAT THERE ARE FEWER MISSING (NA) MATCHES: 
+table(interacts_MAN_REP_PER$types, useNA="al")
+  
+
+  # rowIndex <- I_in_C_rows; type_match <- collisions_merge$types[I_in_C_rows]
+  # type_DF <- as.data.frame(rowIndex,type_match); type_DF$type_match <- rownames(type_DF)
+  # rownames(type_DF) <- rowIndex
+  # ## copy types across
+  # #paste(interacts_MAN_REP_PER$pair,interacts_MAN_REP_PER$frame) %in% paste(collisions_merge$pair,collisions_merge$frame)
+  # 
+  # merge(traj_ACT, traj_REC,all=T, by=c("UNIX_time"))
+  # 
+  # 
+  # 
+  # collisions_merge$types_match <- ifelse(rownames(collisions_merge) == I_in_C_rows,  collisions_merge$types, NA)
+  # 
+  # collisions_merge$types_match <- match(rownames(collisions_merge), I_in_C_rows)
+  # 
+  # collisions_merge$types_match <- NA
+  # collisions_merge$types_match[I_in_C_rows] <- collisions_merge$types [I_in_C_rows]
+  # 
+  # collisions_merge$types_match <- collisions_merge$types [I_in_C_rows]
+  #collisions_merge_join <- collisions_merge[,c("frame","pair","types")]
+
+  # 
+  # interacts_MAN_REP_PER <- plyr::join(x = interacts_MAN_REP_PER, 
+  #                                     y = collisions_merge[,c("frame","pair","types_match")], 
+  #                                     by=c("frame","pair"), type="left")
+#}
 
 # #FUNCTION: WHEN pair=pair AND time=UNIX_time -> ASSIGN collisions_merge$types TO interacts_MAN_REP_PER
 # if (FUZZY_MATCH==FALSE)
 # {
-#   interacts_MAN_REP_PER <- plyr::join(x = interacts_MAN_REP_PER, 
-#                                       y = collisions_merge[,c("UNIX_secs","pair","types")], 
+#   interacts_MAN_REP_PER <- plyr::join(x = interacts_MAN_REP_PER,
+#                                       y = collisions_merge[,c("UNIX_secs","pair","types")],
 #                                       by=c("UNIX_secs","pair"), type="left")
 # }
-## alternative: fuzzy match
+# # alternative: fuzzy match
 # if (FUZZY_MATCH==TRUE)
 # {
 #   I_in_C_rows <- match.closest(x = interacts_MAN_REP_PER$UNIX_secs,
@@ -118,88 +168,64 @@ if (FUZZY_MATCH==FALSE)
 # }
 
 ## PROBLEM: *MANY* rows in interactions aren't present in collisions; plot the spatial interactions to see whether this makes sense or not:
-par(mfrow=c(3,4), mai=c(0.3,0.3,0.4,0.1))
-for(BH in unique(interacts_MAN_REP_PER$BEH))
-{
-  for (RW in unique(interacts_MAN_REP_PER$ROW))
-  {
-    IntPair <- interacts_MAN_REP_PER[which(interacts_MAN_REP_PER$BEH==BH & interacts_MAN_REP_PER$ROW==RW),]
-    ## check if this interaction is present in collisions
-    paste(IntPair$pair[1],IntPair)
-    ## plot it
-    #to fix as some of the vars are defined only in the previous function #TitleInt <- paste(REPLICATE, ", ", PERIOD, ", ", BH, RW,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
-    plot(NA, xlim=range(c(IntPair$ACT.x,IntPair$REC.x),na.rm=T),  ylim=range(c(IntPair$ACT.y,IntPair$REC.y),na.rm=T), type="n", main=paste(RW,BH), xlab="x", ylab="y")
-    points (ACT.y ~ ACT.x, IntPair, type="p", col="blue4"); lines (ACT.y ~ ACT.x, IntPair, col="blue4")
-    points (REC.y ~ REC.x, IntPair, type="p", col="red4"); lines (REC.y ~ REC.x, IntPair, col="red4")
-    ## show the headings of each ACT
-    arrows.az (x = IntPair$ACT.x, 
-               y = IntPair$ACT.y, 
-               azimuth = IntPair$ACT.angle, 
-               rho = 10,
-               HeadWidth=0.1,
-               units="radians", Kol="blue2", Lwd=1)
-    ## show the headings of each REC
-    arrows.az (x = IntPair$REC.x, 
-               y = IntPair$REC.y, 
-               azimuth = IntPair$REC.angle, 
-               rho = 10,
-               HeadWidth=0.1,
-               units="radians", Kol="red2", Lwd=1)
-    
-    
-    ## add lines connecting ACT & REC when there is a capsule overlap 
-    IntPairCapOverlap  <- IntPair[which(!is.na(IntPair$types)),]
-    if (nrow(IntPairCapOverlap)>0)
-    {
-      segments(x0 = IntPairCapOverlap$ACT.x, y0 = IntPairCapOverlap$ACT.y,
-               x1 = IntPairCapOverlap$REC.x, y1 = IntPairCapOverlap$REC.y)
-    }
-    
-  }
-}
-dev.off()
+# par(mfrow=c(3,4), mai=c(0.3,0.3,0.4,0.1))
+# for(BH in unique(interacts_MAN_REP_PER$BEH))
+# {
+#   for (RW in unique(interacts_MAN_REP_PER$ROW))
+#   {
+#     IntPair <- interacts_MAN_REP_PER[which(interacts_MAN_REP_PER$BEH==BH & interacts_MAN_REP_PER$ROW==RW),]
+#     ## check if this interaction is present in collisions
+#     paste(IntPair$pair[1],IntPair)
+#     ## plot it
+#     #to fix as some of the vars are defined only in the previous function #TitleInt <- paste(REPLICATE, ", ", PERIOD, ", ", BH, RW,", ", "Act:",ACT, ", ", "Rec:",REC, "\n", ENC_TIME_start, "-", ENC_TIME_stop, sep="")
+#     plot(NA, xlim=range(c(IntPair$ACT.x,IntPair$REC.x),na.rm=T),  ylim=range(c(IntPair$ACT.y,IntPair$REC.y),na.rm=T), type="n", main=paste(RW,BH), xlab="x", ylab="y")
+#     points (ACT.y ~ ACT.x, IntPair, type="p", col="blue4"); lines (ACT.y ~ ACT.x, IntPair, col="blue4")
+#     points (REC.y ~ REC.x, IntPair, type="p", col="red4"); lines (REC.y ~ REC.x, IntPair, col="red4")
+#     ## show the headings of each ACT
+#     arrows.az (x = IntPair$ACT.x, 
+#                y = IntPair$ACT.y, 
+#                azimuth = IntPair$ACT.angle, 
+#                rho = 10,
+#                HeadWidth=0.1,
+#                units="radians", Kol="blue2", Lwd=1)
+#     ## show the headings of each REC
+#     arrows.az (x = IntPair$REC.x, 
+#                y = IntPair$REC.y, 
+#                azimuth = IntPair$REC.angle, 
+#                rho = 10,
+#                HeadWidth=0.1,
+#                units="radians", Kol="red2", Lwd=1)
+#     
+#     ## add lines connecting ACT & REC when there is a capsule overlap 
+#     IntPairCapOverlap  <- IntPair[which(!is.na(IntPair$types)),]
+#     if (nrow(IntPairCapOverlap)>0)
+#     {
+#       segments(x0 = IntPairCapOverlap$ACT.x, y0 = IntPairCapOverlap$ACT.y,
+#                x1 = IntPairCapOverlap$REC.x, y1 = IntPairCapOverlap$REC.y)
+#     }
+#     
+#   }
+# }
+#dev.off()
 
 ## if the missing rows occur when the distance between Act & Rec is large, check:
-interacts_MAN_REP_PER$types_present_absent <- "absent"
-interacts_MAN_REP_PER$types_present_absent[which(!is.na(interacts_MAN_REP_PER$types))] <- "present"
-boxplot(straightline_dist_px ~ types_present_absent, interacts_MAN_REP_PER)
+# interacts_MAN_REP_PER$types_present_absent <- "absent"
+# interacts_MAN_REP_PER$types_present_absent[which(!is.na(interacts_MAN_REP_PER$types))] <- "present"
+# boxplot(straightline_dist_px ~ types_present_absent, interacts_MAN_REP_PER)
 ### ... so rows in interactions that don't match collisions is not  a function of distance ...
 
 
-#ACCESS THE CAPSULE INFO
-interacts_MAN_REP_PER$REP_PER_R_B <- paste(interacts_MAN_REP_PER$REPLICATE,interacts_MAN_REP_PER$PERIOD,interacts_MAN_REP_PER$ROW,interacts_MAN_REP_PER$BEH,sep="_")
-split_types <- plyr::ldply(strsplit(interacts_MAN_REP_PER$types,"-"), rbind)
-split_types$REP_PER_R_B <- interacts_MAN_REP_PER$REP_PER_R_B
-uniq.split_types <- unique(interacts_MAN_REP_PER$types); uniq.split_types <- uniq.split_types[!is.na(uniq.split_types)]
 
-  REP_PER_R_B <- as.data.frame(unique(split_types$REP_PER_R_B)); names(REP_PER_R_B) <- "ID"
-  # maxSkin<-vector()
-  for (ids in split_types$REP_PER_R_B) {
-    type.1 <- split_types[ids,]
-    type.2 
-    ID <- ids
-    #RISTRUTTURA! IT SHOULD BE SOMETHING SIMPLE
-    #MAYBE THE SPLITTING CAN BE AVOIDED.
-    # LOOP THROUGH IDS AS NOW, THEN GREP ON THE COLUMN BY LOOPING THORUGH uniq.split_types 
-    #EXAMPLE:
-    for (uniq.type in uniq.split_types) {
-      interacts_MAN_REP_PER["types",ID] #probabilmente la funzione non va chimata cosi'. guarda il lavoro in auto_interactions per reference.
-    }
-    
-  }
-  
-
-  
-  REP_PER_R_B$type2<-maxSkin
-
- 
 
 
 
 #get info only when there are only 2 interacting capsules
-(!grepl(",",INT_capsules)) 
-  capsule_ANT <- unlist(strsplit(INT_capsules,"-"))
+#(!grepl(",",INT_capsules)) 
+ # capsule_ANT <- unlist(strsplit(INT_capsules,"-"))
 
+  
+  
+  
 #cut collisions for the specific G 1 case
 
 # ROW2 <- 1 #first behaviour

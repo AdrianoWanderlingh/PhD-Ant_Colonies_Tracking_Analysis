@@ -9,10 +9,29 @@ gc()
 rm(list=ls())
 
 ############## DEFINE MY FUNCTIONS
+#Movement angle diff
 Movement.angle.diff     <- function(x)  {
   if( length(x) > 0 & !is_null(x)){
   c( atan(x[-nrow(x), "x"] / x[-nrow(x), "y"]) - atan(x[-1, "x"] / x[-1, "y"]), NA)}
 else {vector()}}
+
+#pi-wrap
+pi_wrap <- function ( angle){ ####function that force any angle value to lie between -pi and + pi
+  while(angle>pi){
+    angle <- angle - 2*pi
+  }
+  while(angle<=-pi){
+    angle <- angle + 2*pi
+  }
+  return(angle) 
+}
+
+####inclination_angle = function that converts an oriented angle difference between two vectors to an inclination angle (i.e. acute angle between the inclinations of the two lines on which the vectors lie)
+#### values will range from 0 (parallel lines) to pi/2 (orthogonal lines)
+inclination_angle <- function(oriented_angle){
+  abs_angle <- abs(pi_wrap(oriented_angle))
+  return (min (abs_angle, pi-abs_angle))
+}
 
 #change system of coords
 
@@ -50,6 +69,7 @@ library(MALDIquant)
 library(stringr)
 library(data.table)
 library(fields)
+library(sp) #calculate convex hull area
 
 #SOURCES ON/OFF
 run_collisions                      <- TRUE
@@ -57,6 +77,7 @@ run_AUTO_MAN_agreement              <- TRUE #computes agreement matrix
 create_interaction_AUTO_REP_PER     <- FALSE 
 #plots
 run_Parameters_plots                <- FALSE
+plot_all_BEH                        <- FALSE #inside run_Parameters_plots, if FALSE plots only for Grooming (to run it an update in BEH statement is needed)
 
 
 
@@ -68,13 +89,13 @@ Ymin <- 0000
 Ymax <- 5500
 
 N_DECIMALS                  <- 3 ## number of decimals to preserve when rounding to match between interactions & collisions
-FUZZY_MATCH                 <- FALSE  ## fuzzy matching between data frames in collisions detection
+FUZZY_MATCH                 <- TRUE  ## fuzzy matching between data frames in collisions detection
 
 max_gap                     <- fmHour(24*365)   ## important parameter to set! Set a maximumGap high enough that no cutting will happen. For example, set it at an entire year: fmHour(24*365)
 desired_step_length_time    <- 0.125 ###in seconds, the desired step length for the analysis
 
 #matchers specific for GROOMING
-MAX_INTERACTION_GAP         <- 10
+MAX_INTERACTION_GAP         <- 10 ## in SECONDS 
 ANT_LENGHT_PX               <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
 AntDistanceSmallerThan      <- 264 #for higher accuracy, recalculate it from: max(interaction_MANUAL$straightline_dist_px,na.rm = T)
 AntDistanceGreaterThan      <- 63 #for higher accuracy, recalculate it from: min(interaction_MANUAL$straightline_dist_px,na.rm = T)
@@ -103,6 +124,7 @@ annotations$T_stop_sec <- round(as.numeric(annotations$T_stop_UNIX),N_DECIMALS)
 
 ### start fresh
 interaction_MANUAL    <- NULL
+interaction_MANUAL_COLL <- NULL
 summary_MANUAL        <- NULL
 interaction_AUTO      <- NULL
 summary_AUTO          <- NULL
@@ -122,6 +144,7 @@ for (REPLICATE in c("R3SP","R9SP"))
   ## locate the ant info file for REPLICATE
   MyrmidonCapsuleFile <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T)
   MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl("Capsule_Zones_defined_BODY-HEAD.myrmidon",MyrmidonCapsuleFile)]
+
   e <- fmExperimentOpen(MyrmidonCapsuleFile)
   fmQueryGetDataInformations(e) # $details$tdd.path
   experiment_name <- unlist(strsplit(MyrmidonCapsuleFile,split="/"))[length(unlist(strsplit(MyrmidonCapsuleFile,split="/")))]
@@ -131,14 +154,133 @@ for (REPLICATE in c("R3SP","R9SP"))
   tag_stats <- fmQueryComputeTagStatistics(e)
   
   
+  
+  ################################
+  #CHANGE BASE HEAD CAPSULE FROM LONG TO LARGE (see notebook notes 23Feb)
+  #ASSIGN VARIOUS CAPSULES SHAPES FOLLOWING DETERMINE_ANGLE_AUTOMATICALLY_AW.R
+  
+  # 
+  # #################################################################################################################################################################################################################
+  # ###########STEP 1 - use manually oriented data to extract important information about AntPose and Capsules
+  # ###########          IN YOUR PARTICULAR SPECIES AND EXPERIMENTAL SETTINGS  
+  # ###########IMPORTANT: FOR THIS TO WORK YOU NEED TO HAVE DEFINED THE SAME CAPSULES WITH THE SAME NAMES ACROSS ALL YOUR MANUALLY ORIENTED DATA FILES
+  # #################################################################################################################################################################################################################
+  # data_list         <- list ("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/R3SP_13-03-21_Capsule_Zones_defined.myrmidon") ###here list all the myrmidon files containing oriented data
+  # #ALL COLONIES OF THE SAME TRACKNG BOX ORIENTED HAVE TO BE LOADED AT THIS STAGE 
+  # 
+  # oriented_metadata <- NULL
+  # capsule_list <- list()
+  # for (myrmidon_file in data_list){
+  #   experiment_name <- unlist(strsplit(myrmidon_file,split="/"))[length(unlist(strsplit(myrmidon_file,split="/")))]
+  #   oriented_data <- fmExperimentOpen(myrmidon_file)
+  #   oriented_ants <- oriented_data$ants
+  #   capsule_names <- oriented_data$antShapeTypeNames
+  #   for (ant in oriented_ants){
+  #     ###extract ant length and capsules
+  #     ant_length_px <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_px)
+  #     capsules      <- ant$capsules
+  #     for (caps in 1:length(capsules)){
+  #       capsule_name  <- capsule_names[[capsules[[caps]]$type]]
+  #       capsule_coord <- capsules[[caps]]$capsule
+  #       capsule_info <- data.frame(experiment = experiment_name,
+  #                                  antID      = ant$ID,
+  #                                  c1_ratio_x = capsule_coord$c1[1]/ant_length_px,
+  #                                  c1_ratio_y = capsule_coord$c1[2]/ant_length_px,
+  #                                  c2_ratio_x = capsule_coord$c2[1]/ant_length_px,
+  #                                  c2_ratio_y = capsule_coord$c2[2]/ant_length_px,
+  #                                  r1_ratio   = capsule_coord$r1[1]/ant_length_px,
+  #                                  r2_ratio   = capsule_coord$r2[1]/ant_length_px
+  #       )
+  #       
+  #       if (!capsule_name %in%names(capsule_list)){ ###if this is the first time we encounter this capsule, add it to capsule list...
+  #         capsule_list <- c(capsule_list,list(capsule_info)) 
+  #         if(length(names(capsule_list))==0){
+  #           names(capsule_list) <- capsule_name
+  #         }else{
+  #           names(capsule_list)[length(capsule_list)] <- capsule_name
+  #         }
+  #       }else{###otherwise, add a line to the existing dataframe within capsule_list
+  #         capsule_list[[capsule_name]] <- rbind(capsule_list[[capsule_name]] , capsule_info)
+  #       }
+  #     }
+  #     
+  #     
+  #     ###extract offset betewen tag centre and ant centre
+  #     for (id in ant$identifications){
+  #       oriented_metadata <- rbind(oriented_metadata,data.frame(experiment       = experiment_name,
+  #                                                               antID            = ant$ID,
+  #                                                               tagIDdecimal     = id$tagValue,
+  #                                                               angle            = id$antAngle,
+  #                                                               x_tag_coord      = id$antPosition[1], 
+  #                                                               y_tag_coord      = id$antPosition[2],
+  #                                                               x_ant_coord      = id$antPosition[1]*cos(-id$antAngle) - id$antPosition[2]*sin(-id$antAngle),
+  #                                                               y_ant_coord      = id$antPosition[1]*sin(-id$antAngle) + id$antPosition[2]*cos(-id$antAngle),
+  #                                                               length_px        = ant_length_px,
+  #                                                               stringsAsFactors = F))
+  #     }
+  #   }
+  # }
+  # 
+  # ##Check: print identifications
+  # ants <- tracking_data$ants
+  # for (a in ants) {
+  #   printf("Ant %s is identified by:\n", fmFormatAntID(a$ID))
+  #   for (i in a$identifications){
+  #     printf(" * %s\n", capture.output(i))
+  #   }
+  # }
+  # 
+  # ###create capsule list
+  # ###CAUTION the relationship between shape name and id may be different from your manually oriented files.
+  # ###Hence for post-processing analyses it will be important to use the capsule names rather than IDs
+  # ###Also, it would be safer not to use manually annotated files in the analysis anyway for consistency 
+  # ### (it would not do to anaylse some colonies with precise manually annotated data and other with approximate automated data)
+  # ###So you need to create new automatically oriented myrmidon files for all your colonies including the manually-oriented ones
+  # # for (caps in 1:length(capsule_list)){
+  # #   tracking_data$createAntShapeType(names(capsule_list)[caps])
+  # # }
+  # 
+  # for (i in 1:length(ants)){
+  #   ####to be fool proof, and be sure you extract the trajectory corresponding the correct ant, make sure you make use of the antID_str column!
+  #   traj <- positions$trajectories [[   positions$trajectories_summary[which(positions$trajectories_summary$antID==ants[[i]]$ID),"antID_str"]    ]]
+  #   
+  #   ###feed traj to c++ program
+  #   traj <- cbind(traj,add_angles(traj,max_time_gap,min_dist_moved))
+  #   
+  #   ## get mean deviation angle between body and tag - the ant angle is equal to minus the Tag minus Movement angle output by C++ program
+  #   AntAngle <- as.numeric(- mean(circular(na.omit(traj$Tag_minus_Movement_Angle),units="radians",zero=0)))
+  #   ##now use trigonometry to calculate the pose, using AntAngle
+  #   x_tag_coord <- mean_x_ant_coord*cos(AntAngle) - mean_y_ant_coord*sin(AntAngle)
+  #   y_tag_coord <- mean_x_ant_coord*sin(AntAngle) + mean_y_ant_coord*cos(AntAngle)
+  #   
+  #   ##write this into ant metadata
+  # 
+  # 
+  #   
+  #   ###finally, for each ant, add capsules using mean_ant_length and capsule_list
+  #   for (caps in 1:length(capsule_list)){
+  #     capsule_ratios <- capsule_list[[caps]]; names(capsule_ratios) <- gsub("_ratio","",names(capsule_ratios))
+  #     capsule_coords <- mean_worker_length_px*capsule_ratios
+  #     
+  #     
+  #     ants[[i]]$addCapsule(caps, fmCapsuleCreate(c1 = c(capsule_coords["c1_x"],capsule_coords["c1_y"]), c2 = c(capsule_coords["c2_x"],capsule_coords["c2_y"]), r1 = capsule_coords["r1"], r2 = capsule_coords["r2"] ) )
+  #     
+  #   }
+  #   
+  # }
+  
+  
+  ################################################################################
+  ########### START PERIOD LOOP ##################################################
+  ################################################################################
+  
   for (PERIOD in c("pre","post"))
     {
     print(paste("Replicate",REPLICATE, PERIOD))
     ## Prepare empty within-replicate/period data object
     interacts_MAN_REP_PER       <- NULL  
     summary_MAN_REP_PER         <- NULL
-    
-    interaction_AUTO_REP_PER <- NULL
+    interaction_AUTO_REP_PER    <- NULL
     summary_AUTO_REP_PER        <- NULL
     ## set experiment time window 
     time_start <- fmTimeCreate(min(annotations$T_start_UNIX[annotations$treatment_rep==REPLICATE & annotations$period==PERIOD])) ###experiment start time
@@ -160,7 +302,7 @@ for (REPLICATE in c("R3SP","R9SP"))
  
     #assign frame numbering to annotations 
     annotations$frame_start <- match.closest(x = annotations$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
-    annotations$frame_stop  <- match.closest(x = annotations$T_stop_sec, table = IF_frames$time_sec, tolerance = 0.05)
+    annotations$frame_stop  <- match.closest(x = annotations$T_stop_sec,  table = IF_frames$time_sec, tolerance = 0.05)
     
     # Creating a new zeroed-time since the start of the exp by  summing the cumulated differences between each pair of consecutive frames (to account for the time mismatch)
     IF_frames$cum_diff <- c(0, with(IF_frames, diff(time)))
@@ -169,10 +311,11 @@ for (REPLICATE in c("R3SP","R9SP"))
     ###############################################################################
     ###### READING COLLISIONS #####################################################
     ###############################################################################
-    if (run_collisions){
-     collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)   ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
-     collisions$frames$frame_num <- seq.int(nrow(IF_frames)) 
-     }
+    if (run_collisions)
+      {
+      collisions <- fmQueryCollideFrames(e, start=time_start, end=time_stop)   ###collisions are for each frame, the list of ants whose shapes intersect one another. Normally not used
+      collisions$frames$frame_num <- seq.int(nrow(IF_frames)) 
+      }
     
     ###############################################################################
     ###### READING TRAJECTORIES ###################################################
@@ -342,10 +485,65 @@ for (REPLICATE in c("R3SP","R9SP"))
     ###############################################################################
     if (run_collisions){source(paste(SCRIPTDIR,"BEH_collisions_fort081.R",sep="/"))}
       
-  
-  
+    #stack output of collisions
+    # THIS OUTPUT SHOULD BE PROBABLY SAVED INTO interaction_MANUAL DIRECTLY (AS IT IS JUST interaction_MANUAL + CAPSULE INFO)
+    # BUT WHEN DOING SO CHECK THAT THIS DOES NOT HURT THE FOLLOWING interaction_AUTO FILE
+    interaction_MANUAL_COLL <- rbind(interaction_MANUAL_COLL, interacts_MAN_REP_PER)
+    
+    
+    ## PCA to check for natural differences in the behaviour of actor versus receiver during manually-defined grooming interactions
+    interaction_MANUAL_observables <- interaction_MANUAL             %>% dplyr::select(contains(c("ACT","REC"), ignore.case = FALSE))
+    interaction_MANUAL_observables <- interaction_MANUAL_observables %>% dplyr::select(!contains(c(".x",".y","ACT.angle","REC.angle"), ignore.case = FALSE))
+    
+    
+    #transform to long format
+    interaction_MANUAL_ACT <- interaction_MANUAL_observables[,grep("ACT",colnames(interaction_MANUAL_observables))]; colnames(interaction_MANUAL_ACT) <- gsub("ACT.","",colnames(interaction_MANUAL_ACT));  colnames(interaction_MANUAL_ACT) <- gsub("_ACT","",colnames(interaction_MANUAL_ACT))
+    interaction_MANUAL_REC <- interaction_MANUAL_observables[,grep("REC",colnames(interaction_MANUAL_observables))]; colnames(interaction_MANUAL_REC) <- gsub("REC.","",colnames(interaction_MANUAL_REC));  colnames(interaction_MANUAL_REC) <- gsub("_REC","",colnames(interaction_MANUAL_REC))
+    ## add actor/receiver labels to each
+    interaction_MANUAL_ACT$ActRec_label <- "A"
+    interaction_MANUAL_REC$ActRec_label <- "R"
+    
+    ## stack actor & receiver
+    interaction_MANUAL_ACTREC <- rbind(interaction_MANUAL_REC, interaction_MANUAL_ACT)
+    ##
+    interaction_MANUAL_ACTREC_noNA <- na.omit(interaction_MANUAL_ACTREC)
+    
+    ## signs -> absolutes
+    interaction_MANUAL_ACTREC_noNA[, sapply(interaction_MANUAL_ACTREC_noNA[1,], is.numeric)] <- abs(interaction_MANUAL_ACTREC_noNA[, sapply(interaction_MANUAL_ACTREC_noNA[1,], is.numeric)])
+    
+    ## scale the inputs
+    par(mfrow=c(3,4))
+    ObsNames <- colnames(interaction_MANUAL_ACTREC_noNA) [-match("ActRec_label",colnames(interaction_MANUAL_ACTREC_noNA))]
+    for (OBS in 1:length(ObsNames))
+      {
+      hist(interaction_MANUAL_ACTREC_noNA[,OBS] , col=1, main=paste(ObsNames[OBS],"pre-transform"))
+      interaction_MANUAL_ACTREC_noNA     [,OBS] <- scale((interaction_MANUAL_ACTREC_noNA[,OBS])^0.1)
+      hist(interaction_MANUAL_ACTREC_noNA[,OBS] , col=2, main=paste(ObsNames[OBS],"post-transform"))
+      }
+    
+    ## PCA is inappropriate as we know who is who ...
+    PCA <- prcomp (x = interaction_MANUAL_ACTREC_noNA[,-match("ActRec_label",colnames(interaction_MANUAL_ACTREC_noNA))], scale=TRUE, center=TRUE)
+    ##  add point colour labels (same dimensions)
+    Eigenvalues <- as.data.frame(PCA$x)
+    Eigenvalues$Colour <- as.numeric(as.factor(interaction_MANUAL_ACTREC_noNA$ActRec_label))
+    ## THERE IS A DIFFERENCE!!
+    plot(PCA$x[,1:2], pch=1, col= Eigenvalues$Colour, bg= Eigenvalues$Colour)
 
-       
+
+
+    
+    ## LDA
+    LDA <- lda(ActRec_label ~ ., interaction_MANUAL_ACTREC_noNA)
+    #get / compute LDA scores from LDA coefficients / loadings
+    plda <- predict(object = LDA,
+                    newdata = interaction_MANUAL_ACTREC_noNA)
+
+    par(mai=c(0.4,0.4,0.1,0.1))
+    ldahist(data = plda$x[,1], g=interaction_MANUAL_ACTREC_noNA$ActRec_label)
+
+    ## TO DO: APPLY THE LDA TO THE TEST DATA SETS...!! (see 'predict' example in ?lda help file)    
+    
+    
     ## generate summary data
     # for (variable in names(summary_MAN_REP_PER)[!names(summary_MAN_REP_PER)%in%c("BEH","Act_Name","Rec_Name","PERIOD")])
     #   {
@@ -359,6 +557,116 @@ for (REPLICATE in c("R3SP","R9SP"))
   # gc() # clear cache
 }##REPLICATE
 dev.off()
+
+##############################################################################
+######### CAPSULES CALCULATIONS ##############################################
+##############################################################################
+
+############# CHANGE ALL TO interaction_MANUAL
+
+#ACCESS THE CAPSULE INFO
+interaction_MANUAL_COLL$REP_PER_R_B <- paste(interaction_MANUAL_COLL$REPLICATE,interaction_MANUAL_COLL$PERIOD,interaction_MANUAL_COLL$ROW,interaction_MANUAL_COLL$BEH,sep="_")
+split_types <- plyr::ldply(strsplit(interaction_MANUAL_COLL$types,","), rbind)
+split_types$REP_PER_R_B <- interaction_MANUAL_COLL$REP_PER_R_B
+
+#select the unique TYPES combinations and make them into a dataframe to later add the missing cases to the counts
+#uniq.split_types <- unique(interaction_MANUAL_COLL$types); uniq.split_types <- uniq.split_types[!is.na(uniq.split_types)]
+uniq.split_types_FREQ <- as.data.frame(table(unlist(split_types[,-which(names(split_types)=="REP_PER_R_B")]))); names(uniq.split_types_FREQ) <- c("types","Freq")
+uniq.split_types <- as.data.frame(uniq.split_types_FREQ[,which(names(uniq.split_types_FREQ)=="types")]); names(uniq.split_types) <- "types"
+
+#REP_PER_R_B <- as.data.frame(unique(split_types$REP_PER_R_B)); names(REP_PER_R_B) <- "ID"
+int_types_counts_MAN <- NULL
+for (ids in unique(split_types$REP_PER_R_B)) {
+  int_types <- split_types[which(split_types$REP_PER_R_B==ids),]
+  count <- table(unlist(int_types[,-which(names(int_types)=="REP_PER_R_B")]))
+  result <- data.frame(types = (names(count)),count = as.integer(count))
+  
+  ## add the missing cases
+  int_types_counts <- plyr::join (x = result , y=uniq.split_types, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+  int_types_counts[is.na(int_types_counts)] <- 0
+  #calc pecerntage
+  #int_types_counts$perc <- round(int_types_counts$count/sum(int_types_counts$count),2)
+  int_types_counts$REP_PER_R_B <- ids
+  
+  int_types_counts_MAN   <- rbind(int_types_counts_MAN,     int_types_counts)
+  #the loop is looping over the same REP_PER_R_B and should be written to avoid it. A dirty fix is:
+}
+int_types_counts_MAN <- unique(int_types_counts_MAN)
+
+#int_types_count_TOT <- as.data.frame(tapply(int_types_counts_MAN$count, INDEX=list(int_types_counts_MAN$types),FUN=sum))
+
+
+#get total counts and percentages
+int_types_counts_MAN.DT <- data.table(int_types_counts_MAN)
+#for plotting purposes, let's make 2-3 and 3-2 the same
+int_types_counts_MAN.DT$types_inv <- int_types_counts_MAN.DT$types
+int_types_counts_MAN.DT$types_inv <- as.character( int_types_counts_MAN.DT$types_inv)
+int_types_counts_MAN.DT$types_inv[ int_types_counts_MAN.DT$types_inv == "3-2"] <- "2-3"
+
+# plot per int
+ggplot( int_types_counts_MAN.DT, aes(fill=types_inv, y=count, x=REP_PER_R_B)) + 
+  geom_bar(position="fill", stat="identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("perc. capsule type involved in each interaction",paste("body_id is type",body_id,", head_id is type",head_id,sep=" "))
+
+#Getting % of capsules from collisions to understand which capsules are interacting more
+int_types_count_TOT <- int_types_counts_MAN.DT[, list(fsum=sum(count)), by=types]
+int_types_count_TOT$perc <- round(int_types_count_TOT$fsum/sum(int_types_count_TOT$fsum),2)
+int_types_count_TOT
+
+#Frame by Frame Number of Manual annotations that do not include 2-3 or 3-2 capsules
+types_FREQ <- as.data.frame(table(interaction_MANUAL_COLL$types))
+types_FREQ$body_head <- NULL
+types_FREQ$body_head <- ifelse(grepl('2-3|3-2', types_FREQ$Var1), 'yes', "no")
+types_FREQ$body_head
+aggregate(types_FREQ$Freq, by=list(body_head=types_FREQ$body_head), FUN=sum)
+
+#Interactionn by interaction Number of Manual annotations that do not include 2-3 or 3-2 capsules
+interaction_MANUAL_COLL$body_head <- NULL
+interaction_MANUAL_COLL$body_head <- ifelse(grepl('2-3|3-2', interaction_MANUAL_COLL$types), 'yes', "no")
+interaction_MANUAL_COLL$body_head <- as.factor(interaction_MANUAL_COLL$body_head)
+interaction_MANUAL_COLL$Freq <- 1
+body_head_AGGREG <- aggregate(interaction_MANUAL_COLL$Freq, by=list(interaction_MANUAL_COLL$body_head,interaction_MANUAL_COLL$REP_PER_R_B), FUN=sum);names(body_head_AGGREG) <- c("body_head","REP_PER_R_B","Freq")
+
+
+ggplot( body_head_AGGREG, aes(fill=body_head, y=Freq, x=REP_PER_R_B)) + 
+  geom_bar(position="fill", stat="identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Perc. of Manual annotations that include 2-3 or 3-2 capsules")
+
+
+
+#get from long to wide format (this can be appended to SUMMARY file)
+int_types_per_INT <- reshape(int_types_counts_MAN.DT, idvar = "REP_PER_R_B", timevar = "types", direction = "wide")
+
+
+##############################################################################
+#### PLOTS FOR TOTAL VARS (are also in PCA but can be moved here for good) ###
+##############################################################################
+
+#################################MANUAL VARS###################################
+if (run_Parameters_plots){source(paste(SCRIPTDIR,"BEH_Parameters_plots_fort081.R",sep="/"))}
+
+
+
+
+#summary_MANUAL_vars <- summary_MANUAL[, -match(c("REPLICATE", "PERIOD","BEH","ROW","Act_Name","Rec_Name","int_start_frame","int_end_frame","prop_time_undetected_REC","prop_time_undetected_ACT","ant1","ant2","pair"), names(summary_MANUAL))] 
+#
+#transform to long format BY DIVIDING BY ACTOR AND RECEIVER!! (DONE ALREADY ELSEWHERE)
+# summary_MANUAL_vars_long <- melt(summary_MANUAL_vars,id.vars=c("Hit")) #explanation on the warning message https://stackoverflow.com/questions/25688897/reshape2-melt-warning-message
+# 
+# 
+# ###plot divided by variable and Hit for Grooming
+# par(mfrow=c(2,3), family="serif" , mar = c(0.1, 0.1, 2.2, 0))
+# 
+# summ_vars_plot <- ggplot(summary_MANUAL_vars_long, aes(value, fill = Hit)) +
+#   facet_wrap(variable ~ .,scales="free") +
+#   theme_bw() +
+#   theme(text=element_text(family="serif",size=9), legend.key.size = unit(0.3, 'cm')) #,legend.position="bottom",legend.justification='right'
+# summ_vars_plot + geom_density(alpha = 0.2) +
+#   labs(title = "Density plot for movement variables by Hit rate")#,
+# #subtitle = paste( "Periods:",unique(interaction_MANUAL$PERIOD),". Window:",time_start_ISO,"-",time_stop_ISO))
+
 
 
 ###############################################################################
@@ -438,12 +746,6 @@ if (run_AUTO_MAN_agreement)
 #check
 unique(interaction_MANUAL$PERIOD)
 unique(interaction_MANUAL$REPLICATE)
-
-###############################################################################
-###### PARAMETERS PLOTS #######################################################
-###############################################################################
-if (run_Parameters_plots){source(paste(SCRIPTDIR,"BEH_Parameters_plots_fort081.R",sep="/"))}
-
 
 
 

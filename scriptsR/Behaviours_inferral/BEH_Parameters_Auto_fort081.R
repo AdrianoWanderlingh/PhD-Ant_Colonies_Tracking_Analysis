@@ -53,6 +53,7 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     mean_abs_angle      <- NULL
     mean_abs_turnAngle  <- NULL
     rmsd_px             <- NULL
+    chull_area          <- NULL
     moved_distance_px   <- NULL
     mean_speed_PxPerSec <- NULL
     mean_accel_PxPerSec2<- NULL
@@ -163,6 +164,13 @@ if (!grepl(",",INT_capsules)) {
       ## root mean square displacement
       rmsd_px[which_ant]                            <-  sqrt(sum( (TRAJ_ANT_INT$x-mean(TRAJ_ANT_INT$x))^2 + (TRAJ_ANT_INT$y-mean(TRAJ_ANT_INT$y))^2 )/length(na.omit(TRAJ_ANT_INT$x)))
 
+      #Convex Hull
+      box.coords <- as.matrix(TRAJ_ANT_INT[, c("x", "y")]); box.hpts <- chull(x = TRAJ_ANT_INT$x, y = TRAJ_ANT_INT$y) # calculate convex hull for x and y columns
+      box.hpts <- c(box.hpts, box.hpts[1]) #add first coord at the bottom to close area
+      box.chull.coords <- box.coords[box.hpts,]
+      chull.poly <- Polygon(box.chull.coords, hole=F); chull_area[which_ant]   <- chull.poly@area  #calculate area
+      
+      
       # ## measure the length *in seconds* of the interaction between ACT & REC
       # # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
       # int_start_frame <- min(traj_BOTH$frame, na.rm=T)
@@ -258,6 +266,7 @@ if (!grepl(",",INT_capsules)) {
                                   mean_accel_PxPerSec2[["ant1"]], mean_accel_PxPerSec2[["ant2"]], 
                                   mean_jerk_PxPerSec3[["ant1"]], mean_jerk_PxPerSec3[["ant2"]], 
                                   rmsd_px[["ant1"]],rmsd_px[["ant2"]],
+                                  chull_area[["ant1"]],chull_area[["ant2"]],
                                   int_start_frame=min(TRAJ_AUTO_BOTH$frame), int_end_frame =max(TRAJ_AUTO_BOTH$frame),
                                   interaction_length_secs,  
                                   prop_time_undetected_ant1, prop_time_undetected_ant2, mean_prop_time_undetected,

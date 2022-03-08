@@ -89,27 +89,48 @@ for (BEH in c("G"))#,"T","FR","CR"))
     
     #check start time correspondance
     #print(paste("Behaviour:",BEH,"ACT:",Act_Name,"REC:",Rec_Name, "annot_start", ENC_FRAME_start, "traj_start", min(traj_ACT$frame,na.rm = TRUE)))
-    # # ## Plot trajectories of both actor & receiver, show on the same panel
-    #Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
-    #plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-    #points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1)
+    # ## Plot trajectories of both actor & receiver, show on the same panel
+    # Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
+    # plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=c(min(traj_ACT$y,traj_REC$y),max(traj_ACT$y,traj_REC$y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+    # points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1)
     # 
     # ## show the headings of each ACT
-    # arrows.az (x = traj_ACT$x, 
-    #            y = traj_ACT$y, 
-    #            azimuth = traj_ACT$angle, 
+    # arrows.az (x = traj_ACT$x,
+    #            y = traj_ACT$y,
+    #            azimuth = traj_ACT$angle,
     #            rho = 10,
     #            HeadWidth=0.1,
     #            units="radians", Kol="blue2", Lwd=1)
     # ## show the headings of each REC
-    # arrows.az (x = traj_REC$x, 
-    #            y = traj_REC$y, 
-    #            azimuth = traj_REC$angle, 
+    # arrows.az (x = traj_REC$x,
+    #            y = traj_REC$y,
+    #            azimuth = traj_REC$angle,
     #            rho = 10,
     #            HeadWidth=0.1,
     #            units="radians", Kol="red2", Lwd=1)
     # 
-
+###################### PLOT WITH INVERTED AXES AND TRANSPARENT BG ##########################
+    par(bg=NA)
+    Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
+    plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=rev(range(y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+    points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1,ylim=rev(range(y)))
+    
+    ## show the headings of each ACT
+    arrows.az (x = traj_ACT$x,
+               y = traj_ACT$y,
+               azimuth = traj_ACT$angle,
+               rho = 10,
+               HeadWidth=0.1,
+               units="radians", Kol="blue2", Lwd=1)
+    ## show the headings of each REC
+    arrows.az (x = traj_REC$x,
+               y = traj_REC$y,
+               azimuth = traj_REC$angle,
+               rho = 10,
+               HeadWidth=0.1,
+               units="radians", Kol="red2", Lwd=1)
+    
+################################################################    
     
     ##################
     ## INDIVIDUAL TRAJECTORY MEASURES
@@ -241,6 +262,19 @@ for (BEH in c("G"))#,"T","FR","CR"))
     rmsd_px_ACT                            <-  sqrt(sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x)))
     rmsd_px_REC                            <-  sqrt(sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x)))
     
+    
+    #Convex Hull
+    box.coords <- as.matrix(traj_ACT[, c("x", "y")]); box.hpts <- chull(x = traj_ACT$x, y = traj_ACT$y) # calculate convex hull for x and y columns
+    box.hpts <- c(box.hpts, box.hpts[1]) #add first coord at the bottom to close area
+    box.chull.coords <- box.coords[box.hpts,]
+    chull.poly <- Polygon(box.chull.coords, hole=F); chull_area_ACT <- chull.poly@area  #calculate area
+    
+    box.coords <- as.matrix(traj_REC[, c("x", "y")]); box.hpts <- chull(x = traj_REC$x, y = traj_REC$y) # calculate convex hull for x and y columns
+    box.hpts <- c(box.hpts, box.hpts[1]) #add first coord at the bottom to close area
+    box.chull.coords <- box.coords[box.hpts,]
+    chull.poly <- Polygon(box.chull.coords, hole=F); chull_area_REC <- chull.poly@area  #calculate area
+    
+    
     #rename trajectories columns NOT TO BE MERGED for Act and Rec
     names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
     names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
@@ -302,7 +336,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
     traj_BOTH$Movement_angle_diff <- abs((traj_BOTH$Movement_angle_difference_REC - pi) - (traj_BOTH$Movement_angle_difference_ACT -pi)) %% (2*pi)
     mean_movement_angle_diff <-  mean(traj_BOTH$Movement_angle_diff, na.rm=TRUE)
     
-    
+    ROW <- as.factor(ROW)
     ###############
     
     summary_MAN_ROW <- data.frame(REPLICATE, PERIOD, BEH, ROW, Act_Name, Rec_Name, 
@@ -315,6 +349,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
                                   mean_accel_pxpersec2_ACT, mean_accel_pxpersec2_REC,
                                   mean_jerk_PxPerSec3_ACT, mean_jerk_PxPerSec3_REC,
                                   rmsd_px_ACT,rmsd_px_REC,
+                                  chull_area_ACT,chull_area_REC,
                                   int_start_frame , int_end_frame, interaction_length_secs,
                                   prop_time_undetected_ACT, prop_time_undetected_REC,
                                   mean_strghtline_dist_px, 

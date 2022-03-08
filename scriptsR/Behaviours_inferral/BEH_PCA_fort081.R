@@ -1,5 +1,18 @@
 print(paste("PERFORM PCA ",REPLICATE, PERIOD))
 
+
+
+###########################################################################################
+# FORECAST VERIFICATION
+# https://www.swpc.noaa.gov/sites/default/files/images/u30/Forecast%20Verification%20Glossary.pdf
+# https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+
+
+
+
+
+
+
 library(FactoMineR)
 library(factoextra)
 library(missMDA) #PCA with missing values
@@ -260,6 +273,7 @@ klaR::partimat(Hit~mean_movement_angle_diff+prop_time_undetected_ant2+StDev_angl
 # https://www.andreaperlato.com/mlpost/linear-discriminant-analysis/
 # https://towardsdatascience.com/linear-discriminant-analysis-explained-f88be6c1e00b
 
+#WHAT ARE THE ASSUMPTIONS FOR LDA ANYWAY? (HOMOSCHEDASTICITY FOR LDA BUT NOT FOR QDA)
 
-#SHOULD I GO FOR LINEAR REGRESSION HAVING ONLY 2 FACTORS VARIABLE?
-
+#svm SEE https://drive.google.com/drive/u/0/folders/0B9OJD63YvZ8Jck5rM0h0cTczTFk?resourcekey=0-NG8IXWZQ064vZnrP0tt5OA 
+#BUT IN r
