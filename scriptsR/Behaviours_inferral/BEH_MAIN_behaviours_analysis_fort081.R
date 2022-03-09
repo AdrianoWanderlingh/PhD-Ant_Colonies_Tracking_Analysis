@@ -70,6 +70,7 @@ library(stringr)
 library(data.table)
 library(fields)
 library(sp) #calculate convex hull area
+library(bestNormalize)
 
 #SOURCES ON/OFF
 run_collisions                      <- TRUE
@@ -154,121 +155,9 @@ for (REPLICATE in c("R3SP","R9SP"))
   tag_stats <- fmQueryComputeTagStatistics(e)
   
   
-  
   ################################
   #CHANGE BASE HEAD CAPSULE FROM LONG TO LARGE (see notebook notes 23Feb)
-  #ASSIGN VARIOUS CAPSULES SHAPES FOLLOWING DETERMINE_ANGLE_AUTOMATICALLY_AW.R
-  
-  # 
-  # #################################################################################################################################################################################################################
-  # ###########STEP 1 - use manually oriented data to extract important information about AntPose and Capsules
-  # ###########          IN YOUR PARTICULAR SPECIES AND EXPERIMENTAL SETTINGS  
-  # ###########IMPORTANT: FOR THIS TO WORK YOU NEED TO HAVE DEFINED THE SAME CAPSULES WITH THE SAME NAMES ACROSS ALL YOUR MANUALLY ORIENTED DATA FILES
-  # #################################################################################################################################################################################################################
-  # data_list         <- list ("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/R3SP_13-03-21_Capsule_Zones_defined.myrmidon") ###here list all the myrmidon files containing oriented data
-  # #ALL COLONIES OF THE SAME TRACKNG BOX ORIENTED HAVE TO BE LOADED AT THIS STAGE 
-  # 
-  # oriented_metadata <- NULL
-  # capsule_list <- list()
-  # for (myrmidon_file in data_list){
-  #   experiment_name <- unlist(strsplit(myrmidon_file,split="/"))[length(unlist(strsplit(myrmidon_file,split="/")))]
-  #   oriented_data <- fmExperimentOpen(myrmidon_file)
-  #   oriented_ants <- oriented_data$ants
-  #   capsule_names <- oriented_data$antShapeTypeNames
-  #   for (ant in oriented_ants){
-  #     ###extract ant length and capsules
-  #     ant_length_px <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_px)
-  #     capsules      <- ant$capsules
-  #     for (caps in 1:length(capsules)){
-  #       capsule_name  <- capsule_names[[capsules[[caps]]$type]]
-  #       capsule_coord <- capsules[[caps]]$capsule
-  #       capsule_info <- data.frame(experiment = experiment_name,
-  #                                  antID      = ant$ID,
-  #                                  c1_ratio_x = capsule_coord$c1[1]/ant_length_px,
-  #                                  c1_ratio_y = capsule_coord$c1[2]/ant_length_px,
-  #                                  c2_ratio_x = capsule_coord$c2[1]/ant_length_px,
-  #                                  c2_ratio_y = capsule_coord$c2[2]/ant_length_px,
-  #                                  r1_ratio   = capsule_coord$r1[1]/ant_length_px,
-  #                                  r2_ratio   = capsule_coord$r2[1]/ant_length_px
-  #       )
-  #       
-  #       if (!capsule_name %in%names(capsule_list)){ ###if this is the first time we encounter this capsule, add it to capsule list...
-  #         capsule_list <- c(capsule_list,list(capsule_info)) 
-  #         if(length(names(capsule_list))==0){
-  #           names(capsule_list) <- capsule_name
-  #         }else{
-  #           names(capsule_list)[length(capsule_list)] <- capsule_name
-  #         }
-  #       }else{###otherwise, add a line to the existing dataframe within capsule_list
-  #         capsule_list[[capsule_name]] <- rbind(capsule_list[[capsule_name]] , capsule_info)
-  #       }
-  #     }
-  #     
-  #     
-  #     ###extract offset betewen tag centre and ant centre
-  #     for (id in ant$identifications){
-  #       oriented_metadata <- rbind(oriented_metadata,data.frame(experiment       = experiment_name,
-  #                                                               antID            = ant$ID,
-  #                                                               tagIDdecimal     = id$tagValue,
-  #                                                               angle            = id$antAngle,
-  #                                                               x_tag_coord      = id$antPosition[1], 
-  #                                                               y_tag_coord      = id$antPosition[2],
-  #                                                               x_ant_coord      = id$antPosition[1]*cos(-id$antAngle) - id$antPosition[2]*sin(-id$antAngle),
-  #                                                               y_ant_coord      = id$antPosition[1]*sin(-id$antAngle) + id$antPosition[2]*cos(-id$antAngle),
-  #                                                               length_px        = ant_length_px,
-  #                                                               stringsAsFactors = F))
-  #     }
-  #   }
-  # }
-  # 
-  # ##Check: print identifications
-  # ants <- tracking_data$ants
-  # for (a in ants) {
-  #   printf("Ant %s is identified by:\n", fmFormatAntID(a$ID))
-  #   for (i in a$identifications){
-  #     printf(" * %s\n", capture.output(i))
-  #   }
-  # }
-  # 
-  # ###create capsule list
-  # ###CAUTION the relationship between shape name and id may be different from your manually oriented files.
-  # ###Hence for post-processing analyses it will be important to use the capsule names rather than IDs
-  # ###Also, it would be safer not to use manually annotated files in the analysis anyway for consistency 
-  # ### (it would not do to anaylse some colonies with precise manually annotated data and other with approximate automated data)
-  # ###So you need to create new automatically oriented myrmidon files for all your colonies including the manually-oriented ones
-  # # for (caps in 1:length(capsule_list)){
-  # #   tracking_data$createAntShapeType(names(capsule_list)[caps])
-  # # }
-  # 
-  # for (i in 1:length(ants)){
-  #   ####to be fool proof, and be sure you extract the trajectory corresponding the correct ant, make sure you make use of the antID_str column!
-  #   traj <- positions$trajectories [[   positions$trajectories_summary[which(positions$trajectories_summary$antID==ants[[i]]$ID),"antID_str"]    ]]
-  #   
-  #   ###feed traj to c++ program
-  #   traj <- cbind(traj,add_angles(traj,max_time_gap,min_dist_moved))
-  #   
-  #   ## get mean deviation angle between body and tag - the ant angle is equal to minus the Tag minus Movement angle output by C++ program
-  #   AntAngle <- as.numeric(- mean(circular(na.omit(traj$Tag_minus_Movement_Angle),units="radians",zero=0)))
-  #   ##now use trigonometry to calculate the pose, using AntAngle
-  #   x_tag_coord <- mean_x_ant_coord*cos(AntAngle) - mean_y_ant_coord*sin(AntAngle)
-  #   y_tag_coord <- mean_x_ant_coord*sin(AntAngle) + mean_y_ant_coord*cos(AntAngle)
-  #   
-  #   ##write this into ant metadata
-  # 
-  # 
-  #   
-  #   ###finally, for each ant, add capsules using mean_ant_length and capsule_list
-  #   for (caps in 1:length(capsule_list)){
-  #     capsule_ratios <- capsule_list[[caps]]; names(capsule_ratios) <- gsub("_ratio","",names(capsule_ratios))
-  #     capsule_coords <- mean_worker_length_px*capsule_ratios
-  #     
-  #     
-  #     ants[[i]]$addCapsule(caps, fmCapsuleCreate(c1 = c(capsule_coords["c1_x"],capsule_coords["c1_y"]), c2 = c(capsule_coords["c2_x"],capsule_coords["c2_y"]), r1 = capsule_coords["r1"], r2 = capsule_coords["r2"] ) )
-  #     
-  #   }
-  #   
-  # }
-  
+  #ASSIGN VARIOUS CAPSULES SHAPES
   
   ################################################################################
   ########### START PERIOD LOOP ##################################################
@@ -668,7 +557,6 @@ if (run_Parameters_plots){source(paste(SCRIPTDIR,"BEH_Parameters_plots_fort081.R
 # #subtitle = paste( "Periods:",unique(interaction_MANUAL$PERIOD),". Window:",time_start_ISO,"-",time_stop_ISO))
 
 
-
 ###############################################################################
 ###### AUTO-MAN DISAGREEMENT PLOT #############################################
 ###############################################################################
@@ -718,12 +606,62 @@ if (run_AUTO_MAN_agreement)
 # DECIDE A RANGE OF PARAMS FOR COMPUTEANTINTERACTS
 
 
+###################################################
+#### SUMMARY MANUAL  ACT REC ID BY PARAMETERS #####
+###################################################
+summary_MANUAL_delta<- summary_MANUAL
+
+summary_MANUAL_delta[, paste0(grep('_ACT$', colnames(summary_MANUAL), value = TRUE), '_delta')] <- 
+summary_MANUAL[, grep('_ACT$', colnames(summary_MANUAL))] - summary_MANUAL[, grep('_REC$', colnames(summary_MANUAL))]
 
 
 
 
+# #transform variables if they are not normal
+# for (variable in names(summary_MANUAL)){
+#   if (is.numeric(summary_MANUAL[,variable])) {
+#     #calculate delta vars
+#     summary_MANUAL_deltas$var <- summary_MANUAL$mean_speed_pxpersec_ACT - summary_MANUAL$mean_speed_pxpersec_REC
+#     
+#       BNobject <- bestNormalize(summary_MANUAL[,variable])
+#       summary_MANUAL_transf$var <- BNobject$x.t; names(summary_MANUAL_transf)[names(summary_MANUAL_transf) == 'var'] <- paste(variable,class(BNobject$chosen_transform)[1],sep=".")
+#       
+#       
+#    }else{print(paste("non numeric attribute. Pasting [",variable,"] in the new dataset",sep = " "))
+#       summary_MANUAL_transf[variable]<- summary_MANUAL[,variable]}
+# }
 
+indx <- grepl('ACT_delta', colnames(summary_MANUAL_delta))
+par(mfrow=c(2,3))
+for (deltavar in names(summary_MANUAL_delta[indx])) {
+  
+plot(summary_MANUAL_delta[,deltavar] ~ rep(1:length(summary_MANUAL_delta[,deltavar])),
+     main=deltavar,xlab="delta value", ylab="int num.",
+     col=ifelse(summary_MANUAL_delta[,deltavar]>0,"black","red")) + 
+  abline(h=0) 
 
+}
+
+#calculate delta vars
+summary_MANUAL$delta_speed_pxpersec <- summary_MANUAL$mean_speed_pxpersec_ACT - summary_MANUAL$mean_speed_pxpersec_REC
+
+#reshape data for plotting. Split by REC and ACT
+summary_data_ACT <-summary_MANUAL %>% dplyr::select(contains(c("BEH", "ACT"), ignore.case = TRUE))
+summary_data_REC <- summary_MANUAL %>% dplyr::select(contains(c("BEH", "REC"), ignore.case = TRUE))
+summary_data_ACT$IntRow <- rep(1:nrow(summary_data_ACT))
+summary_data_REC$IntRow <- rep(1:nrow(summary_data_REC))
+#Rename columns to make them match and bind+ melt columns
+summa_data_ACT  <- summary_data_ACT %>% rename_with(~str_remove(., c("_ACT|Act_"))); summa_data_ACT$Role <- "ACT"
+summa_data_REC  <- summary_data_REC %>% rename_with(~str_remove(., c("_REC|Rec_"))); summa_data_REC$Role <- "REC"
+summa_data_bind <- rbind(summa_data_ACT,summa_data_REC)
+
+# plot(summa_data_bind$mean_speed_pxpersec, as.factor(summa_data_bind$Role),type="o")
+ggplot(summa_data_bind, aes(x = Role, y = mean_speed_pxpersec,colour=delta_speed_pxpersec > 0)) +
+  geom_line(aes(group = IntRow)) +
+  geom_point()
+
+plot(summary_MANUAL$delta_speed_pxpersec~ rep(1:length(summary_MANUAL$delta_speed_pxpersec))) + 
+    abline(h=0)
 
 ###################### TO DOS ##############################
 ############################################################

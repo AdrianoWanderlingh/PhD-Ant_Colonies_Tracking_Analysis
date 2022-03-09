@@ -110,26 +110,26 @@ for (BEH in c("G"))#,"T","FR","CR"))
     #            units="radians", Kol="red2", Lwd=1)
     # 
 ###################### PLOT WITH INVERTED AXES AND TRANSPARENT BG ##########################
-    par(bg=NA)
-    Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
-    plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=rev(range(y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-    points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1,ylim=rev(range(y)))
-    
-    ## show the headings of each ACT
-    arrows.az (x = traj_ACT$x,
-               y = traj_ACT$y,
-               azimuth = traj_ACT$angle,
-               rho = 10,
-               HeadWidth=0.1,
-               units="radians", Kol="blue2", Lwd=1)
-    ## show the headings of each REC
-    arrows.az (x = traj_REC$x,
-               y = traj_REC$y,
-               azimuth = traj_REC$angle,
-               rho = 10,
-               HeadWidth=0.1,
-               units="radians", Kol="red2", Lwd=1)
-    
+    # par(bg=NA)
+    # Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
+    # plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=rev(range(y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
+    # points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1,ylim=rev(range(y)))
+    # 
+    # ## show the headings of each ACT
+    # arrows.az (x = traj_ACT$x,
+    #            y = traj_ACT$y,
+    #            azimuth = traj_ACT$angle,
+    #            rho = 10,
+    #            HeadWidth=0.1,
+    #            units="radians", Kol="blue2", Lwd=1)
+    # ## show the headings of each REC
+    # arrows.az (x = traj_REC$x,
+    #            y = traj_REC$y,
+    #            azimuth = traj_REC$angle,
+    #            rho = 10,
+    #            HeadWidth=0.1,
+    #            units="radians", Kol="red2", Lwd=1)
+    # 
 ################################################################    
     
     ##################
@@ -145,15 +145,17 @@ for (BEH in c("G"))#,"T","FR","CR"))
     
     # ADRIANO to double check  wheTHER THE circular average is based on the wrong coordinate systEM - E.G. 0-360 CLOCKWISE !!!!!!!
     
-    mean_abs_angle_ACT                    <-  mean.circular(abs(traj_ACT$angle), na.rm = TRUE) 
-    mean_abs_angle_REC                    <-  mean.circular(abs(traj_REC$angle), na.rm = TRUE)
+    # mean_angle_ACT                    <-  mean.circular(traj_ACT$angle, na.rm = TRUE) 
+    # mean_angle_REC                    <-  mean.circular(traj_REC$angle, na.rm = TRUE)
     
-    #turn angles
+    #turn angles mean and stDev
     trjACT <- TrajFromCoords(data.frame(traj_ACT$x,traj_ACT$y,traj_ACT$frame))
-    mean_abs_turnAngle_ACT            <- mean.circular(abs(TrajAngles(trjACT)))
+    mean_abs_turnAngle_ACT              <- mean.circular(abs(TrajAngles(trjACT)))
     trjREC <- TrajFromCoords(data.frame(traj_REC$x,traj_REC$y,traj_REC$frame))
-    mean_abs_turnAngle_REC            <- mean.circular(abs(TrajAngles(trjREC)))
+    mean_abs_turnAngle_REC              <- mean.circular(abs(TrajAngles(trjREC)))
     
+    stDev_turnAngle_ACT                 <-  angular.deviation(TrajAngles(trjACT), na.rm = TRUE)
+    stDev_turnAngle_REC                 <-  angular.deviation(TrajAngles(trjREC), na.rm = TRUE)
     
     #---------------------------------------------------------------------------------
 
@@ -220,11 +222,20 @@ for (BEH in c("G"))#,"T","FR","CR"))
     # traj_ACT$angle_mirror_negative <- pi - traj_ACT$angle[which(traj_ACT$angle<0)]
     # traj_ACT$angle2 <- circular(traj_ACT$angle_mirror_negative, type="angles", units="radians", modulo = "pi", rotation="clock")
     # # delta_angles
+    
+    
+   # inclination_angle(traj_ACT$delta_angles)
+   # newobject <-  traj_ACT$delta_angles[!is.na(vector)]
+    
+    
     traj_ACT$delta_angles <- traj_ACT$Movement_angle_difference - traj_ACT$Orientation_diff
+   # inclination_angle(traj_ACT$delta_angles[!is.na(traj_ACT$delta_angles)])
     traj_REC$delta_angles <- traj_REC$Movement_angle_difference - traj_REC$Orientation_diff
     # mean delta_angles
     mean_delta_angles_ACT <- mean.circular(traj_ACT$delta_angles,na.rm=TRUE)
     mean_delta_angles_REC <- mean.circular(traj_REC$delta_angles,na.rm=TRUE)
+  
+    
     #---------------------------------------------------------------------------------
     
     # ##define trajectory
@@ -288,13 +299,13 @@ for (BEH in c("G"))#,"T","FR","CR"))
     # traj_BOTH$UNIX_time <- as.POSIXct(traj_BOTH$UNIX_time, tz="GMT",origin="1970-01-01 00:00:00")
     
     ## measure the length *in seconds* of the interaction between ACT & REC
-    # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
+    # int_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
     int_start_frame <- min(traj_BOTH$frame, na.rm=T)
     int_end_frame <- max(traj_BOTH$frame, na.rm=T)
-    interaction_length_secs <-  ((int_end_frame - int_start_frame)+1)/8  ##includes end frame with +1 . 16 Feb 2022
+    int_length_secs <-  ((int_end_frame - int_start_frame)+1)/8  ##includes end frame with +1 . 16 Feb 2022
     
-    prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
-    prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x)) / 8)  / interaction_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
+    prop_time_undetected_ACT <- (sum(is.na(traj_BOTH$ACT.x)) / 8) / int_length_secs  ## the prop of the interaction in which ACT was seen 
+    prop_time_undetected_REC <- (sum(is.na(traj_BOTH$REC.x)) / 8)  / int_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
     
     # FRAME BY FRAME PARAMETERS
     
@@ -332,17 +343,26 @@ for (BEH in c("G"))#,"T","FR","CR"))
     #angular difference
     traj_BOTH$Orient_angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
     mean_orient_angle_diff <-  mean(traj_BOTH$Orient_angle_diff, na.rm=TRUE)
+    #inclination_angle(traj_BOTH$Orient_angle_diff[!is.na(traj_BOTH$Orient_angle_diff)])
+    
     
     traj_BOTH$Movement_angle_diff <- abs((traj_BOTH$Movement_angle_difference_REC - pi) - (traj_BOTH$Movement_angle_difference_ACT -pi)) %% (2*pi)
     mean_movement_angle_diff <-  mean(traj_BOTH$Movement_angle_diff, na.rm=TRUE)
+    
+    
+    # 
+    # angular velocity: ω = (α₂ - α₁) / t = Δα / t,
+    traj_BOTH$ang_Velocity  <- (traj_BOTH$ACT.angle - traj_BOTH$REC.angle) / traj_BOTH$time_interval
+    mean_ang_Velocity       <- mean(abs(traj_BOTH$ang_Velocity), na.rm=T)
     
     ROW <- as.factor(ROW)
     ###############
     
     summary_MAN_ROW <- data.frame(REPLICATE, PERIOD, BEH, ROW, Act_Name, Rec_Name, 
                                   StDev_angle_ACT, StDev_angle_REC,
-                                  mean_abs_angle_ACT, mean_abs_angle_REC,
+                                  #mean_angle_ACT, mean_angle_REC,
                                   mean_abs_turnAngle_ACT,mean_abs_turnAngle_REC,
+                                  stDev_turnAngle_ACT,stDev_turnAngle_REC, #add to AUTO
                                   mean_delta_angles_ACT, mean_delta_angles_REC,
                                   moved_distance_px_ACT, moved_distance_px_REC,
                                   mean_speed_pxpersec_ACT, mean_speed_pxpersec_REC,
@@ -350,10 +370,11 @@ for (BEH in c("G"))#,"T","FR","CR"))
                                   mean_jerk_PxPerSec3_ACT, mean_jerk_PxPerSec3_REC,
                                   rmsd_px_ACT,rmsd_px_REC,
                                   chull_area_ACT,chull_area_REC,
-                                  int_start_frame , int_end_frame, interaction_length_secs,
+                                  int_start_frame , int_end_frame, int_length_secs,
                                   prop_time_undetected_ACT, prop_time_undetected_REC,
                                   mean_strghtline_dist_px, 
                                   mean_orient_angle_diff, mean_movement_angle_diff,
+                                  mean_ang_Velocity, #add to AUTO
                                   #when adding a new variable, it must be included in the reshape rule for data plotting
                                   stringsAsFactors = F)
     
@@ -387,7 +408,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
     rmsd_px_REC<-NULL 
     int_start_frame <-NULL 
     int_end_frame<-NULL 
-    interaction_length_secs<-NULL 
+    int_length_secs<-NULL 
     prop_time_undetected_ACT<-NULL 
     prop_time_undetected_REC<-NULL 
     mean_strghtline_dist_px<-NULL 
