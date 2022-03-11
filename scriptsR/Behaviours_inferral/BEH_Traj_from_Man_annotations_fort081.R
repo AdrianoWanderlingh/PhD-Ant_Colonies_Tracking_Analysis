@@ -109,55 +109,28 @@ for (BEH in c("G"))#,"T","FR","CR"))
     #            HeadWidth=0.1,
     #            units="radians", Kol="red2", Lwd=1)
     # 
-###################### PLOT WITH INVERTED AXES AND TRANSPARENT BG ##########################
-    # par(bg=NA)
-    # Title <- paste(REPLICATE, ", ", PERIOD, ", ", BEH, ROW,", ", "Act:",ACT, ", ", "Rec:",REC, "\nframes ", ENC_FRAME_start, "-", ENC_FRAME_stop, sep="")
-    # plot   (y ~ x, traj_ACT, type="l", lwd=4, col="blue4",asp=1, main=Title,cex.main=0.9 ,xlim=c(min(traj_ACT$x,traj_REC$x),max(traj_ACT$x,traj_REC$x)),ylim=rev(range(y))) #, xlim=c(Xmin,Xmax),ylim=c(Ymin,Ymax))
-    # points (y ~ x, traj_REC, type="l", lwd=4,  col="red4",asp=1,ylim=rev(range(y)))
-    # 
-    # ## show the headings of each ACT
-    # arrows.az (x = traj_ACT$x,
-    #            y = traj_ACT$y,
-    #            azimuth = traj_ACT$angle,
-    #            rho = 10,
-    #            HeadWidth=0.1,
-    #            units="radians", Kol="blue2", Lwd=1)
-    # ## show the headings of each REC
-    # arrows.az (x = traj_REC$x,
-    #            y = traj_REC$y,
-    #            azimuth = traj_REC$angle,
-    #            rho = 10,
-    #            HeadWidth=0.1,
-    #            units="radians", Kol="red2", Lwd=1)
-    # 
-################################################################    
+
+    ################################################################    
+    ######### JUMPS ################################################
+    ################################################################
+    
+    ##  jumps detection by frame
+    traj_ACT$dt_FRAME            <- c(1, diff(traj_ACT$frame)) ## time difference in frames
+    traj_REC$dt_FRAME            <- c(1, diff(traj_REC$frame))
+    #traj_ACT$dt_TIME             <- c(diff(traj_ACT$Frame)/8,0.125) ## time difference in seconds
+    
+    #jumps detection by distance is reported below in traj_BOTH$ACT.distance and traj_BOTH$REC.distance   
     
     ##################
     ## INDIVIDUAL TRAJECTORY MEASURES
-    # uncorrelated vars used for Constance Tests:  median_acceleration_mmpersec2, rmse_mm, distance_mm, 
-    # mean_acceleration_mmpersec2, straightness_index , periodicity_sec (last two not calculated here as they need rediscretisation)
     
-    ### angular st.dev 
-    StDev_angle_ACT                    <-  angular.deviation(traj_ACT$angle, na.rm = TRUE)
-    StDev_angle_REC                    <-  angular.deviation(traj_REC$angle, na.rm = TRUE)
-    
-    # mean direction of a vector of circular data
-    
-    # ADRIANO to double check  wheTHER THE circular average is based on the wrong coordinate systEM - E.G. 0-360 CLOCKWISE !!!!!!!
-    
-    # mean_angle_ACT                    <-  mean.circular(traj_ACT$angle, na.rm = TRUE) 
-    # mean_angle_REC                    <-  mean.circular(traj_REC$angle, na.rm = TRUE)
-    
-    #turn angles mean and stDev
+    #turnangles
     trjACT <- TrajFromCoords(data.frame(traj_ACT$x,traj_ACT$y,traj_ACT$frame))
-    mean_abs_turnAngle_ACT              <- mean.circular(abs(TrajAngles(trjACT)))
     trjREC <- TrajFromCoords(data.frame(traj_REC$x,traj_REC$y,traj_REC$frame))
-    mean_abs_turnAngle_REC              <- mean.circular(abs(TrajAngles(trjREC)))
     
-    stDev_turnAngle_ACT                 <-  angular.deviation(TrajAngles(trjACT), na.rm = TRUE)
-    stDev_turnAngle_REC                 <-  angular.deviation(TrajAngles(trjREC), na.rm = TRUE)
+    traj_ACT$TurnAngle <- c(NA,NA,TrajAngles(trjACT))
+    traj_REC$TurnAngle <- c(NA,NA,TrajAngles(trjREC))
     
-    #---------------------------------------------------------------------------------
 
     ##Delta_angles: differential between orientation_angle and movement_angle
     # movement_angle: as the orientation_angle remains the same, the movement_angle can change if the movement is perpendicular to the orientation_angle
@@ -174,7 +147,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
   if (nrow(traj_ACT)>1)
     {
       # variation of movement angle frame by frame
-      traj_ACT$Movement_angle_difference_ACT <- Movement.angle.diff(x = traj_ACT) ## To check that this function works, run this: traj_ACT$Movement_angle_difference_CHECK <- NA; for (i in 1: (nrow(traj_ACT)-1)) {traj_ACT$Movement_angle_difference_CHECK[i]   <- atan(traj_ACT[i, "x"] / traj_ACT[i, "y"]) -  atan(traj_ACT[i+1, "x"] / traj_ACT[i+1, "y"])}
+      traj_ACT$Movement_angle_difference <- Movement.angle.diff(x = traj_ACT) ## To check that this function works, run this: traj_ACT$Movement_angle_difference_CHECK <- NA; for (i in 1: (nrow(traj_ACT)-1)) {traj_ACT$Movement_angle_difference_CHECK[i]   <- atan(traj_ACT[i, "x"] / traj_ACT[i, "y"]) -  atan(traj_ACT[i+1, "x"] / traj_ACT[i+1, "y"])}
       ## and take the absolute value of the 'movement angle'
       #traj_ACT$Movement_angle_difference_ABS <- abs(traj_ACT$Movement_angle_difference)
       # variation of Orientation angle frame by frame
@@ -186,7 +159,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
     if (nrow(traj_REC)>1)
     {
       # variation of movement angle frame by frame
-      traj_REC$Movement_angle_difference_REC <- Movement.angle.diff(x = traj_REC)## anticlockwise turning ants have POSTIVE values of Movement.angle.diff & vice-versa - see sanity check above
+      traj_REC$Movement_angle_difference <- Movement.angle.diff(x = traj_REC)## anticlockwise turning ants have POSTIVE values of Movement.angle.diff & vice-versa - see sanity check above
       #traj_REC$Movement_angle_difference_ABS <- abs(traj_REC$Movement_angle_difference)
       traj_REC$Orientation_diff <- Orientation.diff(x = traj_REC)
       
@@ -197,7 +170,6 @@ for (BEH in c("G"))#,"T","FR","CR"))
     # traj_ACT$Orientation_diff_RE <- Orientation.diff_RE(x = traj_ACT)
     # traj_ACT$Orientation_diff_RE_Normalised <- traj_ACT$Orientation_diff_RE %% (2*pi)
     # ## DOUBLE TRIPLE CHECK THIS!!
-    
     
     # #movement_angle diff & orientation_angle diff PER INTERACTING COUPLE PER FRAME
     # #Calculate Orientation_angle difference
@@ -231,47 +203,13 @@ for (BEH in c("G"))#,"T","FR","CR"))
     traj_ACT$delta_angles <- traj_ACT$Movement_angle_difference - traj_ACT$Orientation_diff
    # inclination_angle(traj_ACT$delta_angles[!is.na(traj_ACT$delta_angles)])
     traj_REC$delta_angles <- traj_REC$Movement_angle_difference - traj_REC$Orientation_diff
-    # mean delta_angles
-    mean_delta_angles_ACT <- mean.circular(traj_ACT$delta_angles,na.rm=TRUE)
-    mean_delta_angles_REC <- mean.circular(traj_REC$delta_angles,na.rm=TRUE)
-  
+
     
     #---------------------------------------------------------------------------------
     
-    # ##define trajectory
-    # #CHECK THAT THIS IS RIGHT OR DISCARD
-    # trajectory_ACT <- TrajFromCoords(data.frame(x=traj_ACT$x,y=traj_ACT$y, frames=traj_ACT$frame), spatialUnits = "px",timeUnits="frames")
-    # trajectory_REC <- TrajFromCoords(data.frame(x=traj_REC$x,y=traj_REC$y, frames=traj_REC$frame), spatialUnits = "px",timeUnits="frames")
-    # 
-    # #trajectory                      <- TrajResampleTime (trajectory_ori,stepTime =desired_step_length_time )
-    # ### total distance moved
-    # moved_distance_px_ACT                  <- TrajLength(trajectory_ACT)
-    # moved_distance_px_REC                  <- TrajLength(trajectory_REC)
-    # ### Calculate trajectory derivatives
-    # deriv_traj_ACT                <- TrajDerivatives(trajectory_ACT)
-    # deriv_traj_REC                <- TrajDerivatives(trajectory_REC)
-    # #mean_speed_mmpersec_ACT        <- mean(deriv_traj_ACT$speed,na.rm=T)
-    # #  median_speed_mmpersec           <- median(deriv_traj$speed,na.rm=T)
-    # #  Mean and median acceleration
-    # mean_accel_pxpersec2_ACT     <- mean(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
-    # mean_accel_pxpersec2_REC     <- mean(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
-    #median_accel_ACT  <- median(deriv_traj_ACT$acceleration,na.rm=T) #units: pxpersec2
-    #median_accel_REC  <- median(deriv_traj_REC$acceleration,na.rm=T) #units: pxpersec2
-    ### Mean and median turn angle, in radians
-    #  mean_turnangle_radians          <- mean(abs( TrajAngles(trajectory)),na.rm=T)
-    #  median_turnangle_radians        <- median(abs( TrajAngles(trajectory)),na.rm=T)
-    ### Straightness
-    #  straightness_index              <- Mod(TrajMeanVectorOfTurningAngles(deriv_traj_ACT)) #requires redisretisation of the traj https://www.rdocumentation.org/packages/trajr/versions/1.4.0/topics/TrajMeanVectorOfTurningAngles
-    #  sinuosity                       <- TrajSinuosity(trajectory)
-    #  sinuosity_corrected             <- TrajSinuosity2(trajectory)
-    ### Expected Displacement
-    #  expected_displacement_mm        <- TrajEmax(trajectory,eMaxB =T)
-    ### Autocorrelations
-    # all_Acs                         <- TrajDirectionAutocorrelations(deriv_traj_ACT) #requires redisretisation of the traj
-    # periodicity_sec                 <- TrajDAFindFirstMinimum(all_Acs)["deltaS"]*desired_step_length_time
     ### root mean square displacement
-    rmsd_px_ACT                            <-  sqrt(sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x)))
-    rmsd_px_REC                            <-  sqrt(sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x)))
+    mean_sqrt_err_px_ACT              <-  sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x))
+    mean_sqrt_err_px_REC              <-  sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x))
     
     
     #Convex Hull
@@ -287,8 +225,11 @@ for (BEH in c("G"))#,"T","FR","CR"))
     
     
     #rename trajectories columns NOT TO BE MERGED for Act and Rec
-    names(traj_ACT)[names(traj_ACT) == 'x'] <- 'ACT.x'; names(traj_ACT)[names(traj_ACT) == 'y'] <- 'ACT.y'; names(traj_ACT)[names(traj_ACT) == 'angle'] <- 'ACT.angle'
-    names(traj_REC)[names(traj_REC) == 'x'] <- 'REC.x'; names(traj_REC)[names(traj_REC) == 'y'] <- 'REC.y'; names(traj_REC)[names(traj_REC) == 'angle'] <- 'REC.angle'
+    colnames(traj_ACT) <- paste("ACT", colnames(traj_ACT), sep = ".")
+    colnames(traj_REC) <- paste("REC", colnames(traj_REC), sep = ".")
+    #except frame
+    names(traj_ACT)[names(traj_ACT) == 'ACT.frame'] <- 'frame'
+    names(traj_REC)[names(traj_REC) == 'REC.frame'] <- 'frame'
     
     #merge trajectories matching by time
     # traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("UNIX_time"))  ## CAREFUL NOT TO INCLUDE 'time' AS IF THE FIRST OBSERVATION TIME OF ACT & REC IS NOT IDENTICAL, THEN MERGE WILL TREAT THE SAME UNIX TIME AS DIFFERENT ...
@@ -321,42 +262,82 @@ for (BEH in c("G"))#,"T","FR","CR"))
     #speed
     traj_BOTH$ACT.speed_PxPerSec  <- c( with(traj_BOTH, c(NA,(sqrt(diff(ACT.x)^2 + diff(ACT.y)^2))) / time_interval))
     traj_BOTH$REC.speed_PxPerSec  <- c( with(traj_BOTH, c(NA,(sqrt(diff(REC.x)^2 + diff(REC.y)^2))) / time_interval))
-    mean_speed_pxpersec_ACT       <- mean(traj_BOTH$ACT.speed_PxPerSec, na.rm=T) 
-    mean_speed_pxpersec_REC       <- mean(traj_BOTH$REC.speed_PxPerSec, na.rm=T) 
+
     #  acceleration
     traj_BOTH$ACT.accel_PxPerSec2 <- c( with(traj_BOTH, c(NA,(diff(ACT.speed_PxPerSec))) / time_interval))
     traj_BOTH$REC.accel_PxPerSec2 <- c( with(traj_BOTH, c(NA,(diff(REC.speed_PxPerSec))) / time_interval))
-    mean_accel_pxpersec2_ACT      <- mean(traj_BOTH$ACT.accel_PxPerSec2, na.rm=T)
-    mean_accel_pxpersec2_REC      <- mean(traj_BOTH$REC.accel_PxPerSec2, na.rm=T) 
 
     # jerk (diff in accelerations)
     traj_BOTH$ACT.jerk_PxPerSec3 <- c( with(traj_BOTH, c(NA,(diff(ACT.accel_PxPerSec2))) / time_interval))
     traj_BOTH$REC.jerk_PxPerSec3 <- c( with(traj_BOTH, c(NA,(diff(REC.accel_PxPerSec2))) / time_interval))
-    mean_jerk_PxPerSec3_ACT      <- mean( traj_BOTH$ACT.jerk_PxPerSec3, na.rm=T)
-    mean_jerk_PxPerSec3_REC      <- mean( traj_BOTH$REC.jerk_PxPerSec3, na.rm=T)
     ##################
     ## INTERACTING PAIR TRAJECTORY MEASURES
     
     #straight line - euclidean distance
     traj_BOTH$straightline_dist_px <-  sqrt((traj_BOTH$ACT.x-traj_BOTH$REC.x)^2+(traj_BOTH$ACT.y-traj_BOTH$REC.y)^2)
-    mean_strghtline_dist_px <- mean(traj_BOTH$straightline_dist_px, na.rm=TRUE)
-    #angular difference
+    #angular difference #insert inclination angle here
     traj_BOTH$Orient_angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
-    mean_orient_angle_diff <-  mean(traj_BOTH$Orient_angle_diff, na.rm=TRUE)
     #inclination_angle(traj_BOTH$Orient_angle_diff[!is.na(traj_BOTH$Orient_angle_diff)])
-    
-    
-    traj_BOTH$Movement_angle_diff <- abs((traj_BOTH$Movement_angle_difference_REC - pi) - (traj_BOTH$Movement_angle_difference_ACT -pi)) %% (2*pi)
-    mean_movement_angle_diff <-  mean(traj_BOTH$Movement_angle_diff, na.rm=TRUE)
-    
-    
-    # 
+
+    traj_BOTH$Movement_angle_diff <- abs((traj_BOTH$REC.Movement_angle_difference - pi) - (traj_BOTH$ACT.Movement_angle_difference -pi)) %% (2*pi)
+
     # angular velocity: ω = (α₂ - α₁) / t = Δα / t,
     traj_BOTH$ang_Velocity  <- (traj_BOTH$ACT.angle - traj_BOTH$REC.angle) / traj_BOTH$time_interval
-    mean_ang_Velocity       <- mean(abs(traj_BOTH$ang_Velocity), na.rm=T)
     
-    ROW <- as.factor(ROW)
+    
+    ##################################
+    ## mean values for summary #######
+    ##################################
+    
+    ## Apply THRESHOLDs to exclude gaps in which the individuals were not detected for very long
+
+    # remove traj points when Trajectory$dt_FRAME > DT_frame_THRESHOLD
+    # dt_FRAME corresponds to frame between T and T+1. This should be applied to all movement characteristics
+    traj_BOTH[which(traj_BOTH$ACT.dt_FRAME>DT_frame_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle")] <- NA
+    traj_BOTH[which(traj_BOTH$REC.dt_FRAME>DT_frame_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle")] <- NA
+    # remove traj points when traj_BOTH$ACT.distance$distance < DT_dist_THRESHOLD
+    traj_BOTH[which(traj_BOTH$ACT.distance<DT_dist_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle")] <- NA
+    traj_BOTH[which(traj_BOTH$REC.distance<DT_dist_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle")] <- NA
+
+    ### angular st.dev 
+    # THIS SHOULD BE SOMEHOW INCORPORATE THE JUMPS CUTTING PROCEDURE (but I can't really jcust cut the coord)
+    StDev_angle_ACT                    <-  angular.deviation(traj_BOTH$ACT.angle, na.rm = TRUE)
+    StDev_angle_REC                    <-  angular.deviation(traj_BOTH$REC.angle, na.rm = TRUE)
+    
+    # ADRIANO to double check  wheTHER THE circular average is based on the wrong coordinate systEM - E.G. 0-360 CLOCKWISE !!!!!!!
+    #anyway, we don't car for the mean angle....
+    # mean_angle_ACT                    <-  mean.circular(traj_ACT$angle, na.rm = TRUE) 
+    # mean_angle_REC                    <-  mean.circular(traj_REC$angle, na.rm = TRUE)
+    
+    #turnangle stDev
+    stDev_turnAngle_ACT                 <-  angular.deviation(traj_BOTH$ACT.TurnAngle, na.rm = TRUE)
+    stDev_turnAngle_REC                 <-  angular.deviation(traj_BOTH$REC.TurnAngle, na.rm = TRUE)
+    
+    
+    
+    #means are then calculated on the reduced dataset
+    #individual
+    mean_abs_turnAngle_ACT        <- mean.circular(abs(traj_BOTH$ACT.TurnAngle),na.rm=T)
+    mean_abs_turnAngle_REC        <- mean.circular(abs(traj_BOTH$REC.TurnAngle),na.rm=T)
+    mean_delta_angles_ACT         <- mean.circular(traj_BOTH$ACT.delta_angles,na.rm=T)
+    mean_delta_angles_REC         <- mean.circular(traj_BOTH$REC.delta_angles,na.rm=T)
+    
+    
+    mean_speed_pxpersec_ACT       <- mean(traj_BOTH$ACT.speed_PxPerSec, na.rm=T) 
+    mean_speed_pxpersec_REC       <- mean(traj_BOTH$REC.speed_PxPerSec, na.rm=T)
+    mean_accel_pxpersec2_ACT      <- mean(traj_BOTH$ACT.accel_PxPerSec2, na.rm=T)
+    mean_accel_pxpersec2_REC      <- mean(traj_BOTH$REC.accel_PxPerSec2, na.rm=T) 
+    mean_jerk_PxPerSec3_ACT       <- mean(traj_BOTH$ACT.jerk_PxPerSec3, na.rm=T)
+    mean_jerk_PxPerSec3_REC       <- mean(traj_BOTH$REC.jerk_PxPerSec3, na.rm=T)
+    #pair
+    mean_strghtline_dist_px       <- mean(traj_BOTH$straightline_dist_px, na.rm=T)
+    #TO FIXXXXX!!!!!!!!!!!!!!!!
+    mean_orient_angle_diff        <- mean(traj_BOTH$Orient_angle_diff, na.rm=T)
+    mean_movement_angle_diff      <- mean(traj_BOTH$Movement_angle_diff, na.rm=T)
+    mean_ang_Velocity             <- mean(abs(traj_BOTH$ang_Velocity), na.rm=T)
+    
     ###############
+    ROW <- as.factor(ROW)
     
     summary_MAN_ROW <- data.frame(REPLICATE, PERIOD, BEH, ROW, Act_Name, Rec_Name, 
                                   StDev_angle_ACT, StDev_angle_REC,
@@ -368,7 +349,7 @@ for (BEH in c("G"))#,"T","FR","CR"))
                                   mean_speed_pxpersec_ACT, mean_speed_pxpersec_REC,
                                   mean_accel_pxpersec2_ACT, mean_accel_pxpersec2_REC,
                                   mean_jerk_PxPerSec3_ACT, mean_jerk_PxPerSec3_REC,
-                                  rmsd_px_ACT,rmsd_px_REC,
+                                  mean_sqrt_err_px_ACT,mean_sqrt_err_px_REC,
                                   chull_area_ACT,chull_area_REC,
                                   int_start_frame , int_end_frame, int_length_secs,
                                   prop_time_undetected_ACT, prop_time_undetected_REC,
@@ -404,8 +385,8 @@ for (BEH in c("G"))#,"T","FR","CR"))
     mean_accel_pxpersec2_REC<-NULL 
     mean_jerk_PxPerSec3_ACT<-NULL 
     mean_jerk_PxPerSec3_REC<-NULL 
-    rmsd_px_ACT<-NULL 
-    rmsd_px_REC<-NULL 
+    mean_sqrt_err_px_ACT<-NULL 
+    mean_sqrt_err_px_REC<-NULL 
     int_start_frame <-NULL 
     int_end_frame<-NULL 
     int_length_secs<-NULL 

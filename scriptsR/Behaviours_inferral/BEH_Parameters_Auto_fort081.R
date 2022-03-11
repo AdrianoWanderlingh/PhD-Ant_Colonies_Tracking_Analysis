@@ -1,37 +1,8 @@
 ######  GETTING VARS OFF  AUTO INTERACTIONS ######
 print(paste("GETTING VARS OFF AUTO INTERACTIONS ",REPLICATE, PERIOD))
-#IT HAS TO BE DONE INSIDE THE REP-PER LOOP BEFORE THE interaction_AUTO STACKING
-
 
 # WHAT TO DO WHEN IT IS NOT POSSIBLE TO DISCRIMINATE BETWEEN ACTOR AND RECEIVER?
-
-#es.
-#Y <- it is possible to distinguish ACT and REC (CONTAINS EITHER 2-3 OR 3-2)
-#N <- it is NOT possible to distinguish ACT and REC as the int is bidirectional
-# > table(interacts_AUTO_REP_PER$interactions$types)
-# 2-2,2-3          13 Y
-# 2-2,2-3,3-2      10 N
-# 2-2,2-3,3-2,3-3   7 N
-# 2-2,2-3,3-3       4 Y
-# 2-2,3-2          20 Y
-# 2-2,3-2,3-3       1 Y
-# 2-3             226 Y
-# 2-3,3-2          12 N
-# 2-3,3-2,3-3      19 N
-# 2-3,3-3          94 Y
-# 3-2             272 Y
-# 3-2,3-3          78 Y
-# 
-# 
-# 
-
-
-
-
-
-
-
-
+#USE ACT - REC definition based on speed
 
 
 #fmQueryComputeInteractions $interactions
@@ -172,12 +143,12 @@ if (!grepl(",",INT_capsules)) {
       
       
       # ## measure the length *in seconds* of the interaction between ACT & REC
-      # # interaction_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
+      # # int_length_secs <- as.numeric(difftime ( max(traj_BOTH$UNIX_time, na.rm=T), min(traj_BOTH$UNIX_time, na.rm=T), units="secs"))
       # int_start_frame <- min(traj_BOTH$frame, na.rm=T)
       # int_end_frame <- max(traj_BOTH$frame, na.rm=T)
-      # interaction_length_secs <-  (int_end_frame - int_start_frame)/8  ## 21 Jan 2022
+      # int_length_secs <-  (int_end_frame - int_start_frame)/8  ## 21 Jan 2022
       # 
-      # prop_time_undetected_ANT <- (sum(is.na(TRAJ_ANT_INT$x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
+      # prop_time_undetected_ANT <- (sum(is.na(TRAJ_ANT_INT$x)) / 8) / int_length_secs  ## the prop of the interaction in which ACT was seen 
 
       ##### FRAME BY FRAME PARAMETERS
 
@@ -250,9 +221,9 @@ if (!grepl(",",INT_capsules)) {
     TRAJ_AUTO_BOTH$Movement_angle_diff <- abs((TRAJ_AUTO_BOTH$ant2.Movement_angle_difference - pi) - (TRAJ_AUTO_BOTH$ant1.Movement_angle_difference -pi)) %% (2*pi)
     mean_movement_angle_diff <-  mean(TRAJ_AUTO_BOTH$Movement_angle_diff, na.rm=TRUE)
     
-    interaction_length_secs <- ((max(TRAJ_AUTO_BOTH$frame) - min(TRAJ_AUTO_BOTH$frame))+1)/8  ## includes end frame with +1
-    prop_time_undetected_ant1 <- (sum(is.na(TRAJ_AUTO_BOTH$ant1.x)) / 8) / interaction_length_secs  ## the prop of the interaction in which ACT was seen 
-    prop_time_undetected_ant2 <- (sum(is.na(TRAJ_AUTO_BOTH$ant2.x)) / 8)  / interaction_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
+    int_length_secs <- ((max(TRAJ_AUTO_BOTH$frame) - min(TRAJ_AUTO_BOTH$frame))+1)/8  ## includes end frame with +1
+    prop_time_undetected_ant1 <- (sum(is.na(TRAJ_AUTO_BOTH$ant1.x)) / 8) / int_length_secs  ## the prop of the interaction in which ACT was seen 
+    prop_time_undetected_ant2 <- (sum(is.na(TRAJ_AUTO_BOTH$ant2.x)) / 8)  / int_length_secs ## UNITS are secs / secs --> proportion; MUST BE STRICTLY < 1 !!
     mean_prop_time_undetected <- (prop_time_undetected_ant1+prop_time_undetected_ant2)/2
     
     ###############
@@ -268,7 +239,7 @@ if (!grepl(",",INT_capsules)) {
                                   rmsd_px[["ant1"]],rmsd_px[["ant2"]],
                                   chull_area[["ant1"]],chull_area[["ant2"]],
                                   int_start_frame=min(TRAJ_AUTO_BOTH$frame), int_end_frame =max(TRAJ_AUTO_BOTH$frame),
-                                  interaction_length_secs,  
+                                  int_length_secs,  
                                   prop_time_undetected_ant1, prop_time_undetected_ant2, mean_prop_time_undetected,
                                   mean_strghtline_dist_px,
                                   mean_orient_angle_diff, mean_movement_angle_diff,

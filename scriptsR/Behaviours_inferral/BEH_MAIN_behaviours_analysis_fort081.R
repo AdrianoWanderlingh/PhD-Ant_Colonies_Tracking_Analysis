@@ -95,6 +95,10 @@ FUZZY_MATCH                 <- TRUE  ## fuzzy matching between data frames in co
 max_gap                     <- fmHour(24*365)   ## important parameter to set! Set a maximumGap high enough that no cutting will happen. For example, set it at an entire year: fmHour(24*365)
 desired_step_length_time    <- 0.125 ###in seconds, the desired step length for the analysis
 
+#trajectories jumps/gaps thresholds to avoid getting skewed means (see their use in params extraction scripts)
+DT_frame_THRESHOLD <- 16
+DT_dist_THRESHOLD  <- 0.5 #tag length is 62 px approx (measured on full size pics in R9SP)
+
 #matchers specific for GROOMING
 MAX_INTERACTION_GAP         <- 10 ## in SECONDS 
 ANT_LENGHT_PX               <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
@@ -611,38 +615,21 @@ if (run_AUTO_MAN_agreement)
 ###################################################
 summary_MANUAL_delta<- summary_MANUAL
 
+#calculate delta parameters ACT-REC to check when ACT is bigger then REC
 summary_MANUAL_delta[, paste0(grep('_ACT$', colnames(summary_MANUAL), value = TRUE), '_delta')] <- 
 summary_MANUAL[, grep('_ACT$', colnames(summary_MANUAL))] - summary_MANUAL[, grep('_REC$', colnames(summary_MANUAL))]
 
-
-
-
-# #transform variables if they are not normal
-# for (variable in names(summary_MANUAL)){
-#   if (is.numeric(summary_MANUAL[,variable])) {
-#     #calculate delta vars
-#     summary_MANUAL_deltas$var <- summary_MANUAL$mean_speed_pxpersec_ACT - summary_MANUAL$mean_speed_pxpersec_REC
-#     
-#       BNobject <- bestNormalize(summary_MANUAL[,variable])
-#       summary_MANUAL_transf$var <- BNobject$x.t; names(summary_MANUAL_transf)[names(summary_MANUAL_transf) == 'var'] <- paste(variable,class(BNobject$chosen_transform)[1],sep=".")
-#       
-#       
-#    }else{print(paste("non numeric attribute. Pasting [",variable,"] in the new dataset",sep = " "))
-#       summary_MANUAL_transf[variable]<- summary_MANUAL[,variable]}
-# }
-
+#plot delta parameters 
 indx <- grepl('ACT_delta', colnames(summary_MANUAL_delta))
 par(mfrow=c(2,3))
 for (deltavar in names(summary_MANUAL_delta[indx])) {
-  
 plot(summary_MANUAL_delta[,deltavar] ~ rep(1:length(summary_MANUAL_delta[,deltavar])),
      main=deltavar,xlab="delta value", ylab="int num.",
      col=ifelse(summary_MANUAL_delta[,deltavar]>0,"black","red")) + 
-  abline(h=0) 
-
+  abline(h=0)
 }
 
-#calculate delta vars
+#calculate delta vars manually CAN BE REMOVED
 summary_MANUAL$delta_speed_pxpersec <- summary_MANUAL$mean_speed_pxpersec_ACT - summary_MANUAL$mean_speed_pxpersec_REC
 
 #reshape data for plotting. Split by REC and ACT
@@ -660,25 +647,20 @@ ggplot(summa_data_bind, aes(x = Role, y = mean_speed_pxpersec,colour=delta_speed
   geom_line(aes(group = IntRow)) +
   geom_point()
 
-plot(summary_MANUAL$delta_speed_pxpersec~ rep(1:length(summary_MANUAL$delta_speed_pxpersec))) + 
-    abline(h=0)
+
+#temporary plot, understand steplength for DT_dist_THRESHOLD
+# par(mfrow=c(1,2))
+# hist(interaction_MANUAL$ACT.distance,breaks = 60,main="ACT stepwise distance",sub="blue line = 2") + abline(v=2,col='blue', lwd=2) 
+# hist(interaction_MANUAL$REC.distance,breaks = 60, main="REC stepwise distance",sub="blue line = 2") + abline(v=2,col='blue', lwd=2) 
+# plot dt frame!!!!
+
+
 
 ###################### TO DOS ##############################
 ############################################################
-# - position of heads is different between various behaviours, if you can measure distance between capsules you can use that as a variable
-# - ask Mathias if he knows how to extract the geometry of capsules
-# - angular momentum
 # - acceleration of the angle
 # - frame by frame rate of change of angle
-# - list of measures for enrico
 # - DELTA ANGLES formulas FIX
-# Add collisions capsules
-#other possible thing to do: Mixture model to separate between behaviours (but it is nott what I need to do: https://towardsdatascience.com/mixture-modelling-from-scratch-in-r-5ab7bfc83eef
-# https://stats.stackexchange.com/questions/111145/how-to-fit-mixture-model-for-clustering)
-
-#TO DO:
-#Conversion of data in mm? Makes sense to do that on extracted trajectories files, using the tag size and box as reference...
-# reuse this and tags size in pixel/mm as point of reference - traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] <-   traj[,which(grepl("x",names(traj))|grepl("y",names(traj)))] * petridish_diameter / range 
 
 
 #check
@@ -686,18 +668,12 @@ unique(interaction_MANUAL$PERIOD)
 unique(interaction_MANUAL$REPLICATE)
 
 
-
-
   # rm(list=(c("e")))
   # gc()
   
   
   
-  
-  
-  
- 
-  
+
 # 
 # x <- 1
 # y <- 1
