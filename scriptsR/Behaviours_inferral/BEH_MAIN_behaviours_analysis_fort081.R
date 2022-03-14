@@ -10,10 +10,10 @@ rm(list=ls())
 
 ############## DEFINE MY FUNCTIONS
 #Movement angle diff
-Movement.angle.diff     <- function(x)  {
+Movement.angle.diff     <- function(x){
   if( length(x) > 0 & !is_null(x)){
   c( atan(x[-nrow(x), "x"] / x[-nrow(x), "y"]) - atan(x[-1, "x"] / x[-1, "y"]), NA)}
-else {vector()}}
+    else {vector()}}
 
 #pi-wrap
 pi_wrap <- function ( angle){ ####function that force any angle value to lie between -pi and + pi
