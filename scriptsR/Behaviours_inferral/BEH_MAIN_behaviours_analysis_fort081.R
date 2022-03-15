@@ -71,6 +71,7 @@ library(data.table)
 library(fields)
 library(sp) #calculate convex hull area
 library(bestNormalize)
+library(BAMBI) #angles wrapping
 
 #SOURCES ON/OFF
 run_collisions                      <- TRUE

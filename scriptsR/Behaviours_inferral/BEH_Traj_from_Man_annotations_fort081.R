@@ -129,9 +129,8 @@ for (BEH in c("G"))#,"T","FR","CR"))
     trjREC <- TrajFromCoords(data.frame(traj_REC$x,traj_REC$y,traj_REC$frame))
     traj_ACT$TurnAngle <- c(NA,NA,TrajAngles(trjACT))
     traj_REC$TurnAngle <- c(NA,NA,TrajAngles(trjREC))
-    
 
-    ##Delta_angles: differential between orientation_angle and movement_angle
+    ##Mov_Orient_delta_angle: differential between orientation_angle and movement_angle
     # movement_angle: as the orientation_angle remains the same, the movement_angle can change if the movement is perpendicular to the orientation_angle
    
     #movement_angle diff & orientation_angle diff PER ANT PER FRAME
@@ -143,38 +142,20 @@ for (BEH in c("G"))#,"T","FR","CR"))
     # ## clockwise turning ants have NEGATIVE values of Movement.angle.diff
     # traj_ACT$x <- c(0,0,1,1); traj_ACT$y <- c(0,1,1,0); plot(y ~ x, traj_ACT )
     
-  if (nrow(traj_ACT)>1)
+    if (nrow(traj_ACT)>1)
     {
       # variation of movement angle frame by frame
       traj_ACT$Movement_angle_difference <- Movement.angle.diff(x = traj_ACT) ## To check that this function works, run this: traj_ACT$Movement_angle_difference_CHECK <- NA; for (i in 1: (nrow(traj_ACT)-1)) {traj_ACT$Movement_angle_difference_CHECK[i]   <- atan(traj_ACT[i, "x"] / traj_ACT[i, "y"]) -  atan(traj_ACT[i+1, "x"] / traj_ACT[i+1, "y"])}
-      ## and take the absolute value of the 'movement angle'
-      #traj_ACT$Movement_angle_difference_ABS <- abs(traj_ACT$Movement_angle_difference)
       # variation of Orientation angle frame by frame
       traj_ACT$Orientation_diff <- Orientation.diff(x = traj_ACT)
-      
-     }else{print(paste("NO DATA FOR", ACT))}
-
-
+    }else{print(paste("NO DATA FOR", ACT))}
+    
     if (nrow(traj_REC)>1)
     {
       # variation of movement angle frame by frame
       traj_REC$Movement_angle_difference <- Movement.angle.diff(x = traj_REC)## anticlockwise turning ants have POSTIVE values of Movement.angle.diff & vice-versa - see sanity check above
-      #traj_REC$Movement_angle_difference_ABS <- abs(traj_REC$Movement_angle_difference)
       traj_REC$Orientation_diff <- Orientation.diff(x = traj_REC)
-      
     }else{print(paste("NO DATA FOR", REC))}
-    
-    # #test alternative function with abs values, not sure it really works....
-    # Orientation.diff_RE        <- function(x)  {   c(  abs( (x[-nrow(x), "angle"]-pi) - (x[-1,      "angle"])-pi) , NA)}
-    # traj_ACT$Orientation_diff_RE <- Orientation.diff_RE(x = traj_ACT)
-    # traj_ACT$Orientation_diff_RE_Normalised <- traj_ACT$Orientation_diff_RE %% (2*pi)
-    # ## DOUBLE TRIPLE CHECK THIS!!
-    
-    # #movement_angle diff & orientation_angle diff PER INTERACTING COUPLE PER FRAME
-    # #Calculate Orientation_angle difference
-    # Orient_angle_diff <- abs((traj_REC$angle - pi) - (traj_ACT$angle -pi)) %% (2*pi)
-    # #traj_BOTH$Orient_angle_diff <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
-    # deg(angle_diff)
     
     # # SANITY CHECK :
     # traj_ACT <- traj_ACT[1:4,]
@@ -182,23 +163,19 @@ for (BEH in c("G"))#,"T","FR","CR"))
     # traj_ACT$angle <- c(pi/2, pi - 0.001, -pi + 0.001, -pi/2)# ant moves from N to WNW, to WSW, to S
     # traj_ACT$Orientation_diff <- Orientation.diff(x = traj_ACT)
     # #traj_ACT$Orientation_diff %% (2*pi)
-    # abs(Orientation.diff(x = traj_ACT)-pi) %% (2*pi)
-    # #next test:
-    # - test what the difference in angles should be in deg and rads 
-    # - have a modified version of orientation_diff where -pi is subtracted from each coord as done in traj_BOTH$Orient_angle_diff (why is that done? test if it works beforehand!)
 
-   # delta_angle = difference between movement angle and orientation angle of each ant
-    delta_angles_ACT_raw <-  traj_ACT$Movement_angle_difference - traj_ACT$Orientation_diff
-    traj_ACT$delta_angles <- c(unlist(lapply(delta_angles_ACT_raw[!is.na(delta_angles_ACT_raw)],FUN=inclination_angle)),NA)
-    delta_angles_REC_raw <-  traj_REC$Movement_angle_difference - traj_REC$Orientation_diff
-    traj_REC$delta_angles <- c(unlist(lapply(delta_angles_REC_raw[!is.na(delta_angles_REC_raw)],FUN=inclination_angle)),NA)
+    # delta_angle = difference between movement angle and orientation angle of each ant
+    # between 0 - 90 deg
+    Mov_Orient_delta_angle_ACT_raw <-  traj_ACT$Movement_angle_difference - traj_ACT$Orientation_diff
+    traj_ACT$Mov_Orient_delta_angle <- c(unlist(lapply(Mov_Orient_delta_angle_ACT_raw[!is.na(Mov_Orient_delta_angle_ACT_raw)],FUN=inclination_angle)),NA)
+    Mov_Orient_delta_angle_REC_raw <-  traj_REC$Movement_angle_difference - traj_REC$Orientation_diff
+    traj_REC$Mov_Orient_delta_angle <- c(unlist(lapply(Mov_Orient_delta_angle_REC_raw[!is.na(Mov_Orient_delta_angle_REC_raw)],FUN=inclination_angle)),NA)
     
-    ### root mean square displacement
+    ### mean square displacement
     mean_sqrt_err_px_ACT              <-  sum( (traj_ACT$x-mean(traj_ACT$x))^2 + (traj_ACT$y-mean(traj_ACT$y))^2 )/length(na.omit(traj_ACT$x))
     mean_sqrt_err_px_REC              <-  sum( (traj_REC$x-mean(traj_REC$x))^2 + (traj_REC$y-mean(traj_REC$y))^2 )/length(na.omit(traj_REC$x))
     
-    
-    #Convex Hull
+    # Convex Hull
     box.coords <- as.matrix(traj_ACT[, c("x", "y")]); box.hpts <- chull(x = traj_ACT$x, y = traj_ACT$y) # calculate convex hull for x and y columns
     box.hpts <- c(box.hpts, box.hpts[1]) #add first coord at the bottom to close area
     box.chull.coords <- box.coords[box.hpts,]
@@ -240,7 +217,6 @@ for (BEH in c("G"))#,"T","FR","CR"))
     traj_BOTH$REC.distance        <- c(NA, with(traj_BOTH, sqrt(diff(REC.x)^2 + diff(REC.y)^2))) # euclidean distance
     moved_distance_px_ACT         <- sum(traj_BOTH$ACT.distance,na.rm = T)
     moved_distance_px_REC         <- sum(traj_BOTH$REC.distance,na.rm = T)
-    
 
     #traj_BOTH$UNIX_interval <- c(NA, as.numeric(diff(traj_BOTH$UNIX_time), units="secs"))
     traj_BOTH$time_interval <- c(NA, diff(traj_BOTH$frame)/8)
@@ -261,14 +237,13 @@ for (BEH in c("G"))#,"T","FR","CR"))
     
     #straight line - euclidean distance
     traj_BOTH$straightline_dist_px<-  sqrt((traj_BOTH$ACT.x-traj_BOTH$REC.x)^2+(traj_BOTH$ACT.y-traj_BOTH$REC.y)^2)
-    #FIX!!!!!!!!!!!!!!!!!!1
+    #Orientation difference of the pair (0-180deg)
     # traj_BOTH$Orient_angle_diff   <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
-
-    traj_BOTH$Movement_angle_diff <- abs((traj_BOTH$REC.Movement_angle_difference - pi) - (traj_BOTH$ACT.Movement_angle_difference -pi)) %% (2*pi)
-
-    # angular velocity: ω = (α₂ - α₁) / t = Δα / t,
-    traj_BOTH$ang_Velocity        <- (traj_BOTH$ACT.angle - traj_BOTH$REC.angle) / traj_BOTH$time_interval
+    traj_BOTH$pair_orient_diff <- abs(zero_to_2pi(traj_BOTH$ACT.angle  - traj_BOTH$REC.angle))
     
+
+    # angular velocity: ω = (α₂ - α₁) / t = Δα / t
+    traj_BOTH$ang_Velocity        <- (traj_BOTH$ACT.angle - traj_BOTH$REC.angle) / traj_BOTH$time_interval
     
     ##################################
     ## mean values for summary #######
@@ -289,63 +264,54 @@ for (BEH in c("G"))#,"T","FR","CR"))
     StDev_angle_ACT                    <-  angular.deviation(traj_BOTH$ACT.angle, na.rm = TRUE)
     StDev_angle_REC                    <-  angular.deviation(traj_BOTH$REC.angle, na.rm = TRUE)
     
-    # ADRIANO to double check  wheTHER THE circular average is based on the wrong coordinate systEM - E.G. 0-360 CLOCKWISE !!!!!!!
-    #anyway, we don't car for the mean angle....
-    # mean_angle_ACT                    <-  mean.circular(traj_ACT$angle, na.rm = TRUE) 
-    # mean_angle_REC                    <-  mean.circular(traj_REC$angle, na.rm = TRUE)
-    
     #turnangle stDev
     stDev_turnAngle_ACT                 <-  angular.deviation(traj_BOTH$ACT.TurnAngle, na.rm = TRUE)
     stDev_turnAngle_REC                 <-  angular.deviation(traj_BOTH$REC.TurnAngle, na.rm = TRUE)
     
     #means are then calculated on the reduced dataset
     #individual
-    mean_abs_turnAngle_ACT        <- mean.circular(abs(traj_BOTH$ACT.TurnAngle),na.rm=T)
-    mean_abs_turnAngle_REC        <- mean.circular(abs(traj_BOTH$REC.TurnAngle),na.rm=T)
-    mean_speed_pxpersec_ACT       <- mean(traj_BOTH$ACT.speed_PxPerSec, na.rm=T) 
-    mean_speed_pxpersec_REC       <- mean(traj_BOTH$REC.speed_PxPerSec, na.rm=T)
-    mean_accel_pxpersec2_ACT      <- mean(traj_BOTH$ACT.accel_PxPerSec2, na.rm=T)
-    mean_accel_pxpersec2_REC      <- mean(traj_BOTH$REC.accel_PxPerSec2, na.rm=T) 
-    mean_jerk_PxPerSec3_ACT       <- mean(traj_BOTH$ACT.jerk_PxPerSec3, na.rm=T)
-    mean_jerk_PxPerSec3_REC       <- mean(traj_BOTH$REC.jerk_PxPerSec3, na.rm=T)
+    mean_abs_turnAngle_ACT                  <- mean.circular(abs(traj_BOTH$ACT.TurnAngle),na.rm=T)
+    mean_abs_turnAngle_REC                  <- mean.circular(abs(traj_BOTH$REC.TurnAngle),na.rm=T)
+    mean_Mov_Orient_delta_angle_ACT         <- mean.circular(traj_BOTH$ACT.Mov_Orient_delta_angle,na.rm=T)
+    mean_Mov_Orient_delta_angle_REC         <- mean.circular(traj_BOTH$REC.Mov_Orient_delta_angle,na.rm=T)
+    
+    mean_speed_pxpersec_ACT                 <- mean(traj_BOTH$ACT.speed_PxPerSec, na.rm=T) 
+    mean_speed_pxpersec_REC                 <- mean(traj_BOTH$REC.speed_PxPerSec, na.rm=T)
+    mean_accel_pxpersec2_ACT                <- mean(traj_BOTH$ACT.accel_PxPerSec2, na.rm=T)
+    mean_accel_pxpersec2_REC                <- mean(traj_BOTH$REC.accel_PxPerSec2, na.rm=T) 
+    mean_jerk_PxPerSec3_ACT                 <- mean(traj_BOTH$ACT.jerk_PxPerSec3, na.rm=T)
+    mean_jerk_PxPerSec3_REC                 <- mean(traj_BOTH$REC.jerk_PxPerSec3, na.rm=T)
   
     #pair
-    mean_strghtline_dist_px       <- mean(traj_BOTH$straightline_dist_px, na.rm=T)
-    mean_ang_Velocity             <- mean(abs(traj_BOTH$ang_Velocity), na.rm=T)
-    
-    #TO FIXXXXX!!!!!!!!!!!!!!!!
-    mean_orient_angle_diff        <- mean(traj_BOTH$Orient_angle_diff, na.rm=T)
-    mean_movement_angle_diff      <- mean(traj_BOTH$Movement_angle_diff, na.rm=T)
-    
-    #Remove this var?? there is also a bit of confusion between Orientation_diff and Orient_angle_diff
-    mean_delta_angles_ACT         <- mean.circular(traj_BOTH$ACT.delta_angles,na.rm=T)
-    mean_delta_angles_REC         <- mean.circular(traj_BOTH$REC.delta_angles,na.rm=T)
+    mean_strghtline_dist_px                 <- mean(traj_BOTH$straightline_dist_px, na.rm=T)
+    mean_ang_Velocity                       <- mean.circular(abs(traj_BOTH$ang_Velocity), na.rm=T) #abs value to avoid a mean around 0 for back and forth movement
+    mean_pair_orient_diff                   <- mean.circular(traj_BOTH$pair_orient_diff, na.rm=T) #between 0-180 deg
+    #mean_movement_angle_diff             <- mean.circular(traj_BOTH$Movement_angle_diff, na.rm=T)
     
     
     ###############
-    ROW <- as.factor(ROW)
     
     summary_MAN_ROW <- data.frame(REPLICATE, PERIOD, BEH, ROW, Act_Name, Rec_Name, 
                                   StDev_angle_ACT, StDev_angle_REC,
-                                  #mean_angle_ACT, mean_angle_REC,
                                   mean_abs_turnAngle_ACT,mean_abs_turnAngle_REC,
                                   stDev_turnAngle_ACT,stDev_turnAngle_REC,
-                                  mean_delta_angles_ACT, mean_delta_angles_REC,
+                                  mean_Mov_Orient_delta_angle_ACT, mean_Mov_Orient_delta_angle_REC,
                                   moved_distance_px_ACT, moved_distance_px_REC,
                                   mean_speed_pxpersec_ACT, mean_speed_pxpersec_REC,
                                   mean_accel_pxpersec2_ACT, mean_accel_pxpersec2_REC,
                                   mean_jerk_PxPerSec3_ACT, mean_jerk_PxPerSec3_REC,
                                   mean_sqrt_err_px_ACT,mean_sqrt_err_px_REC,
                                   chull_area_ACT,chull_area_REC,
-                                  int_start_frame , int_end_frame, int_length_secs,
+                                  int_start_frame , int_end_frame, 
+                                  int_length_secs,
                                   prop_time_undetected_ACT, prop_time_undetected_REC,
                                   mean_strghtline_dist_px, 
-                                  mean_orient_angle_diff, mean_movement_angle_diff,
+                                  mean_pair_orient_diff,
                                   mean_ang_Velocity,
                                   #when adding a new variable, it must be included in the reshape rule for data plotting
                                   stringsAsFactors = F)
     
-    
+    summary_MAN_ROW$ROW <- as.factor(summary_MAN_ROW$ROW )
     
     #create new variable by pasting ant numbers "low,high" for summary_MAN_ROW
     summary_MAN_ROW$ant1 <- as.numeric(gsub("ant_","", summary_MAN_ROW$Act_Name))
@@ -361,8 +327,8 @@ for (BEH in c("G"))#,"T","FR","CR"))
     mean_abs_angle_REC<-NULL 
     mean_abs_turnAngle_ACT<-NULL
     mean_abs_turnAngle_REC<-NULL
-    mean_delta_angles_ACT<-NULL 
-    mean_delta_angles_REC<-NULL 
+    mean_Mov_Orient_delta_angle_ACT<-NULL 
+    mean_Mov_Orient_delta_angle_REC<-NULL 
     moved_distance_px_ACT<-NULL 
     moved_distance_px_REC<-NULL 
     mean_speed_pxpersec_ACT<-NULL 
@@ -379,13 +345,14 @@ for (BEH in c("G"))#,"T","FR","CR"))
     prop_time_undetected_ACT<-NULL 
     prop_time_undetected_REC<-NULL 
     mean_strghtline_dist_px<-NULL 
-    mean_orient_angle_diff<-NULL 
+    mean_pair_orient_diff<-NULL 
     mean_movement_angle_diff <- NULL
     
     #NO UNIX TIME BUT FRAMES. interaction AREA= NEST, FORAGING delete x y coords
     interacts_MAN_ROW <- data.frame(REPLICATE=REPLICATE,PERIOD=PERIOD,ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,
                                     traj_BOTH,
                                     stringsAsFactors = F)
+    interacts_MAN_ROW$ROW <- as.factor(interacts_MAN_ROW$ROW )
     
     ## stack -by the end of the loop, this should just contain all events for replicate X, period Y
     interacts_MAN_REP_PER <- rbind(interacts_MAN_REP_PER, interacts_MAN_ROW)
