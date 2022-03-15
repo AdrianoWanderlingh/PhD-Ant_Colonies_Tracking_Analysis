@@ -206,7 +206,7 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     moved_distance_px_ACT         <- sum(TRAJ_AUTO_BOTH$ACT.distance,na.rm = T)
     moved_distance_px_REC         <- sum(TRAJ_AUTO_BOTH$REC.distance,na.rm = T)
     
-    ## mean square displacement # FIX THIS BY REMOVING THE LOGICAL IS NA BUT PRESERVING THE SUM!
+    ## mean square displacement # FIX THIS BY REMOVING THE LOGICAL IS NA BUT PRESERVING THE SUM! 
     mean_sqrt_err_px_ACT              <-  sum(!is.na( (TRAJ_AUTO_BOTH$ACT.x-mean(TRAJ_AUTO_BOTH$ACT.x,na.rm = T))^2 + (TRAJ_AUTO_BOTH$ACT.y-mean(TRAJ_AUTO_BOTH$ACT.y,na.rm = T))^2 ))/length(na.omit(TRAJ_AUTO_BOTH$ACT.x))
     mean_sqrt_err_px_REC              <-  sum(!is.na( (TRAJ_AUTO_BOTH$REC.x-mean(TRAJ_AUTO_BOTH$REC.x,na.rm = T))^2 + (TRAJ_AUTO_BOTH$REC.y-mean(TRAJ_AUTO_BOTH$REC.y,na.rm = T))^2 ))/length(na.omit(TRAJ_AUTO_BOTH$REC.x))
     
