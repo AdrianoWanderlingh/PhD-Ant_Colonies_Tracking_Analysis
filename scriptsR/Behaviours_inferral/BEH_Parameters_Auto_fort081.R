@@ -207,8 +207,8 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     moved_distance_px_REC         <- sum(TRAJ_AUTO_BOTH$REC.distance,na.rm = T)
     
     ## mean square displacement # FIX THIS BY REMOVING THE LOGICAL IS NA BUT PRESERVING THE SUM! 
-    mean_sqrt_err_px_ACT              <-  sum(!is.na( (TRAJ_AUTO_BOTH$ACT.x-mean(TRAJ_AUTO_BOTH$ACT.x,na.rm = T))^2 + (TRAJ_AUTO_BOTH$ACT.y-mean(TRAJ_AUTO_BOTH$ACT.y,na.rm = T))^2 ))/length(na.omit(TRAJ_AUTO_BOTH$ACT.x))
-    mean_sqrt_err_px_REC              <-  sum(!is.na( (TRAJ_AUTO_BOTH$REC.x-mean(TRAJ_AUTO_BOTH$REC.x,na.rm = T))^2 + (TRAJ_AUTO_BOTH$REC.y-mean(TRAJ_AUTO_BOTH$REC.y,na.rm = T))^2 ))/length(na.omit(TRAJ_AUTO_BOTH$REC.x))
+    mean_sqrt_err_px_ACT              <-  sum(( (TRAJ_AUTO_BOTH$ACT.x-mean(TRAJ_AUTO_BOTH$ACT.x,na.rm = T))^2 + (TRAJ_AUTO_BOTH$ACT.y-mean(TRAJ_AUTO_BOTH$ACT.y,na.rm = T))^2 ),na.rm = T)/length(na.omit(TRAJ_AUTO_BOTH$ACT.x))
+    mean_sqrt_err_px_REC              <-  sum(( (TRAJ_AUTO_BOTH$REC.x-mean(TRAJ_AUTO_BOTH$REC.x,na.rm = T))^2 + (TRAJ_AUTO_BOTH$REC.y-mean(TRAJ_AUTO_BOTH$REC.y,na.rm = T))^2 ),na.rm = T)/length(na.omit(TRAJ_AUTO_BOTH$REC.x))
     
     #Convex Hull
     box.coords <- as.matrix(TRAJ_AUTO_BOTH[, c("ACT.x", "ACT.y")]); box.hpts <- chull(x = TRAJ_AUTO_BOTH$ACT.x[!is.na(TRAJ_AUTO_BOTH$ACT.x)], y = TRAJ_AUTO_BOTH$ACT.y[!is.na(TRAJ_AUTO_BOTH$ACT.y)]) # calculate convex hull for x and y columns
@@ -234,7 +234,8 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     TRAJ_AUTO_BOTH$straightline_dist_px <-  sqrt((TRAJ_AUTO_BOTH$ACT.x-TRAJ_AUTO_BOTH$REC.x)^2+(TRAJ_AUTO_BOTH$ACT.y-TRAJ_AUTO_BOTH$ACT.y)^2)
     #Orientation difference of the pair (0-180deg)
     # traj_BOTH$Orient_angle_diff   <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
-    TRAJ_AUTO_BOTH$pair_orient_diff <- abs(zero_to_2pi(TRAJ_AUTO_BOTH$ACT.angle  - TRAJ_AUTO_BOTH$REC.angle))
+    #TRAJ_AUTO_BOTH$pair_orient_diff <- abs(zero_to_2pi(TRAJ_AUTO_BOTH$ACT.angle  - TRAJ_AUTO_BOTH$REC.angle))
+    TRAJ_AUTO_BOTH$pair_orient_diff <- abs((TRAJ_AUTO_BOTH$ACT.angle  - TRAJ_AUTO_BOTH$REC.angle) %% pi)
     
     # angular velocity: ω = (α₂ - α₁) / t = Δα / t
     #  FIX FIX  the time interval should be only 1 per interacting pair, correct last term of equation
@@ -252,15 +253,13 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     
     ## Apply THRESHOLDs to exclude gaps in which the individuals were not detected for very long
     
-    #REACTIVATE ONCE THE CODE ISCONVERTED FROM ANT1 AND 2 TO ACT AND REC
-    
-    # # remove traj points when Trajectory$dt_FRAME > DT_frame_THRESHOLD
-    # # dt_FRAME corresponds to frame between T and T+1. This should be applied to all movement characteristics
-    # TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$ACT.dt_FRAME>DT_frame_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity")] <- NA
-    # TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$REC.dt_FRAME>DT_frame_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity")] <- NA
-    # # remove traj points when TRAJ_AUTO_BOTH$ACT.distance$distance < DT_dist_THRESHOLD
-    # TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$ACT.distance<DT_dist_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity")] <- NA
-    # TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$REC.distance<DT_dist_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity")] <- NA
+    # remove traj points when Trajectory$dt_FRAME > DT_frame_THRESHOLD
+    # dt_FRAME corresponds to frame between T and T+1. This should be applied to all movement characteristics
+    TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$ACT.dt_FRAME>DT_frame_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
+    TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$REC.dt_FRAME>DT_frame_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
+    # remove traj points when TRAJ_AUTO_BOTH$ACT.distance$distance < DT_dist_THRESHOLD
+    TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$ACT.distance<DT_dist_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
+    TRAJ_AUTO_BOTH[which(TRAJ_AUTO_BOTH$REC.distance<DT_dist_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
 
     ### angular st.dev 
     # THIS SHOULD BE SOMEHOW INCORPORATE THE JUMPS CUTTING PROCEDURE (but I can't really just cut the coords x and y)
@@ -287,8 +286,8 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     mean_jerk_PxPerSec3_REC                 <- mean(TRAJ_AUTO_BOTH$REC.jerk_PxPerSec3, na.rm=T)
     
     #pair
-    mean_strghtline_dist_px <- mean(TRAJ_AUTO_BOTH$straightline_dist_px, na.rm=TRUE)
-    mean_ang_Velocity             <- mean.circular(abs(TRAJ_AUTO_BOTH$ang_Velocity), na.rm=T) #abs value to avoid a mean around 0 for back and forth movement
+    mean_strghtline_dist_px                 <- mean(TRAJ_AUTO_BOTH$straightline_dist_px, na.rm=TRUE)
+    mean_ang_Velocity                       <- mean.circular(abs(TRAJ_AUTO_BOTH$ang_Velocity), na.rm=T) #abs value to avoid a mean around 0 for back and forth movement
     mean_pair_orient_diff                   <- mean.circular(TRAJ_AUTO_BOTH$pair_orient_diff, na.rm=T) #between 0-180 deg
     
     
@@ -316,9 +315,13 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     
     summary_AUTO_INT$INT <- as.factor(summary_AUTO_INT$INT)
     
-    names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.ACT.ANT.'] <- "ACT"
-    names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.REC.ANT.'] <- "REC"
-    names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.pair.'] <- "pair"
+    names(summary_AUTO_INT)[grepl("TRAJ_AUTO_BOTH.ACT.ANT", names(summary_AUTO_INT))] <- "ACT"
+    names(summary_AUTO_INT)[grepl("TRAJ_AUTO_BOTH.REC.ANT", names(summary_AUTO_INT))] <- "REC"
+    names(summary_AUTO_INT)[grepl("TRAJ_AUTO_BOTH.pair", names(summary_AUTO_INT))] <- "pair"
+    #old
+    # names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.ACT.ANT.'] <- "ACT"
+    # names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.REC.ANT.'] <- "REC"
+    # names(summary_AUTO_INT)[names(summary_AUTO_INT) == 'unique.TRAJ_AUTO_BOTH.pair.'] <- "pair"
     colnames(summary_AUTO_INT) <- sub("...ACT...", "_ACT", colnames(summary_AUTO_INT))
     colnames(summary_AUTO_INT) <- sub("...REC...", "_REC", colnames(summary_AUTO_INT))
     
@@ -341,13 +344,52 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     }
     summary_AUTO_REP_PER   <- rbind(summary_AUTO_REP_PER,     summary_AUTO_INT)
     
-}
+}#INT
+
+
+
+## lets be cautious:
+StDev_angle_ACT<-NULL 
+StDev_angle_REC<-NULL 
+mean_abs_angle_ACT<-NULL 
+mean_abs_angle_REC<-NULL 
+mean_abs_turnAngle_ACT<-NULL
+mean_abs_turnAngle_REC<-NULL
+mean_Mov_Orient_delta_angle_ACT<-NULL 
+mean_Mov_Orient_delta_angle_REC<-NULL 
+moved_distance_px_ACT<-NULL 
+moved_distance_px_REC<-NULL 
+mean_speed_pxpersec_ACT<-NULL 
+mean_speed_pxpersec_REC<-NULL 
+mean_accel_pxpersec2_ACT<-NULL 
+mean_accel_pxpersec2_REC<-NULL 
+mean_jerk_PxPerSec3_ACT<-NULL 
+mean_jerk_PxPerSec3_REC<-NULL 
+mean_sqrt_err_px_ACT<-NULL 
+mean_sqrt_err_px_REC<-NULL 
+int_start_frame <-NULL 
+int_end_frame<-NULL 
+int_length_secs<-NULL 
+prop_time_undetected_ACT<-NULL 
+prop_time_undetected_REC<-NULL 
+mean_strghtline_dist_px<-NULL 
+mean_pair_orient_diff<-NULL 
+mean_movement_angle_diff <- NULL
+stDev_turnAngle_ACT<- NULL
+stDev_turnAngle_REC<- NULL
+chull_area_ACT<- NULL
+chull_area_REC<- NULL
+mean_ang_Velocity<- NULL
 
 
 
 
 
-
+# plot.circular(summary_AUTO_REP_PER$mean_ang_Velocity, pch = 16, cex = 0.8, stack=TRUE, bins=100)
+# 
+# plot.circular(summary_AUTO_REP_PER$mean_pair_orient_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100)
+# 
+# 
 
 
 

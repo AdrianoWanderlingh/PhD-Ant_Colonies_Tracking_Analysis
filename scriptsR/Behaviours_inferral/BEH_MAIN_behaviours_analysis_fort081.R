@@ -71,12 +71,13 @@ library(data.table)
 library(fields)
 library(sp) #calculate convex hull area
 library(bestNormalize)
-library(BAMBI) #angles wrapping
+#library(BAMBI) #angles wrapping
 
 #SOURCES ON/OFF
 run_collisions                      <- TRUE
 run_AUTO_MAN_agreement              <- TRUE #computes agreement matrix
 create_interaction_AUTO_REP_PER     <- FALSE 
+LDA_TP_FP_AUTO                      <- FALSE
 #plots
 run_Parameters_plots                <- FALSE
 plot_all_BEH                        <- FALSE #inside run_Parameters_plots, if FALSE plots only for Grooming (to run it an update in BEH statement is needed)
@@ -140,7 +141,7 @@ Sensitivity           <- data.frame()
 pdf(file=paste(DATADIR,"Interactions_plots_8feb2022.pdf", sep = ""), width=6, height=4.5)
 par(mfrow=c(2,3), mai=c(0.3,0.3,0.4,0.1), mgp=c(1.3,0.3,0), family="serif", tcl=-0.2)
 
-
+start.loop.time <- Sys.time()
 for (REPLICATE in c("R3SP","R9SP")) 
   {
   ###############################################################################
@@ -385,58 +386,58 @@ for (REPLICATE in c("R3SP","R9SP"))
     interaction_MANUAL_COLL <- rbind(interaction_MANUAL_COLL, interacts_MAN_REP_PER)
     
     
-    ## PCA to check for natural differences in the behaviour of actor versus receiver during manually-defined grooming interactions
-    interaction_MANUAL_observables <- interaction_MANUAL             %>% dplyr::select(contains(c("ACT","REC"), ignore.case = FALSE))
-    interaction_MANUAL_observables <- interaction_MANUAL_observables %>% dplyr::select(!contains(c(".x",".y","ACT.angle","REC.angle"), ignore.case = FALSE))
-    
-    
-    #transform to long format
-    interaction_MANUAL_ACT <- interaction_MANUAL_observables[,grep("ACT",colnames(interaction_MANUAL_observables))]; colnames(interaction_MANUAL_ACT) <- gsub("ACT.","",colnames(interaction_MANUAL_ACT));  colnames(interaction_MANUAL_ACT) <- gsub("_ACT","",colnames(interaction_MANUAL_ACT))
-    interaction_MANUAL_REC <- interaction_MANUAL_observables[,grep("REC",colnames(interaction_MANUAL_observables))]; colnames(interaction_MANUAL_REC) <- gsub("REC.","",colnames(interaction_MANUAL_REC));  colnames(interaction_MANUAL_REC) <- gsub("_REC","",colnames(interaction_MANUAL_REC))
-    ## add actor/receiver labels to each
-    interaction_MANUAL_ACT$ActRec_label <- "A"
-    interaction_MANUAL_REC$ActRec_label <- "R"
-    
-    ## stack actor & receiver
-    interaction_MANUAL_ACTREC <- rbind(interaction_MANUAL_REC, interaction_MANUAL_ACT)
-    ##
-    interaction_MANUAL_ACTREC_noNA <- na.omit(interaction_MANUAL_ACTREC)
-    
-    ## signs -> absolutes
-    interaction_MANUAL_ACTREC_noNA[, sapply(interaction_MANUAL_ACTREC_noNA[1,], is.numeric)] <- abs(interaction_MANUAL_ACTREC_noNA[, sapply(interaction_MANUAL_ACTREC_noNA[1,], is.numeric)])
-    
-    ## scale the inputs
-    par(mfrow=c(3,4))
-    ObsNames <- colnames(interaction_MANUAL_ACTREC_noNA) [-match("ActRec_label",colnames(interaction_MANUAL_ACTREC_noNA))]
-    for (OBS in 1:length(ObsNames))
-      {
-      hist(interaction_MANUAL_ACTREC_noNA[,OBS] , col=1, main=paste(ObsNames[OBS],"pre-transform"))
-      interaction_MANUAL_ACTREC_noNA     [,OBS] <- scale((interaction_MANUAL_ACTREC_noNA[,OBS])^0.1)
-      hist(interaction_MANUAL_ACTREC_noNA[,OBS] , col=2, main=paste(ObsNames[OBS],"post-transform"))
-      }
-    
-    ## PCA is inappropriate as we know who is who ...
-    PCA <- prcomp (x = interaction_MANUAL_ACTREC_noNA[,-match("ActRec_label",colnames(interaction_MANUAL_ACTREC_noNA))], scale=TRUE, center=TRUE)
-    ##  add point colour labels (same dimensions)
-    Eigenvalues <- as.data.frame(PCA$x)
-    Eigenvalues$Colour <- as.numeric(as.factor(interaction_MANUAL_ACTREC_noNA$ActRec_label))
-    ## THERE IS A DIFFERENCE!!
-    plot(PCA$x[,1:2], pch=1, col= Eigenvalues$Colour, bg= Eigenvalues$Colour)
-
-
-
-    
-    ## LDA
-    LDA <- lda(ActRec_label ~ ., interaction_MANUAL_ACTREC_noNA)
-    #get / compute LDA scores from LDA coefficients / loadings
-    plda <- predict(object = LDA,
-                    newdata = interaction_MANUAL_ACTREC_noNA)
-
-    par(mai=c(0.4,0.4,0.1,0.1))
-    ldahist(data = plda$x[,1], g=interaction_MANUAL_ACTREC_noNA$ActRec_label)
-
-    ## TO DO: APPLY THE LDA TO THE TEST DATA SETS...!! (see 'predict' example in ?lda help file)    
-    
+    # ## PCA to check for natural differences in the behaviour of actor versus receiver during manually-defined grooming interactions
+    # interaction_MANUAL_observables <- interaction_MANUAL             %>% dplyr::select(contains(c("ACT","REC"), ignore.case = FALSE))
+    # interaction_MANUAL_observables <- interaction_MANUAL_observables %>% dplyr::select(!contains(c(".x",".y","ACT.angle","REC.angle"), ignore.case = FALSE))
+    # 
+    # 
+    # #transform to long format
+    # interaction_MANUAL_ACT <- interaction_MANUAL_observables[,grep("ACT",colnames(interaction_MANUAL_observables))]; colnames(interaction_MANUAL_ACT) <- gsub("ACT.","",colnames(interaction_MANUAL_ACT));  colnames(interaction_MANUAL_ACT) <- gsub("_ACT","",colnames(interaction_MANUAL_ACT))
+    # interaction_MANUAL_REC <- interaction_MANUAL_observables[,grep("REC",colnames(interaction_MANUAL_observables))]; colnames(interaction_MANUAL_REC) <- gsub("REC.","",colnames(interaction_MANUAL_REC));  colnames(interaction_MANUAL_REC) <- gsub("_REC","",colnames(interaction_MANUAL_REC))
+    # ## add actor/receiver labels to each
+    # interaction_MANUAL_ACT$ActRec_label <- "A"
+    # interaction_MANUAL_REC$ActRec_label <- "R"
+    # 
+    # ## stack actor & receiver
+    # interaction_MANUAL_ACTREC <- rbind(interaction_MANUAL_REC, interaction_MANUAL_ACT)
+    # ##
+    # interaction_MANUAL_ACTREC_noNA <- na.omit(interaction_MANUAL_ACTREC)
+    # 
+    # ## signs -> absolutes
+    # interaction_MANUAL_ACTREC_noNA[, sapply(interaction_MANUAL_ACTREC_noNA[1,], is.numeric)] <- abs(interaction_MANUAL_ACTREC_noNA[, sapply(interaction_MANUAL_ACTREC_noNA[1,], is.numeric)])
+    # 
+    # ## scale the inputs
+    # par(mfrow=c(3,4))
+    # ObsNames <- colnames(interaction_MANUAL_ACTREC_noNA) [-match("ActRec_label",colnames(interaction_MANUAL_ACTREC_noNA))]
+    # for (OBS in 1:length(ObsNames))
+    #   {
+    #   hist(interaction_MANUAL_ACTREC_noNA[,OBS] , col=1, main=paste(ObsNames[OBS],"pre-transform"))
+    #   interaction_MANUAL_ACTREC_noNA     [,OBS] <- scale((interaction_MANUAL_ACTREC_noNA[,OBS])^0.1)
+    #   hist(interaction_MANUAL_ACTREC_noNA[,OBS] , col=2, main=paste(ObsNames[OBS],"post-transform"))
+    #   }
+    # 
+    # ## PCA is inappropriate as we know who is who ...
+    # PCA <- prcomp (x = interaction_MANUAL_ACTREC_noNA[,-match("ActRec_label",colnames(interaction_MANUAL_ACTREC_noNA))], scale=TRUE, center=TRUE)
+    # ##  add point colour labels (same dimensions)
+    # Eigenvalues <- as.data.frame(PCA$x)
+    # Eigenvalues$Colour <- as.numeric(as.factor(interaction_MANUAL_ACTREC_noNA$ActRec_label))
+    # ## THERE IS A DIFFERENCE!!
+    # plot(PCA$x[,1:2], pch=1, col= Eigenvalues$Colour, bg= Eigenvalues$Colour)
+    # 
+    # 
+    # 
+    # 
+    # ## LDA
+    # LDA <- lda(ActRec_label ~ ., interaction_MANUAL_ACTREC_noNA)
+    # #get / compute LDA scores from LDA coefficients / loadings
+    # plda <- predict(object = LDA,
+    #                 newdata = interaction_MANUAL_ACTREC_noNA)
+    # 
+    # par(mai=c(0.4,0.4,0.1,0.1))
+    # ldahist(data = plda$x[,1], g=interaction_MANUAL_ACTREC_noNA$ActRec_label)
+    # 
+    # ## TO DO: APPLY THE LDA TO THE TEST DATA SETS...!! (see 'predict' example in ?lda help file)    
+    # 
     
     ## generate summary data
     # for (variable in names(summary_MAN_REP_PER)[!names(summary_MAN_REP_PER)%in%c("BEH","Act_Name","Rec_Name","PERIOD")])
@@ -451,6 +452,16 @@ for (REPLICATE in c("R3SP","R9SP"))
   # gc() # clear cache
 }##REPLICATE
 dev.off()
+
+##############################################################################
+######### LDA TO DISCRIMINATE AUTO TRUE POSITIVE from FALSE POSITIVE  ########
+##############################################################################
+
+if (LDA_TP_FP_AUTO){source(paste(SCRIPTDIR,"BEH_PCA_fort081.R",sep="/"))}s
+
+
+
+
 
 ##############################################################################
 ######### CAPSULES CALCULATIONS ##############################################
@@ -612,7 +623,7 @@ if (run_AUTO_MAN_agreement)
 
 
 ###################################################
-#### SUMMARY MANUAL  ACT REC ID BY PARAMETERS #####
+#### SUMMARY MANUAL ACT REC ID BY PARAMETERS #####
 ###################################################
 summary_MANUAL_delta<- summary_MANUAL
 
@@ -654,8 +665,14 @@ ggplot(summa_data_bind, aes(x = Role, y = mean_speed_pxpersec,colour=delta_speed
 # hist(interaction_MANUAL$ACT.distance,breaks = 60,main="ACT stepwise distance",sub="blue line = 2") + abline(v=2,col='blue', lwd=2) 
 # hist(interaction_MANUAL$REC.distance,breaks = 60, main="REC stepwise distance",sub="blue line = 2") + abline(v=2,col='blue', lwd=2) 
 # plot dt frame!!!!
-
-
+#
+# par(mfrow=c(1,2))
+# hist(summary_AUTO_REP_PER$moved_distance_px_ACT,breaks = 600,main="AUTO ACT stepwise distance",sub="blue line = 2") + abline(v=2,col='blue', lwd=2)
+# hist(summary_AUTO_REP_PER$moved_distance_px_REC,breaks = 600, main="AUTO REC stepwise distance",sub="blue line = 2") + abline(v=2,col='blue', lwd=2)
+# 
+# hist(summary_AUTO_REP_PER$moved_distance_px_ACT,breaks = 1000,main="AUTO ACT stepwise distance - truncated",sub="blue line = 2",xlim = c(0,50)) + abline(v=2,col='blue', lwd=2)
+# hist(summary_AUTO_REP_PER$moved_distance_px_REC,breaks = 1000, main="AUTO REC stepwise distance - truncated",sub="blue line = 2",xlim = c(0,50)) + abline(v=2,col='blue', lwd=2)
+# #plot dt frame!!!!
 
 ###################### TO DOS ##############################
 ############################################################
@@ -667,6 +684,11 @@ ggplot(summa_data_bind, aes(x = Role, y = mean_speed_pxpersec,colour=delta_speed
 #check
 unique(interaction_MANUAL$PERIOD)
 unique(interaction_MANUAL$REPLICATE)
+
+#evaluate time taken for the loop to work
+end.loop.time <- Sys.time()
+(time.taken.loop <- end.loop.time - start.loop.time)
+
 
 
   # rm(list=(c("e")))

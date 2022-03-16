@@ -239,7 +239,8 @@ for (BEH in c("G"))#,"T","FR","CR"))
     traj_BOTH$straightline_dist_px<-  sqrt((traj_BOTH$ACT.x-traj_BOTH$REC.x)^2+(traj_BOTH$ACT.y-traj_BOTH$REC.y)^2)
     #Orientation difference of the pair (0-180deg)
     # traj_BOTH$Orient_angle_diff   <- abs((traj_BOTH$REC.angle - pi) - (traj_BOTH$ACT.angle -pi)) %% (2*pi)
-    traj_BOTH$pair_orient_diff <- abs(zero_to_2pi(traj_BOTH$ACT.angle  - traj_BOTH$REC.angle))
+    #traj_BOTH$pair_orient_diff <- abs(zero_to_2pi(traj_BOTH$ACT.angle  - traj_BOTH$REC.angle))
+    traj_BOTH$pair_orient_diff <- abs((traj_BOTH$ACT.angle  - traj_BOTH$REC.angle) %% pi)
     
 
     # angular velocity: ω = (α₂ - α₁) / t = Δα / t
@@ -253,11 +254,11 @@ for (BEH in c("G"))#,"T","FR","CR"))
 
     # remove traj points when Trajectory$dt_FRAME > DT_frame_THRESHOLD
     # dt_FRAME corresponds to frame between T and T+1. This should be applied to all movement characteristics
-    traj_BOTH[which(traj_BOTH$ACT.dt_FRAME>DT_frame_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity")] <- NA
-    traj_BOTH[which(traj_BOTH$REC.dt_FRAME>DT_frame_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity")] <- NA
+    traj_BOTH[which(traj_BOTH$ACT.dt_FRAME>DT_frame_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
+    traj_BOTH[which(traj_BOTH$REC.dt_FRAME>DT_frame_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
     # remove traj points when traj_BOTH$ACT.distance$distance < DT_dist_THRESHOLD
-    traj_BOTH[which(traj_BOTH$ACT.distance<DT_dist_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity")] <- NA
-    traj_BOTH[which(traj_BOTH$REC.distance<DT_dist_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity")] <- NA
+    traj_BOTH[which(traj_BOTH$ACT.distance<DT_dist_THRESHOLD), c("ACT.speed_PxPerSec","ACT.accel_PxPerSec2","ACT.jerk_PxPerSec3","ACT.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
+    traj_BOTH[which(traj_BOTH$REC.distance<DT_dist_THRESHOLD), c("REC.speed_PxPerSec","REC.accel_PxPerSec2","REC.jerk_PxPerSec3","REC.TurnAngle","ang_Velocity","pair_orient_diff")] <- NA
 
     ### angular st.dev 
     # THIS SHOULD BE SOMEHOW INCORPORATE THE JUMPS CUTTING PROCEDURE (but I can't really just cut the coords x and y)
@@ -347,6 +348,11 @@ for (BEH in c("G"))#,"T","FR","CR"))
     mean_strghtline_dist_px<-NULL 
     mean_pair_orient_diff<-NULL 
     mean_movement_angle_diff <- NULL
+    stDev_turnAngle_ACT<- NULL
+    stDev_turnAngle_REC<- NULL
+    chull_area_ACT<- NULL
+    chull_area_REC<- NULL
+    mean_ang_Velocity<- NULL
     
     #NO UNIX TIME BUT FRAMES. interaction AREA= NEST, FORAGING delete x y coords
     interacts_MAN_ROW <- data.frame(REPLICATE=REPLICATE,PERIOD=PERIOD,ROW=ROW,BEH=BEH,Act_Name=Act_Name,Rec_Name=Rec_Name,
@@ -360,3 +366,9 @@ for (BEH in c("G"))#,"T","FR","CR"))
     
   }##ROW
 }##BEH
+
+
+
+# plot.circular(summary_AUvcTO_REP_PER$mean_ang_Velocity, pch = 16, cex = 0.8, stack=TRUE, bins=100)
+# 
+# plot.circular(summary_AUvcTO_REP_PER$mean_pair_orient_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100)

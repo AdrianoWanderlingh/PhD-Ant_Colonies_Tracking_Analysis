@@ -1,43 +1,5 @@
 
 ###############################################################################
-###### NORMALISE VARS BEFORE LDA ##############################################
-###############################################################################
-library(bestNormalize)
-
-
-#THE VARS WITH THE SAME NAME (FOR ACT AND REC) SHOULD BE NORMALISED TOGETHER  with the best common transformation per ROLE!
-#COULD THAT BE DONE BY RESHAPING AND SPECIFING IN bestNormalize THAT THERE ARE TWO CATEGORIES?
-#ONCE DONE, OUTPUT PLOTS FOR summary_MANUAL_transf
-
-#empty base
-summary_MANUAL_transf <- data.frame()[1:nrow(summary_MANUAL), ]
-summary_MANUAL$ant1 <- as.factor(summary_MANUAL$ant1)
-summary_MANUAL$ant2 <- as.factor(summary_MANUAL$ant2)
-#transform variables if they are not normal
-  for (variable in names(summary_MANUAL)){
-    if (is.numeric(summary_MANUAL[,variable])) {
-    val <- shapiro.test(summary_MANUAL[,variable])
-    if (unname(val$p.value)<0.05) {
-      print(paste("for [",variable, "] the Shapiro-Wilk Test has p < 0.05, the data is not normal. Transform it.",sep=" "))
-      #find the best transformation
-      #This function currently estimates the Yeo-Johnson, the Box Cox  (if the data is positive), the log_10(x+a), the square-root (x+a), the arcsinh and the ordered quantile normalization
-      BNobject <- bestNormalize(summary_MANUAL[,variable])
-      summary_MANUAL_transf$var <- BNobject$x.t; names(summary_MANUAL_transf)[names(summary_MANUAL_transf) == 'var'] <- paste(variable,class(BNobject$chosen_transform)[1],sep=".")
-      
-      
-    }else{print(paste("for [",variable,"] the Shapiro-Wilk Test has p > 0.05, the data is normal. Keep it.",sep=" "))
-      summary_MANUAL_transf[variable]<- summary_MANUAL[,variable]
-    }}else{print(paste("non numeric attribute. Pasting [",variable,"] in the new dataset",sep = " "))
-      summary_MANUAL_transf[variable]<- summary_MANUAL[,variable]}
-}
-
-#PLOT CHOSEN TRANSFORMATION
-# MASS::truehist(BNobject$x.t, 
-#                main = paste("Best Transformation:", 
-#                             class(BNobject$chosen_transform)[1]), nbins = 12)
-
-
-###############################################################################
 ###### PARAMETERS PLOTS #######################################################
 ###############################################################################
 

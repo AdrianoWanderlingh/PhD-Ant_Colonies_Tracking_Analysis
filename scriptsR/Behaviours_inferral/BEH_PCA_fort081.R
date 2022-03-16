@@ -1,16 +1,9 @@
-print(paste("PERFORM PCA ",REPLICATE, PERIOD))
-
-
+print(paste("PERFORM LDA ",REPLICATE, PERIOD))
 
 ###########################################################################################
 # FORECAST VERIFICATION
 # https://www.swpc.noaa.gov/sites/default/files/images/u30/Forecast%20Verification%20Glossary.pdf
 # https://en.wikipedia.org/wiki/Sensitivity_and_specificity
-
-
-
-
-
 
 
 library(FactoMineR)
@@ -24,31 +17,79 @@ require(gridExtra)
 library(reshape2)
 library(ggbeeswarm)
 
+
+
+
+###############################################################################
+###### NORMALISE VARS BEFORE LDA ##############################################
+###############################################################################
+library(bestNormalize)
+###SPEED UP WITH THE PARALLEL PACKAGE?
+#empty base
+summary_AUTO_REP_PER_transf <- data.frame()[1:nrow(summary_AUTO_REP_PER), ]
+summary_AUTO_REP_PER$ACT <- as.factor(summary_AUTO_REP_PER$ACT)
+summary_AUTO_REP_PER$REC <- as.factor(summary_AUTO_REP_PER$REC)
+summary_AUTO_REP_PER$Hit <- as.factor(summary_AUTO_REP_PER$Hit)
+summary_AUTO_REP_PER$agreement <- as.factor(summary_AUTO_REP_PER$agreement)
+summary_AUTO_REP_PER$disagreement <- as.factor(summary_AUTO_REP_PER$disagreement)
+
+summary_AUTO_REP_PER$int_start_frame <- as.character(summary_AUTO_REP_PER$int_start_frame)
+summary_AUTO_REP_PER$int_end_frame <- as.character(summary_AUTO_REP_PER$int_end_frame)
+
+#transform variables if they are not normal
+start.time <- Sys.time()
+for (variable in names(summary_AUTO_REP_PER)){
+  if (is.numeric(summary_AUTO_REP_PER[,variable])) {
+    val <- shapiro.test(summary_AUTO_REP_PER[,variable])
+    if (unname(val$p.value)<0.05) {
+      print(paste("for [",variable, "] the Shapiro-Wilk Test has p < 0.05, the data is not normal. Transform it.",sep=" "))
+      #find the best transformation
+      #This function currently estimates the Yeo-Johnson, the Box Cox  (if the data is positive), the log_10(x+a), the square-root (x+a), the arcsinh and the ordered quantile normalization
+      BNobject <- bestNormalize(summary_AUTO_REP_PER[,variable],standardize = FALSE) #with standardize = FALSE also no_tranformation is attempted 
+      summary_AUTO_REP_PER_transf$var <- BNobject$x.t; names(summary_AUTO_REP_PER_transf)[names(summary_AUTO_REP_PER_transf) == 'var'] <- paste(variable,class(BNobject$chosen_transform)[1],sep=".")
+      
+      
+    }else{print(paste("for [",variable,"] the Shapiro-Wilk Test has p > 0.05, the data is normal. Keep it.",sep=" "))
+      summary_AUTO_REP_PER_transf[variable]<- summary_AUTO_REP_PER[,variable]
+    }}else{print(paste("non numeric attribute. Pasting [",variable,"] in the new dataset",sep = " "))
+      summary_AUTO_REP_PER_transf[variable]<- summary_AUTO_REP_PER[,variable]}
+}
+end.time <- Sys.time()
+(time.taken <- end.time - start.time)
+
+
+#PLOT CHOSEN TRANSFORMATION
+# MASS::truehist(BNobject$x.t, 
+#                main = paste("Best Transformation:", 
+#                             class(BNobject$chosen_transform)[1]), nbins = 12)
+
+
+
 #summary_AUTO_REP_PER_dget <- dget("/home/cf19810/Documents/Ants_behaviour_analysis/Data/summary_AUTO_REP_PER_16feb22.txt") # load file created with dput 
-summary_AUTO_REP_PER_dget <- summary_AUTO_REP_PER
-summary_AUTO_REP_PER_dget$Hit <- as.factor(summary_AUTO_REP_PER_dget$Hit)
+summary_AUTO_REP_PER_transf$Hit <- as.factor(summary_AUTO_REP_PER_transf$Hit)
 #data structure
-#Once the THRESH for $agreement has been established:
+#Once the THRESH for $disagreement has been established:
 # Hit == 1 is a True Positive
 # Hit ==0 is a False Positive
 # this is done in BEH_Auto_Man_agreement_matrix_fort081.R
 
-
 #check N of missing values per variable
-TRIM <- c("mean_jerk_PxPerSec3_ant1","mean_jerk_PxPerSec3_ant2","mean_accel_PxPerSec2_ant1","mean_accel_PxPerSec2_ant2","mean_abs_turnAngle_ant1","mean_abs_turnAngle_ant2")
+#TRIM <- c("mean_jerk_PxPerSec3_ACT","mean_jerk_PxPerSec3_REC","mean_accel_PxPerSec2_ACT","mean_accel_PxPerSec2_REC","mean_abs_turnAngle_ACT","mean_abs_turnAngle_REC")
 #remove ant names/rep/int/etc in pca (keep only vars)
-summary_PCA_vars <- summary_AUTO_REP_PER_dget[, -match(c("REPLICATE", "PERIOD","INT","ant1","ant2","pair","int_start_frame","int_end_frame","mean_prop_time_undetected","agreement","disagreement","Hit"), names(summary_AUTO_REP_PER_dget))] 
+summary_PCA_vars <- summary_AUTO_REP_PER_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","agreement","disagreement","Hit"), names(summary_AUTO_REP_PER_transf))] 
 sapply(summary_PCA_vars, function(x) sum(is.na(x))) #drop mean_jerk_PxPerSec3 and mean_accel_pxpersec2  (they both don't contribute much)
+sapply(summary_PCA_vars, function(x) sum(is.infinite(x))) 
+summary_PCA_vars_hit <- cbind(summary_PCA_vars,Hit=summary_AUTO_REP_PER_transf$Hit)
 
-summary_PCA_vars_trim <- summary_AUTO_REP_PER_dget[, -match(c(TRIM,"REPLICATE", "PERIOD","INT","ant1","ant2","pair","int_start_frame","int_end_frame","mean_prop_time_undetected","agreement","disagreement","Hit"), names(summary_AUTO_REP_PER_dget))] 
-summary_PCA_vars_trim_hit <- cbind(summary_PCA_vars_trim,Hit=summary_AUTO_REP_PER_dget$Hit)
-sapply(summary_PCA_vars_trim, function(x) sum(is.na(x))) #drop mean_jerk_PxPerSec3 and mean_accel_pxpersec2  (they both don't contribute much)
+#summary_PCA_vars_trim <- summary_AUTO_REP_PER_transf[, -match(c(TRIM,"REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","agreement","disagreement","Hit"), names(summary_AUTO_REP_PER_transf))] 
+## eventually trimunwanted vars
+#sapply(summary_PCA_vars_trim, function(x) sum(is.na(x))) 
 
 
 ###########plotting ################
 
 #transform to long format
-summary_PCA_long <- melt(summary_PCA_vars_trim_hit,id.vars=c("Hit")) #explanation on the warning message https://stackoverflow.com/questions/25688897/reshape2-melt-warning-message
+summary_PCA_long <- reshape2::melt(summary_PCA_vars_hit,id.vars=c("Hit")) #explanation on the warning message https://stackoverflow.com/questions/25688897/reshape2-melt-warning-message
 
 
 ###plot divided by variable and Hit for Grooming
@@ -72,95 +113,101 @@ summ_vars_plot_box + geom_boxplot(alpha = 0.5)
 
 summ_vars_plot_box + geom_violin(alpha = 0.5) #+ geom_beeswarm() #careful with swarm
 
-####transform variables??
+print("Is LDA good for two factors of very different size in the dataset (namely, $Hit = 1 or 0?")
 
+# #############################
+# ####### PCA #################
+# #############################
+# 
+# #PCA with missing values according to Dray & Josse (2015) https://doi.org/10.1007/s11258-014-0406-z
+# #imputePCA of the R package missMDA
+# #Impute the missing values of a dataset with the Principal Components Analysis model. 
+# #Can be used as a preliminary step before performing a PCA on an incomplete dataset.
+# #missing values are replaced by random values, and then PCA is applied on the completed data set, and missing values are then updated by the fitted values
+# ## Imputation for summary_PCA_vars which contains NAs
+# res.comp <- imputePCA(summary_PCA_vars,method="Regularized")
+# 
+# ## 1. A PCA can be performed on the imputed data for summary_PCA_vars
+# res.pca1 <- PCA(res.comp$completeObs)
+# 
+# ## 2. PCA on the base data for summary_PCA_vars_trim
+# RES.PCA <- PCA(summary_PCA_vars_trim) #more explained variance without the trimmeed vars
+# 
+# #for (RES.PCA in c(res.pca1,res.pca2)) {
+# 
+# # Extract eigenvalues/variances
+# get_eig(res.pca2)
+# # Visualize eigenvalues/variances
+# fviz_screeplot(RES.PCA, addlabels = TRUE, ylim = c(0, 50))
+# # Extract the results for variables
+# var <- get_pca_var(RES.PCA)
+# var
+# 
+# corrplot(var$cos2, is.corr = FALSE)
+# 
+# # Coordinates of variables
+# head(var$coord)
+# # Contribution of variables
+# head(var$contrib)
+# # Graph of variables
+# # Control variable colors using their contributions
+# fviz_pca_var(RES.PCA, col.var="contrib",
+#              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+#              repel = TRUE # Avoid text overlapping
+# )
+# # Contributions of variables to PC1
+# fviz_contrib(RES.PCA, choice = "var", axes = 1, top = 10)
+# # Contributions of variables to PC2
+# fviz_contrib(RES.PCA, choice = "var", axes = 2, top = 10)
+# # Extract the results for individuals #GIVE ROWNAME TO DO THIS (I.E. HIT OR INT)
+# ind <- get_pca_ind(RES.PCA)
+# ind
+# # Coordinates of individuals
+# head(ind$coord)
+# 
+# 
+# 
+# # Use habillage to specify groups for coloring
+# fviz_pca_ind(RES.PCA, pointsize =summary_AUTO_REP_PER_transf$disagreement,
+#              label = "none", # hide individual labels
+#              title = "PCA - indivdual interactions \nPointsize by disagreement rate",
+#              habillage = as.factor(summary_AUTO_REP_PER_transf$Hit), # color by groups
+#              addEllipses = TRUE
+# )
+# 
+# #}
+# 
+# #LDA: Linear discriminant analysis also called DFA D.function.A.
+# #LDA focuses on finding a feature subspace that maximizes the separability between the groups. 
 
 #############################
-####### PCA #################
+####### LDA #################
 #############################
 
-#PCA with missing values according to Dray & Josse (2015) https://doi.org/10.1007/s11258-014-0406-z
-#imputePCA of the R package missMDA
-#Impute the missing values of a dataset with the Principal Components Analysis model. 
-#Can be used as a preliminary step before performing a PCA on an incomplete dataset.
-#missing values are replaced by random values, and then PCA is applied on the completed data set, and missing values are then updated by the fitted values
-## Imputation for summary_PCA_vars which contains NAs
-res.comp <- imputePCA(summary_PCA_vars,method="Regularized")
-
-## 1. A PCA can be performed on the imputed data for summary_PCA_vars
-res.pca1 <- PCA(res.comp$completeObs)
-
-## 2. PCA on the base data for summary_PCA_vars_trim
-RES.PCA <- PCA(summary_PCA_vars_trim) #more explained variance without the trimmeed vars
-
-#for (RES.PCA in c(res.pca1,res.pca2)) {
-
-# Extract eigenvalues/variances
-get_eig(res.pca2)
-# Visualize eigenvalues/variances
-fviz_screeplot(RES.PCA, addlabels = TRUE, ylim = c(0, 50))
-# Extract the results for variables
-var <- get_pca_var(RES.PCA)
-var
-
-corrplot(var$cos2, is.corr = FALSE)
-
-# Coordinates of variables
-head(var$coord)
-# Contribution of variables
-head(var$contrib)
-# Graph of variables
-# Control variable colors using their contributions
-fviz_pca_var(RES.PCA, col.var="contrib",
-             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-             repel = TRUE # Avoid text overlapping
-)
-# Contributions of variables to PC1
-fviz_contrib(RES.PCA, choice = "var", axes = 1, top = 10)
-# Contributions of variables to PC2
-fviz_contrib(RES.PCA, choice = "var", axes = 2, top = 10)
-# Extract the results for individuals #GIVE ROWNAME TO DO THIS (I.E. HIT OR INT)
-ind <- get_pca_ind(RES.PCA)
-ind
-# Coordinates of individuals
-head(ind$coord)
-
-
-
-# Use habillage to specify groups for coloring
-fviz_pca_ind(RES.PCA, pointsize =summary_AUTO_REP_PER_dget$disagreement,
-             label = "none", # hide individual labels
-             title = "PCA - indivdual interactions \nPointsize by disagreement rate",
-             habillage = as.factor(summary_AUTO_REP_PER_dget$Hit), # color by groups
-             addEllipses = TRUE
-)
-
-#}
-
-#LDA: Linear discriminant analysis also called DFA D.function.A.
-#LDA focuses on finding a feature subspace that maximizes the separability between the groups. 
-
-pca_prcomp <- prcomp(summary_PCA_vars_trim,
+#PCA can only be performed if ImputePCA is performed or if rows with NA (many!!!!) are removed
+pca_prcomp <- prcomp(summary_PCA_vars,
               center = TRUE,
               scale. = TRUE) 
 
 prop.RES.PCA = pca_prcomp$sdev^2/sum(pca_prcomp$sdev^2)
 
 
-lda <- lda(Hit ~ ., 
-           summary_PCA_vars_trim_hit)
+lda <- lda(summary_PCA_vars_hit$Hit ~ ., 
+           summary_PCA_vars)
 
 prop.lda = lda$svd^2/sum(lda$svd^2)
 
 #get / compute LDA scores from LDA coefficients / loadings
 
+#PREDICTION SHOULD BE PERFORMED IN THE SECOND HALF OF THE DATASET? (NOT HEREBY ANALYSED)
 plda <- predict(object = lda,
-                newdata = summary_PCA_vars_trim_hit)
+                newdata = summary_PCA_vars)
 
-dataset = data.frame(Hit = summary_PCA_vars_trim_hit[,"Hit"],
+dataset = data.frame(Hit = summary_PCA_vars_hit[,"Hit"],
                      pca = pca_prcomp$x, lda = plda$x)
 #create a histogram of the discriminant function values
-ldahist(data = plda$x[,1], g=summary_PCA_vars_trim_hit$Hit)
+par(mfrow=c(1, 1))
+ldahist(data = plda$x[,1], g=summary_PCA_vars_hit$Hit)
 
 #plotting
 
@@ -208,11 +255,11 @@ ldaProfile$optVariables
 #https://stackoverflow.com/questions/68307682/r-lda-linear-discriminant-analysis-how-to-get-compute-lda-scores-from-lda-co
 #or use
 ?lda
-lda_TEST <- lda(x = summary_PCA_vars_trim_hit[, 1:17], grouping = summary_PCA_vars_trim_hit$Hit)
+lda_TEST <- lda(x = subset(summary_PCA_vars_hit, select = -Hit), grouping = summary_PCA_vars_hit$Hit)
 lda_TEST$scores <- predict(lda_TEST)$x
 
 lda_TEST_pred <- predict(lda_TEST)
-accuracy  <- xtabs(~summary_PCA_vars_trim_hit$Hit+lda_TEST_pred$class)
+accuracy  <- xtabs(~summary_PCA_vars_hit$Hit+lda_TEST_pred$class)
 #ACCURACY OF CLASSIFICATION
 sum(accuracy[row(accuracy) == col(accuracy)]) / sum(accuracy)
 
@@ -257,7 +304,7 @@ X11(width=15, height=15)
 # for more help on margins
 par(mfrow=c(2,3))
 library(klaR)
-klaR::partimat(Hit~mean_movement_angle_diff+prop_time_undetected_ant2+StDev_angle_ant1, data=summary_PCA_vars_trim_hit, method="qda",
+klaR::partimat(Hit~mean_movement_angle_diff+prop_time_undetected_REC+StDev_angle_ACT, data=summary_PCA_vars_hit, method="qda",
                main = "\nPartition Plot for Quadratic Discriminant Analysis Model \nred=incorrectly classified",mar=c(5,4,2,2))
 
 

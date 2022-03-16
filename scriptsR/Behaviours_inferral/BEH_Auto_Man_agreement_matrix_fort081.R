@@ -55,7 +55,7 @@ int_mat_err <- int_mat_manual - int_mat_auto
 
 
 #Calculate the % disagreement per each interaction
-summary_AUTO_REP_PER$agreement <- NA
+summary_AUTO_REP_PER$disagreement <- NA
 for (i in 1:nrow(summary_AUTO_REP_PER))
   {
   PAIR <- summary_AUTO_REP_PER$pair[i]
