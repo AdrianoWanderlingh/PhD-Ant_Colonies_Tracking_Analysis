@@ -674,39 +674,25 @@ ggplot(summa_data_bind, aes(x = Role, y = mean_speed_pxpersec,colour=delta_speed
 # hist(summary_AUTO_REP_PER$moved_distance_px_REC,breaks = 1000, main="AUTO REC stepwise distance - truncated",sub="blue line = 2",xlim = c(0,50)) + abline(v=2,col='blue', lwd=2)
 # #plot dt frame!!!!
 
-###################### TO DOS ##############################
-############################################################
-# - acceleration of the angle
-# - frame by frame rate of change of angle
-# - DELTA ANGLES formulas FIX
-
-
 #check
 unique(interaction_MANUAL$PERIOD)
 unique(interaction_MANUAL$REPLICATE)
 
 #evaluate time taken for the loop to work
 end.loop.time <- Sys.time()
-(time.taken.loop <- end.loop.time - start.loop.time)
+time.taken.loop <- end.loop.time - start.loop.time
 
 
-
-  # rm(list=(c("e")))
-  # gc()
-  
-  
-  
-
-# 
-# x <- 1
-# y <- 1
-# 
+# x <- 1; y <- 1
 # atan(x/y) * 180/pi
-# 
 # #rad to deg
 # rad * 180/pi
 
-  
-
 #dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
 #positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
+
+cat(paste0("**LOOP COMPLETED**" ,
+           "\n\nNotes: \n -Add outer loop with all varying vars
+                     \n -Save output for all the main components for further tests (Decision Trees,Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)"
+           ))
+time.taken.loop

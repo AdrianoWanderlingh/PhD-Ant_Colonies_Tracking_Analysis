@@ -1,4 +1,4 @@
-print(paste("PERFORM LDA ",REPLICATE, PERIOD))
+print(paste("PERFORM LDA ",unique(interaction_MANUAL$PERIOD), unique(interaction_MANUAL$REPLICATE)))
 
 ###########################################################################################
 # FORECAST VERIFICATION
@@ -30,7 +30,6 @@ summary_AUTO_REP_PER_transf <- data.frame()[1:nrow(summary_AUTO_REP_PER), ]
 summary_AUTO_REP_PER$ACT <- as.factor(summary_AUTO_REP_PER$ACT)
 summary_AUTO_REP_PER$REC <- as.factor(summary_AUTO_REP_PER$REC)
 summary_AUTO_REP_PER$Hit <- as.factor(summary_AUTO_REP_PER$Hit)
-summary_AUTO_REP_PER$agreement <- as.factor(summary_AUTO_REP_PER$agreement)
 summary_AUTO_REP_PER$disagreement <- as.factor(summary_AUTO_REP_PER$disagreement)
 
 summary_AUTO_REP_PER$int_start_frame <- as.character(summary_AUTO_REP_PER$int_start_frame)
@@ -76,7 +75,7 @@ summary_AUTO_REP_PER_transf$Hit <- as.factor(summary_AUTO_REP_PER_transf$Hit)
 #check N of missing values per variable
 #TRIM <- c("mean_jerk_PxPerSec3_ACT","mean_jerk_PxPerSec3_REC","mean_accel_PxPerSec2_ACT","mean_accel_PxPerSec2_REC","mean_abs_turnAngle_ACT","mean_abs_turnAngle_REC")
 #remove ant names/rep/int/etc in pca (keep only vars)
-summary_PCA_vars <- summary_AUTO_REP_PER_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","agreement","disagreement","Hit"), names(summary_AUTO_REP_PER_transf))] 
+summary_PCA_vars <- summary_AUTO_REP_PER_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_REP_PER_transf))] 
 sapply(summary_PCA_vars, function(x) sum(is.na(x))) #drop mean_jerk_PxPerSec3 and mean_accel_pxpersec2  (they both don't contribute much)
 sapply(summary_PCA_vars, function(x) sum(is.infinite(x))) 
 summary_PCA_vars_hit <- cbind(summary_PCA_vars,Hit=summary_AUTO_REP_PER_transf$Hit)
@@ -86,7 +85,45 @@ summary_PCA_vars_hit <- cbind(summary_PCA_vars,Hit=summary_AUTO_REP_PER_transf$H
 #sapply(summary_PCA_vars_trim, function(x) sum(is.na(x))) 
 
 
+########################################################
+######### MISSING DATA #################################
+########################################################
+cat(paste(" To evaluate more precisely the effect of missing values imputation on the
+accuracy of the classifier we worked only with the relevant variables in each
+dataset. This also sped up the imputation process. The relevant features were
+selected using the RELIEF, a filter method for feature selection in supervised
+classification, see Acuna et al. (2003) for more details.
+
+First we considered the four datasets having missing values. Each of them
+was passed through a cleaning process where features with more than 30%
+of missing values as well as instances with more than 50% of missing values
+were eliminated. We have written a program to perform this task that allows
+us to change these percentages as we want. This cleaning process is carried
+out in order to have minimize the number of imputations needed. After that
+is done we apply the four methods to treat missing values and once that
+is finished and we have a complete dataset we compute the 10-fold cross-
+validation estimates of the misclassification error
+
+
+READ DISCUSSION, SPECIFICALLY ON HEPATITIS DATASET.
+
+
+The R functions for all the procedures discussed in this paper are available
+in www.math.uprm.eduredgar
+
+
+
+Ref:
+Acuna, E., Coaquira, F. and Gonzalez, M. (2003). A Comparison of Feature
+Selection Procedures for Classifiers Based on Kernel Density Estimation, in
+Proceedings of the International Conference on Computer, Communication and
+Control Technologies, Orlando, FL:CCCT'03, Vol I, pp. 468-472 ",sep = " "))
+
+
+
+####################################
 ###########plotting ################
+####################################
 
 #transform to long format
 summary_PCA_long <- reshape2::melt(summary_PCA_vars_hit,id.vars=c("Hit")) #explanation on the warning message https://stackoverflow.com/questions/25688897/reshape2-melt-warning-message
@@ -113,7 +150,6 @@ summ_vars_plot_box + geom_boxplot(alpha = 0.5)
 
 summ_vars_plot_box + geom_violin(alpha = 0.5) #+ geom_beeswarm() #careful with swarm
 
-print("Is LDA good for two factors of very different size in the dataset (namely, $Hit = 1 or 0?")
 
 # #############################
 # ####### PCA #################
@@ -184,51 +220,150 @@ print("Is LDA good for two factors of very different size in the dataset (namely
 ####### LDA #################
 #############################
 
-#PCA can only be performed if ImputePCA is performed or if rows with NA (many!!!!) are removed
-pca_prcomp <- prcomp(summary_PCA_vars,
-              center = TRUE,
-              scale. = TRUE) 
+# #PCA can only be performed if ImputePCA is performed or if rows with NA (many!!!!) are removed
+# pca_prcomp <- prcomp(summary_PCA_vars,
+#               center = TRUE,
+#               scale. = TRUE) 
+# 
+# prop.RES.PCA = pca_prcomp$sdev^2/sum(pca_prcomp$sdev^2)
 
-prop.RES.PCA = pca_prcomp$sdev^2/sum(pca_prcomp$sdev^2)
 
+##############################
+### LDA ASSUMPTIONS ##########
+##############################
+
+cat(paste("Assumptions
+\nThe assumptions of discriminant analysis are the same as those for MANOVA. The analysis is quite sensitive to outliers and the size of the smallest group must be larger than the number of predictor variables.
+\n\nMultivariate normality: Independent variables are normal for each level of the grouping variable.
+\nHomogeneity of variance/covariance (homoscedasticity): Variances among group variables are the same across levels of predictors. Can be tested with Box's M statistic. It has been suggested, however, that linear discriminant analysis be used when covariances are equal, and that quadratic discriminant analysis may be used when covariances are not equal.
+\nMulticollinearity: Predictive power can decrease with an increased correlation between predictor variables.
+\nIndependence: Participants are assumed to be randomly sampled, and a participant's score on one variable is assumed to be independent of scores on that variable for all other participants.
+\n\nIt has been suggested that discriminant analysis is relatively robust to slight violations of these assumptions, and it has also been shown that discriminant analysis may still be reliable when using dichotomous variables (where multivariate normality is often violated).
+          ",sep = " "))
+
+#check if I have more predictor vars than the size of the smallest group
+table(summary_PCA_vars_hit$Hit)
+length(summary_PCA_vars)
+#it is a bit risky as they are very close...
 
 lda <- lda(summary_PCA_vars_hit$Hit ~ ., 
            summary_PCA_vars)
 
-prop.lda = lda$svd^2/sum(lda$svd^2)
+## proportion of LDs that encapsulate the variation (in case of 1 Ld, the prop.lda = 1)
+#prop.lda = lda$svd^2/sum(lda$svd^2)
 
-#get / compute LDA scores from LDA coefficients / loadings
+## get / compute LDA scores from LDA coefficients / loadings
 
 #PREDICTION SHOULD BE PERFORMED IN THE SECOND HALF OF THE DATASET? (NOT HEREBY ANALYSED)
 plda <- predict(object = lda,
-                newdata = summary_PCA_vars)
+                newdata = summary_PCA_vars) #predict(lda_TEST)$x
 
-dataset = data.frame(Hit = summary_PCA_vars_hit[,"Hit"],
-                     pca = pca_prcomp$x, lda = plda$x)
+#### ISSUEEE
+#LOTS of missing values affecting the analysis
+#N of rows including missing cases:
+sum(!complete.cases(summary_PCA_vars))
+sum(!complete.cases(plda$class))
+
+#prop of NAs over total in %
+(sum(sapply(summary_PCA_vars, function(x) sum(is.na(x)))) /(nrow(summary_PCA_vars) * ncol(summary_PCA_vars))) *100
+
 #create a histogram of the discriminant function values
-par(mfrow=c(1, 1))
-ldahist(data = plda$x[,1], g=summary_PCA_vars_hit$Hit)
-
-#plotting
-
-# p1 <- ggplot(dataset) + geom_point(aes(lda.LD1, lda.LD2, colour = Hit, shape = Hit), size = 2.5) + 
-#   labs(x = paste("LD1 (", percent(prop.lda[1]), ")", sep=""),
-#        y = paste("LD2 (", percent(prop.lda[2]), ")", sep=""))
-LDmeans <- plyr::ddply(dataset, "Hit", summarise, grp.mean=mean(LD1))
+par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
+ldahist(data = plda$x[,1], g=summary_PCA_vars_hit$Hit,nbins = 25) + mtext("LDA hist", line=0, side=3, outer=TRUE)
+## ASSIGN THE PREDICTION TO THE dataframe
+summary_PCA_vars_hit_PRED <-  cbind(summary_PCA_vars_hit, "Predicted_Hit" =  plda$class)
 
 
-p1 <- ggplot(dataset, aes(LD1, fill = Hit)) + geom_density(alpha = 0.2)+ 
-      geom_vline(data=LDmeans, aes(xintercept=grp.mean, color=Hit), linetype="dashed") +
-      labs(title = "Density plot for predicted values from model function, by Hit rate",
-           x = paste("proportion of discriminability explained LD1 (", percent(prop.lda[1]), ")", sep=""))
+# accuracy  <- xtabs(~summary_PCA_vars_hit$Hit+plda$class)
+##ACCURACY OF CLASSIFICATION #NOT TOO RELEVANT
+#sum(accuracy[row(accuracy) == col(accuracy)]) / sum(accuracy)
 
 
-p2 <- ggplot(dataset) + geom_point(aes(pca.PC1, pca.PC2, colour = Hit, shape = Hit), size = 2.5) +
-  labs(x = paste("PC1 (", percent(prop.RES.PCA[1]), ")", sep=""),
-       y = paste("PC2 (", percent(prop.RES.PCA[2]), ")", sep=""))
 
-grid.arrange(p1, p2)
 
+#####
+# # critical success index (CSI).
+# # Also called the threat score (TS), is a verification measure of categorical forecast performance
+# # equal to the total number of correct event forecasts (hits) divided by the total number of storm
+# # forecasts plus the number of misses (hits + false alarms + misses). The CSI is not affected by the
+# # number of non-event forecasts that verify (correct rejections).
+# # 
+# names(dimnames(accuracy)) <- c("True_class", "Predicted_class")
+# accuracy <- as.data.frame(accuracy)
+# 
+# accuracy$Cat <- ifelse(accuracy$True_class == 0 & accuracy$Predicted_class == 0 , "TrueNeg", 
+#                        ifelse(accuracy$True_class == 0 & accuracy$Predicted_class == 1 , "FalsePos",
+#                               ifelse(accuracy$True_class == 1 & accuracy$Predicted_class == 0 , "FalseNegA", "TruePos")))
+# 
+# TrueNeg   <- accuracy$Freq[which(accuracy$Cat=="TrueNeg")]
+# FalsePos  <- accuracy$Freq[which(accuracy$Cat=="FalsePos")]
+# FalseNegA <- accuracy$Freq[which(accuracy$Cat=="FalseNegA")]
+# TruePos   <- accuracy$Freq[which(accuracy$Cat=="TruePos")]
+# #FalseNegB <- N. of real grooming events
+
+#TRUE NEGB HAS TO BE CALCULATED GETTING BACK TO THE MATRIX CUTTING. SEE NATH NOTES (IS THERE A RECORDING?)
+# THE IDEA IS TO COMPARE THE MANUAL TRUTH WITH THE TRIMMED AUTOMATED
+
+# new category of AUTO  (trimmed prediciton) after eliminating those predicted to be 0 from the LDA prediction and calculate CSI again
+# recalculate frame by frame diff matrix using LDA output, but calculate things in a different way as:
+# TrueNeg are the cases when both are 0, while truePos are the cases when both are 1.
+# something like: if(truth MAN matrix frame val = trimmed automated & = 1){count as TruePositive} or (sum=0 & diff= 2)
+#                   if(truth MAN matrix frame val = trimmed automated & = 0){count as TrueNegative} or (sum =0 & diff=0) 
+#                   if(Man-Auto=1) {count as FalseNeg} 
+#                   if(Man-Auto=-1) {count as FalsePos} 
+# DO calculation of CSI on the NUMBER OF FRAMES not on the N of interactions!
+
+
+
+
+
+
+#HERE THE FalseNegB IS MISSING!!!!!!!!!!!!!!!!!!!!!!!!!!! SEE NATH NOTES
+CSI <- TruePos/(TruePos+FalseNegA+FalsePos) #it is missing the FalseNegB
+cat("add the missing FalseNegB, the N. of real grooming events, to CSI")
+
+
+
+# Effect size
+# Some suggest the use of eigenvalues as effect size measures, however, this is generally not supported.[9] Instead, the canonical correlation is the preferred measure of effect size. It is similar to the eigenvalue, but is the square root of the ratio of SSbetween and SStotal. It is the correlation between groups and the function.[9] Another popular measure of effect size is the percent of variance[clarification needed] for each function. This is calculated by: (λx/Σλi) X 100 where λx is the eigenvalue for the function and Σλi is the sum of all eigenvalues. This tells us how strong the prediction is for that particular function compared to the others
+# 
+
+cat(paste(" from https://en.wikipedia.org/wiki/Linear_discriminant_analysis#LDA_for_two_classes
+\nComparison to logistic regression
+
+\nDiscriminant function analysis is very similar to logistic regression, and both can be used to answer the same research questions.[9] Logistic regression does not have as many assumptions and restrictions as discriminant analysis. However, when discriminant analysis’ assumptions are met, it is more powerful than logistic regression.[28] Unlike logistic regression, discriminant analysis can be used with small sample sizes. It has been shown that when sample sizes are equal, and homogeneity of variance/covariance holds, discriminant analysis is more accurate.[7] Despite all these advantages, logistic regression has none-the-less become the common choice, since the assumptions of discriminant analysis are rarely met.[8][7] 
+          ",sep = " "))
+
+  
+### PLOTTING PCA AND LDA TOGETHER
+
+
+#dataset = data.frame(Hit = summary_PCA_vars_hit[,"Hit"],
+#                     pca = pca_prcomp$x, lda = plda$x)
+
+# # p1 <- ggplot(dataset) + geom_point(aes(lda.LD1, lda.LD2, colour = Hit, shape = Hit), size = 2.5) + 
+# #   labs(x = paste("LD1 (", percent(prop.lda[1]), ")", sep=""),
+# #        y = paste("LD2 (", percent(prop.lda[2]), ")", sep=""))
+# LDmeans <- plyr::ddply(dataset, "Hit", summarise, grp.mean=mean(LD1))
+# 
+# 
+# p1 <- ggplot(dataset, aes(LD1, fill = Hit)) + geom_density(alpha = 0.2)+ 
+#       geom_vline(data=LDmeans, aes(xintercept=grp.mean, color=Hit), linetype="dashed") +
+#       labs(title = "Density plot for predicted values from model function, by Hit rate",
+#            x = paste("proportion of discriminability explained LD1 (", percent(prop.lda[1]), ")", sep=""))
+# 
+# 
+# p2 <- ggplot(dataset) + geom_point(aes(pca.PC1, pca.PC2, colour = Hit, shape = Hit), size = 2.5) +
+#   labs(x = paste("PC1 (", percent(prop.RES.PCA[1]), ")", sep=""),
+#        y = paste("PC2 (", percent(prop.RES.PCA[2]), ")", sep=""))
+# 
+# grid.arrange(p1, p2)
+
+
+
+
+###EXTRA #############################################
+######################################################
 
 #------------------------
 library(caret)
@@ -251,19 +386,9 @@ ldaProfile <- rfe(train, trainClass,
 postResample(predict(ldaProfile, test), testClass)
 ldaProfile$optVariables
 
-#0-------------------
+#-------------------
 #https://stackoverflow.com/questions/68307682/r-lda-linear-discriminant-analysis-how-to-get-compute-lda-scores-from-lda-co
 #or use
-?lda
-lda_TEST <- lda(x = subset(summary_PCA_vars_hit, select = -Hit), grouping = summary_PCA_vars_hit$Hit)
-lda_TEST$scores <- predict(lda_TEST)$x
-
-lda_TEST_pred <- predict(lda_TEST)
-accuracy  <- xtabs(~summary_PCA_vars_hit$Hit+lda_TEST_pred$class)
-#ACCURACY OF CLASSIFICATION
-sum(accuracy[row(accuracy) == col(accuracy)]) / sum(accuracy)
-
-
 
 #https://www.andreaperlato.com/mlpost/linear-discriminant-analysis/
 
@@ -273,7 +398,6 @@ sum(accuracy[row(accuracy) == col(accuracy)]) / sum(accuracy)
 #----------------------
 # lda$svd explains the ratio of between- and within-group variation.
 lda_TEST$svd
-
 
 #--------------------
 #If there are many groups, or if you quickly want to find the maximum probability for each sample, this command will help:
@@ -324,3 +448,13 @@ klaR::partimat(Hit~mean_movement_angle_diff+prop_time_undetected_REC+StDev_angle
 
 #svm SEE https://drive.google.com/drive/u/0/folders/0B9OJD63YvZ8Jck5rM0h0cTczTFk?resourcekey=0-NG8IXWZQ064vZnrP0tt5OA 
 #BUT IN r
+
+
+
+
+#####    extra:
+  
+  
+  #Remove jerk given the high N of missing cases (it causes the proliferation of vars BUT could be an important discriminating factor!)
+  #summary_PCA_vars <- summary_PCA_vars[, -( grep("jerk" , colnames(summary_PCA_vars),perl = TRUE) ) ]
+  
