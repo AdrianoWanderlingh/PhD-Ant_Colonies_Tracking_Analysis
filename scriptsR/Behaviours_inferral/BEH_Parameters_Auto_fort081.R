@@ -2,8 +2,7 @@
 print(paste("GETTING VARS OFF AUTO INTERACTIONS ",REPLICATE, PERIOD))
 
 # WHAT TO DO WHEN IT IS NOT POSSIBLE TO DISCRIMINATE BETWEEN ACTOR AND RECEIVER?
-#USE ACT - REC definition based on speed
-
+# CURRENTLY: USE ACT - REC definition based on speed
 
 #fmQueryComputeInteractions $interactions
 #interacts_AUTO_REP_PER$interactions
@@ -11,11 +10,6 @@ print(paste("GETTING VARS OFF AUTO INTERACTIONS ",REPLICATE, PERIOD))
 dim(interacts_AUTO_REP_PER$interactions)
 
 #fmQueryComputeInteractions $trajectories
-
-# CONSIDER THAT THE REC/ACT IS NOT KNOWN FOR AUTO_INTERACTS SO THE VARIABLES CONSIDERED SHOULD ONLY BE THE ONES NOT LINKED TO 1 SPECIFIC INDIVIDUAL. 
-# USE FOR LOOP  TO CREATE, INTERACTION BY INTERACTION, THE LIST OF PARAMS X Y ANGLE WITH EXP INFOS ATTACHED
-
-#let's create an empy data.frame that will be the interacts_AUTO_REP_PER but with trajectory info
 
 # FINAL RESULT SHOULD LOOK LIKE interacts_MAN_REP_PER
 for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
@@ -34,18 +28,8 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
     mean_turnAngle      <- NULL
     for (which_ant in c("ant1","ant2")) {
       
-      ## extract actor, receiver IDs & start & end times from the hand-annotated data
-      #INTER <- interacts_AUTO_REP_PER$interactions[INT,]
       ANT <- interacts_AUTO_REP_PER$interactions[INT,which_ant]
-      
-      #extract frame length between start and end (int_start_frame ? int_end_frame)
-      #INT_start_frame_ANT <- interacts_AUTO_REP_PER$interactions[,"int_start_frame"][INT]
-      #INT_end_frame_ANT   <- interacts_AUTO_REP_PER$interactions[,"int_end_frame"]  [INT]
-      
-      # interacts_AUTO_REP_PER$trajectories_summary$ant.row.index <- paste0(interacts_AUTO_REP_PER$trajectories_summary$antID_str,"row",rownames(interacts_AUTO_REP_PER$trajectories_summary))
-      # names(interacts_AUTO_REP_PER$trajectories)                <- paste0(interacts_AUTO_REP_PER$trajectories_summary$antID_str,"row",rownames(interacts_AUTO_REP_PER$trajectories_summary)) ###and use the content of that column to rename the objects within trajectory list
-      # 
-      
+
       ## extract the trajectory for ANT
       #trajectory.row
       INT_TRAJ_ROW_ANT <- interacts_AUTO_REP_PER$interactions[INT,paste0(which_ant,".trajectory.row")]
@@ -157,18 +141,8 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       }
   }#which_ant
   
-    #-----------------------------------------------------------
-    # #assign basing on ROLE
-    # if (which_ant=="ant1") {
-    #   TRAJ_ANT_ant1 <-TRAJ_ANT_INT
-    # }
-    # if (which_ant=="ant2"){
-    #   TRAJ_ANT_ant2 <-TRAJ_ANT_INT
-    # }
-
-    
-    #--------------------
-    #assign ACT REC id, if 1 is faster, it is the ACT
+    # ASSIGN ANT1 AND ANT2 BASED ON ROLE
+    #assign ACT REC id (with ACT being the faster one)
     if ((mean(TRAJ_ANT_ant1$speed_PxPerSec, na.rm=T) - mean(TRAJ_ANT_ant2$speed_PxPerSec, na.rm=T))>0 ) {
       TRAJ_ANT_ACT <- TRAJ_ANT_ant1
       TRAJ_ANT_REC <- TRAJ_ANT_ant2
@@ -176,8 +150,6 @@ for (INT in 1:nrow(interacts_AUTO_REP_PER$interactions)) {
       TRAJ_ANT_ACT <- TRAJ_ANT_ant2
       TRAJ_ANT_REC <- TRAJ_ANT_ant1
     }
-    
-    #--------------------
     
     
     #rename trajectories columns NOT TO BE MERGED for Act and Rec, all except frame 
@@ -381,15 +353,9 @@ chull_area_ACT<- NULL
 chull_area_REC<- NULL
 mean_ang_Velocity<- NULL
 
-
-
-
-
 # plot.circular(summary_AUTO_REP_PER$mean_ang_Velocity, pch = 16, cex = 0.8, stack=TRUE, bins=100)
 # 
 # plot.circular(summary_AUTO_REP_PER$mean_pair_orient_diff, pch = 16, cex = 0.8, stack=TRUE, bins=100)
-# 
-# 
 
 
 

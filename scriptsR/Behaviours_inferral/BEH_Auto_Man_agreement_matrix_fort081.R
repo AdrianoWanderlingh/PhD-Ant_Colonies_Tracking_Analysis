@@ -70,24 +70,13 @@ for (i in 1:nrow(summary_AUTO_REP_PER))
 ## An interaction with mean <0 is a false positive (-1)
 ## An interaction with mean >0 is false negative (+1)
 
-
 ## explore
 #plot(disagreement ~ Duration, summary_AUTO_REP_PER); abline(h=0, lty=2)
 
 ## APPLY THRESHOLDS
-THRESH <- 0.4
+DISAGREEMENT_THRESH <- 0.4
 summary_AUTO_REP_PER$Hit <- NA
-summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) <=  THRESH)] <- 1 ## 
-summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) >   THRESH)] <- 0
+summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) <=  DISAGREEMENT_THRESH)] <- 1 ## 
+summary_AUTO_REP_PER$Hit [which(abs(summary_AUTO_REP_PER$disagreement) >   DISAGREEMENT_THRESH)] <- 0
 
 print(paste("AUTO-MAN AGREEMENT MATRIX",REPLICATE, PERIOD,"PERFORMED"))
-
-# int_err_per_frame.append([(int_mat_err==1).sum() / N_frm, (int_mat_err==-1).sum() / N_frm])
-
-# 
-# 1. Decide an OVERLAP RATE threshold to consider the interaction as a true positive to keep (50%, 75%?).  DONE
-# 2. Once the True Positives are assigned calculate the False Positives (all AUTO - True positives) and False Negatives (all MAN - True positives). 
-# 3. calculate rates: To calculate them, assign a value of 1 to each row figuring as True Positive, and 0 to all others. 
-# - row by row function, every time that an interaction detected automatically is ALSO hand labelled (Decide time overlap percentage, full or partial?) assign a value 0 to column “false positive”. Every time that an interaction detected automatically is NOT hand labelled assign a value 1 to column “false positive”.
-# - Every time an interaction is hand-labelled and is NOT detected automatically assign a value 1 to column “false negative” (missed): otherwise 0.
-
