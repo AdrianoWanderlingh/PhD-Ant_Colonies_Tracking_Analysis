@@ -4,12 +4,13 @@
 # DATADIR <- paste(WORKDIR,"Data",sep="/")
 
 
-####################### MOVE WHERE RELEVANT ###
-#######LOAD TABLE WITH ANTS TASK #####
-Task_list_R3SP <- read.table("/home/cf19810/Dropbox/Ants_behaviour_analysis/Data/R3SP_13-03-21.0000_TASK_list_1percent.txt")
+####### LOAD TABLE WITH ANTS TASK #####
+# THIS BIT IS CURRENTLY UNUSED and non complete
+Task_list_R3SP <- read.table("/home/cf19810/Documents/Ants_behaviour_analysis/Data/R3SP_13-03-21.0000_TASK_list_1percent.txt")
 Task_list_R3SP$treatment_rep <- "R3SP"
 Task_ants_num_R3SP <- aggregate(antID ~ AntTask, FUN=NROW, Task_list_R3SP); colnames(Task_ants_num_R3SP) [match("antID",colnames(Task_ants_num_R3SP))] <- "number_ants"
 
+#this should be done using the metadata information from the myrmidon file
 ExposedAntsR3SP <- c(5,17)
 ExposedAntsR9SP <- c(23,29,32)
 
@@ -29,27 +30,39 @@ library(plotrix)
 library(gridExtra)
 library(gtools) # to convert p.values in stars
 library(pbkrtest)
+library(caret) #DATA PARTITIONING
 
-#annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
+#for the statistics
+library(lme4)
+library(blmeco) # check dispersion for glmer
+library(emmeans) #post-hoc comparisons
+library(e1071) #calc skewness and other stuff
+library(lawstat) #for levene test (homogeneity of variance)
+
+
+
+#the current annotation file FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv underwent cross-validation by Adriano
 annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
 
-annotations$Behaviour <- as.character(annotations$Behaviour)
-annotations$Actor <- as.character(annotations$Actor)
-annotations$Receiver <- as.character(annotations$Receiver)
+annotations$Behaviour     <- as.character(annotations$Behaviour)
+annotations$Actor         <- as.character(annotations$Actor)
+annotations$Receiver      <- as.character(annotations$Receiver)
 #call treatment as period
 #colnames(annotations)[which(names(annotations) == "treatment")] <- "period"
 
-
 #convert Zulu time to GMT
-annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations$duration <- as.numeric(annotations$T_stop_UNIX - annotations$T_start_UNIX)
+annotations$T_start_UNIX  <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+annotations$T_stop_UNIX   <- as.POSIXct(annotations$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+annotations$duration      <- as.numeric(annotations$T_stop_UNIX - annotations$T_start_UNIX)
 
 # see if milliseconds are shown (number of decimals represented by the number after %OS)
 format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
 
-
-# ######## truncate behaviours longer than 4 minutes (240/60 sec) for work on Interactions_and_trajectories
+###############################################################################
+###### DATA CLEANING ##########################################################
+###############################################################################
+#
+# #POSSIBLE BEHAVIOUR CUTTING: truncate behaviours longer than 4 minutes (240/60 sec)
 ###   NEVER USED YET!
 # 
 # MAX_LENGTH <- 240
@@ -78,14 +91,12 @@ format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
 # 
 # 
 # annotations_max4min[which(annotations_max4min$duration>120 & annotations_max4min$Behaviour=="G"),]
-
-
-
-
+#
+#
 ###### THIS SECTION HAS BEEN USED TO CLEAN THE DATASET /R3SP_R9SP_All_data_dropped_useless_cols.csv.
 ###### SUCH DATASET THEN UNDERWENT MANUAL MANIPULATION AS A RESULT OF CROSS-VALIDATION BY ADRIANO
 ###### AND WAS SAVED AS FOLLOWS Data/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv
-
+#
 # #remove duplicates of directed behaviours (Grooming and Aggression) by keeping only the behaviours where the Focal corresponds to the Actor.
 # #this seems to work very well with Grooming (cuts 50% of the events) and Agrgession (cuts 15 over 31 events) but affects also 4 Trophallaxis events, check why
 # annotations_drop_G_A <- annotations[which(annotations$Actor==annotations$Focal),]
@@ -104,31 +115,30 @@ format(annotations$T_start_UNIX[3], "%Y-%m-%d %H:%M:%OS6")
 # #see total final numer of behaviours
 # Counts_by_Behaviour_tots <- aggregate(Count_drop_all_dup ~ Behaviour, FUN=sum, Counts_by_Behaviour); colnames(Counts_by_Behaviour) [match("period",colnames(Counts_by_Behaviour))] <- "Totals"
 # 
-# #Over-write cleaned dataset - NOTE 'THIS'annotations' IS USED in the trajectory plotting loop below!
+# #Over-write cleaned dataset - NOTE 'THESE' annotations ARE USED in the trajectory plotting loop below!
 # annotations <- annotations_drop_all_dup
-
+#
 # #SAVE THE NEW ANNOTATION FILE 
-# write.csv(annotations,"/home/cf19810/Dropbox/Ants_behaviour_analysis/Data/R3SP_R9SP_All_data_FINAL_script_output.csv")
-
-###############################################################################################################################
-##### BY 17/12/21, VASUDHA'S DATA HAS BEEN CROSS VALIDATED STARTING FROM THE FILE R3SP_R9SP_All_data_FINAL_script_output.csv.
+### write.csv(annotations,"/home/cf19810/Dropbox/Ants_behaviour_analysis/Data/R3SP_R9SP_All_data_FINAL_script_output.csv")
+#
 ################################################################################################################################
-
+##### BY 17/12/21, VASUDHA'S DATA HAS BEEN CROSS VALIDATED STARTING FROM THE FILE R3SP_R9SP_All_data_FINAL_script_output.csv.###
+################################################################################################################################
+#
 ####THINGS ALREADY DONE
-##1. CORRECT THE 25% FILE
-#USE THE RSCRIPT cross_val_output.R and look at the output of # > annotation_val[which(is.na(annotation_val$IsEqual)),]
+##1. CORRECT THE 25% FILE ..DONE
+#USE THE RSCRIPT cross_val_output.R and look at the output of # > annotation_val[which(is.na(annotation_val$IsEqual)),]..DONE
 ##2. CORRECT THE FEW 100% TROPHALLAXIS WRONG EVENTS ...DONE
 ##3. put trophallaxis and 25% FILE TOGHETER (CALL IT 25%+ ALL TROPH). .DONE
-
-
+#
+#
 ####TO DO'S FOR FUTHER ANALYSES
 #implement the following NOTES:
-# - exclude 1-2 secs SelfGrooming (done later in the script)
+# - exclude 1-2 secs SelfGrooming (to be done later in the script)
 # - check all Aggression events
 # - many FrontRest Events are antennation events
-# - TRUNCATE all events over 2mins (done later in the script)
+# - TRUNCATE all events over 2mins (to be done later in the script)
 # - Remove queen from counts (a mislabeled event of SG was Queen SG)
-
 
 ## count the number of observations of each behaviour - WARNING; some behavs not observed e.g. before the treatment (period), so will need to account for that (next step)
 Counts_by_Behaviour_CLEAN    <- aggregate(Actor ~ Behaviour + period + treatment_rep, FUN=length, na.action=na.omit, annotations); colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count"
@@ -156,12 +166,6 @@ Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + perio
 ############################################################################
 ###### STATISTICS ON COUNTS ################################################
 ############################################################################
-library(lme4)
-library(blmeco) # check dispersion for glmer
-library(emmeans) #post-hoc comparisons
-library(e1071) #calc skewness and other stuff
-library(lawstat) #for levene test (homogeneity of variance)
-
 
 #function to test normality of residuals
 test_norm <- function(resids){
@@ -449,10 +453,9 @@ Counts_by_Beh_Role_Task_Exp_SE    <- aggregate(cbind(Count,duration) ~ Behaviour
 
 
 #CROSSCHECK OPERATIONS WERE RIGHT, 
-#THERE SEEMS TO BE A DISCREPANCY BETWEEN Counts_by_Beh_Role_Task_Exp_MEAN AND Counts_by_Behaviour_MEAN
+# THERE SEEMS TO BE A DISCREPANCY BETWEEN Counts_by_Beh_Role_Task_Exp_MEAN AND Counts_by_Behaviour_MEAN
 # SAME FOR THE SE MEASURE. Counts_by_Beh_Role_Task_Exp_MEAN AND SE SHOWS
-#OF COURSE IT IS NOT MATCHING! IT IS STILL MISSING THE INFORMATION FROM THE R9SP NEST!!!!!!!!!!!!!!
-
+# OF COURSE IT IS NOT MATCHING! IT IS STILL MISSING THE INFORMATION FROM THE R9SP NEST!!!!!!!!!!!!!!
 
 ###############################################################################
 ###### PLOTTING  ##############################################################
@@ -465,7 +468,7 @@ Counts_by_Beh_Role_Task_Exp_SE    <- aggregate(cbind(Count,duration) ~ Behaviour
 # Counts_by_Beh_Role_Task_Exp_MEAN <- Counts_by_Beh_Role_Task_Exp_MEAN[which(Counts_by_Beh_Role_Task_Exp_MEAN$Behaviour %in% c("G")),]
 # Counts_by_Beh_Role_Task_Exp_SE <- Counts_by_Beh_Role_Task_Exp_SE[which(Counts_by_Beh_Role_Task_Exp_SE$Behaviour %in% c("G")),]
 
-#come fare??????
+#how to do it?????
 
 
 ## show the mean counts for each behav | stage
@@ -510,58 +513,60 @@ Counts_by_Beh_Role_Task_Exp_SE    <- aggregate(cbind(Count,duration) ~ Behaviour
 # 
 
 
-
-
-
-
-
 #check for normality visually first
 #look at the data histograms
 beh_dist_hist <- ggplot(annotations,aes(x=duration))+geom_histogram()+facet_grid(~Behaviour, scales = "free")+theme_bw() +
   ggtitle("Behaviour duration distribution")
 beh_dist_hist
 
-# ##############################################
-# ######CROSS-CHECK ANNOTATIONS ################
-# ##############################################
+# #################################################
+# ######CROSS-VALIDATE ANNOTATIONS ################
+# #################################################
 # 
-# #The createDataPartition() function is meant to subset a dataset without losing the probability distribution of your target variable.
-# annotations$RowID <- seq.int(nrow(annotations))
-# #annotations$BEH_AW <- NA
-# annotations$RowID<- as.character(annotations$RowID)
-# str(annotations)
-# 
-# library("caret")
-# my.ids <- createDataPartition(annotations$Behaviour, p = 0.5)
-# annotations_subset <- annotations[as.numeric(my.ids[[1]]), ]
-# # 
-# # #create 25% set as first step of Cross Validation agreement, if agreement is high stop here, else continue check on the larger set
-# # my.ids2 <- createDataPartition(annotations_subset$Behaviour, p = 0.5)
-# # annotations_subset2 <- annotations_subset[as.numeric(my.ids2[[1]]), ]
-# 
-# #You can check the distribution of your target variable in the population and in your subset.
-# par(mfrow = c(1,3))
-# barplot(table(annotations$Behaviour), main = "full dataset")
-# barplot(table(annotations_subset$Behaviour), main = "subset 50%")
-# #barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
-# 
-# print("COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOURAL LABELS")
-# 
-# #ANNOTATIONS SUBSET FOR AUTOMATIC INTERACTION SELECTION TESTS
-# write.csv(annotations_subset, paste(DATADIR,"/annotations_TRAINING_DATASET_2.csv",sep=""))
-# #save test dataset
-# annotations_test <- annotations[-as.numeric(my.ids[[1]]), ]
-# write.csv(annotations_test, paste(DATADIR,"/annotations_TEST_DATASET_2.csv",sep=""))
-# 
-# table(  paste(annotations_subset$RowID) %in% 
-#           paste(annotations_test$RowID) )
-# 
-# dev.off()
+CROSS-VALIDATE <- FALSE
+SAVE_CROSS_VAL_FILES <- FALSE
 
+if (CROSS-VALIDATE) {
+  #The createDataPartition() function is meant to subset a dataset without losing the probability distribution of your target variable.
+  annotations$RowID <- seq.int(nrow(annotations))
+  #annotations$BEH_AW <- NA
+  annotations$RowID<- as.character(annotations$RowID)
+  str(annotations)
+  
+  
+  my.ids <- createDataPartition(annotations$Behaviour, p = 0.5)
+  annotations_subset <- annotations[as.numeric(my.ids[[1]]), ]
+  #
+  # #create 25% set as first step of Cross Validation agreement, if agreement is high stop here, else continue check on the larger set
+  # my.ids2 <- createDataPartition(annotations_subset$Behaviour, p = 0.5)
+  # annotations_subset2 <- annotations_subset[as.numeric(my.ids2[[1]]), ]
+  
+  #You can check the distribution of your target variable in the population and in your subset.
+  par(mfrow = c(1,3))
+  barplot(table(annotations$Behaviour), main = "full dataset")
+  barplot(table(annotations_subset$Behaviour), main = "subset 50%")
+  #barplot(table(annotations_subset2$Behaviour), main = "subset 25%")
+  
+  if (SAVE_CROSS_VAL_FILES) {
+    write.csv(annotations_subset, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_50%_2.csv")
+    write.csv(annotations_subset2, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_25%_2.csv")
+    }}
 
+print("COMPLETED ANALYSING THE MANUALLY ANNOTATED BEHAVIOURAL LABELS")
 
-# avoid file overwriting!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# if ()
-#   
-# write.csv(annotations_subset, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_50%_2.csv")
-# write.csv(annotations_subset2, "/home/cf19810/Dropbox/Ants_behaviour_analysis/Cross_Validation/annotations_subset_25%_2.csv")
+###############################################
+###### ANNOTATIONS TRAIN TEST SUBSETS #########
+###############################################
+#ANNOTATIONS SUBSET FOR AUTOMATIC INTERACTION SELECTION TESTS
+
+TRAIN_TEST_SUBSETS <- FALSE
+if (TRAIN_TEST_SUBSETS) {
+write.csv(annotations_subset, paste(DATADIR,"/annotations_TRAINING_DATASET_2.csv",sep=""))
+#save test dataset
+annotations_test <- annotations[-as.numeric(my.ids[[1]]), ]
+write.csv(annotations_test, paste(DATADIR,"/annotations_TEST_DATASET_2.csv",sep=""))
+
+table(  paste(annotations_subset$RowID) %in%
+          paste(annotations_test$RowID) )
+}
+dev.off()

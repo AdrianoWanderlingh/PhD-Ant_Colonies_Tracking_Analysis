@@ -84,9 +84,9 @@ summary_AUTO_vars <- summary_AUTO[, -match(c("REPLICATE", "PERIOD","INT","ACT","
 summary_AUTO_vars_NAOmit <- summary_AUTO_vars[(apply(summary_AUTO_vars, 1, function(x) sum(is.na(x)))/ncol(summary_AUTO_vars)) < 0.05,]
 
 results.cor <- cor(summary_AUTO_vars_NAOmit)
-corrplot(results.cor, type="upper", tl.cex= .8)
+# COMPARE THIS CORRPLOT WITH THE ONE GENERATED AFTER VARIABLES TRANSFORMATION
+# corrplot(results.cor, type="upper", tl.cex= .8)
 
-help("cor.mtest")
 #Remove vars (or rows) with too many NAs for the cor.mtest to work
 res1 <- cor.mtest(results.cor, conf.level = .95, method="pearson", na.action = "na.omit") #kendall
 
@@ -320,10 +320,9 @@ hist(prop_Na_row$prop_missing) + abline(v=20)
 cat("prop of NAs over total in %",propNAs_total, "\n\nProp missing by variable \n",propNAs_byvar,"\n\nprop of rows with more than 25% missing",propNAs_byrow_25perc)
 
 
-
 #create a histogram of the discriminant function values
 par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
-ldahist(data = plda$x[,1], g=summary_PCA_vars_hit$Hit,nbins = 25) + mtext("LDA hist", line=0, side=3, outer=TRUE)
+ldahist(data = plda$x[,1], g=summary_PCA_vars_hit$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
 ## ASSIGN THE PREDICTION TO THE dataframe
 summary_PCA_vars_hit_PRED <-  cbind("REPLICATE" = summary_AUTO_transf$REPLICATE,
                                     "PERIOD" = summary_AUTO_transf$PERIOD,
@@ -387,9 +386,10 @@ FalsePositive <- sum(int_mat_manual_temp-int_mat_auto_trim ==-1)
 FalseNegative <- sum(int_mat_manual_temp-int_mat_auto_trim ==1)
 
 #calculate frame by frame CSI
-CSI <- TruePositive/(TruePositive+FalseNegative+FalsePositive)
+CSI <- (TruePositive/(TruePositive+FalseNegative+FalsePositive))*100
 
 CSI_val <- c(CSI_val,CSI)
+
 CSI <- NULL
 }else{ # if DF contains any Hit 
   CSI_val <- c(CSI_val,0)
@@ -399,7 +399,8 @@ CSI <- NULL
   }## REPLICATE
     }##PERIOD
 
-perc_CSI <- sum(CSI_val)/length(CSI_val)*100
+
+perc_CSI <- sum(CSI_val)/length(CSI_val)
 
 
 ######INNCLUDE PCA in outer loop (described as outer of MAIN).
