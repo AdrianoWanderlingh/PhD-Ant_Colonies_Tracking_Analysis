@@ -1,8 +1,18 @@
-######  GETTING VARS OFF  AUTO INTERACTIONS ######
+##########################################################################################
+############## CUT TRAJECTORIES FOR THE AUTO EXTRACTED INTERACTIONS ######################
+##########################################################################################
+
+#script dependant on BEH_MAIN_behaviours_analysis_fort081.R
+
+#For previous versions of this script, explore: 
+# https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
+
 print(paste("GETTING VARS OFF AUTO INTERACTIONS ",REPLICATE, PERIOD))
 
 # WHAT TO DO WHEN IT IS NOT POSSIBLE TO DISCRIMINATE BETWEEN ACTOR AND RECEIVER?
 # CURRENTLY: USE ACT - REC definition based on speed
+# previously: it was not assigned, ant1 and ant2 were assigned by ascending antID sorting. 
+# it is important to assign ACT and REC IDs to give meaning to many of the variables
 
 #fmQueryComputeInteractions $interactions
 #interacts_AUTO_REP_PER$interactions

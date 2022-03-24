@@ -1,27 +1,18 @@
+##########################################################################################
+############## BEH DISCRIMINANT ANALYSIS #################################################
+##########################################################################################
+
+#script dependant on BEH_MAIN_behaviours_analysis_fort081.R
+
+#For previous versions of this script, explore: 
+# https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
+
+
 print(paste("PERFORM LDA ",unique(interaction_MANUAL$PERIOD), unique(interaction_MANUAL$REPLICATE)))
 
-###########################################################################################
 # FORECAST VERIFICATION
 # https://www.swpc.noaa.gov/sites/default/files/images/u30/Forecast%20Verification%20Glossary.pdf
 # https://en.wikipedia.org/wiki/Sensitivity_and_specificity
-
-library(FactoMineR)
-library(factoextra)
-library(missMDA) #PCA with missing values
-library(corrplot)
-require(MASS)
-require(ggplot2)
-require(scales)
-require(gridExtra)
-library(reshape2)
-library(ggbeeswarm)
-library(GGally) #plot multicollinearity 
-
-#data structure
-#Once the THRESH for $disagreement has been established:
-# Hit == 1 is a True Positive
-# Hit ==0 is a False Positive
-# this is done in BEH_Auto_Man_agreement_matrix_fort081.R
 
 cat(
 "
@@ -72,6 +63,12 @@ Selection Procedures for Classifiers Based on Kernel Density Estimation, in
 Proceedings of the International Conference on Computer, Communication and
 Control Technologies, Orlando, FL:CCCT'03, Vol I, pp. 468-472 ")
 
+#data structure
+#Once the THRESH for $disagreement has been established:
+# Hit == 1 is a True Positive
+# Hit ==0 is a False Positive
+# this is done in BEH_Auto_Man_agreement_matrix_fort081.R
+
 #remove ant names/rep/int/etc in pca (keep only vars)
 summary_AUTO_vars <- summary_AUTO[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO))] 
 #CHECK FOR MULTICOLLINEARITY
@@ -87,8 +84,8 @@ results.cor <- cor(summary_AUTO_vars_NAOmit)
 # COMPARE THIS CORRPLOT WITH THE ONE GENERATED AFTER VARIABLES TRANSFORMATION
 # corrplot(results.cor, type="upper", tl.cex= .8)
 
-#Remove vars (or rows) with too many NAs for the cor.mtest to work
-res1 <- cor.mtest(results.cor, conf.level = .95, method="pearson", na.action = "na.omit") #kendall
+##Remove vars (or rows) with too many NAs for the cor.mtest to work
+# res1 <- cor.mtest(results.cor, conf.level = .95, method="pearson", na.action = "na.omit") #kendall
 
 
 # corrplot(results.cor, type="upper", order="hclust", tl.cex= .8, 
@@ -98,7 +95,6 @@ res1 <- cor.mtest(results.cor, conf.level = .95, method="pearson", na.action = "
 ###############################################################################
 ###### NORMALISE VARS BEFORE LDA ##############################################
 ###############################################################################
-library(bestNormalize)
 ###SPEED UP WITH THE PARALLEL PACKAGE?
 #empty base
 summary_AUTO_transf <- data.frame()[1:nrow(summary_AUTO), ]
@@ -315,7 +311,7 @@ propNAs_byvar <- (sapply(summary_PCA_vars, function(x) sum(is.na(x)))/nrow(summa
 prop_Na_row <- (apply(summary_PCA_vars, 1, function(x) sum(is.na(x)))/ncol(summary_PCA_vars))*100
 prop_Na_row <- data.frame(prop_missing=sort(prop_Na_row, decreasing=TRUE))
 propNAs_byrow_25perc <- ((length(prop_Na_row[which(prop_Na_row>25),]))/nrow(summary_PCA_vars))*100 #show all rows with values over 25% missing
-hist(prop_Na_row$prop_missing) + abline(v=20)
+hist(prop_Na_row$prop_missing) #+ abline(v=20, col="blue")
 #summary of Nas distribution
 cat("prop of NAs over total in %",propNAs_total, "\n\nProp missing by variable \n",propNAs_byvar,"\n\nprop of rows with more than 25% missing",propNAs_byrow_25perc)
 
@@ -345,68 +341,69 @@ summary_PCA_vars_hit_PRED$int_start_frame <- as.numeric(summary_PCA_vars_hit_PRE
 summary_PCA_vars_hit_PRED$int_end_frame <- as.numeric(summary_PCA_vars_hit_PRED$int_end_frame)
 
 CSI_val <- NULL
+CSI_scores <- NULL
+CSI_REP_PER_name <- NULL
 
 #create matrix
 for (REPLICATE in c("R3SP","R9SP")) 
 {
   for (PERIOD in c("pre","post"))
-  {
-
-trimmed_AUTO_pred <- summary_PCA_vars_hit_PRED[which(summary_PCA_vars_hit_PRED$Predicted_Hit == 1 & summary_PCA_vars_hit_PRED$REPLICATE==REPLICATE & summary_PCA_vars_hit_PRED$PERIOD==PERIOD),]
-
-#assign(paste0("trimmed_AUTO_pred","_", REPLICATE,PERIOD), trimmed_AUTO_pred) 
-
-IF_frames_temp <- get(grep(paste0("IF_frames","_", REPLICATE,PERIOD),ls(),value=TRUE))
-int_mat_manual_temp <- get(grep(paste0("int_mat_manual","_", REPLICATE,PERIOD),ls(),value=TRUE))
-
-#this section replicates what is done in the matrix calculation
-int_mat_auto_trim <- matrix(0L, nrow = dim(ids_pairs)[1], ncol = (dim(IF_frames_temp)[1] ))
-rownames(int_mat_auto_trim) <- ids_pairs$pair
-colnames(int_mat_auto_trim) <- c(IF_frames_temp$frame_num)
-
-
-## Trimmed Auto
-if (nrow(trimmed_AUTO_pred)>0) {
-for (i in 1:nrow(trimmed_AUTO_pred))
-{  
-  PAIR <- trimmed_AUTO_pred$pair[i]
-  int_mat_auto_trim[PAIR,] <- int_mat_auto_trim[PAIR,] + c(rep(0,( trimmed_AUTO_pred$int_start_frame[i]-1)),
-                                                 rep(1,(trimmed_AUTO_pred$int_end_frame[i]) - trimmed_AUTO_pred$int_start_frame[i] + 1),
-                                                 rep(0,(length(IF_frames_temp$frame_num) - trimmed_AUTO_pred$int_end_frame[i])))
-}#matrix
+    {
   
-
-# new category of AUTO  (trimmed prediciton) after eliminating those predicted to be 0 from the LDA prediction and calculate CSI again
-# recalculate frame by frame diff matrix using LDA output, but calculate things in a different way as:
-
- # ROW BY ROW COMPARISON OF DFS
-TruePositive  <- sum(int_mat_manual_temp + int_mat_auto_trim==2 & int_mat_manual_temp-int_mat_auto_trim ==0)
-TrueNegative  <- sum(int_mat_manual_temp + int_mat_auto_trim==0 & int_mat_manual_temp-int_mat_auto_trim ==0) #not exactly right... the calc should be constrained at certain parts? i.e. for pairs present in the Dataset
-FalsePositive <- sum(int_mat_manual_temp-int_mat_auto_trim ==-1)
-FalseNegative <- sum(int_mat_manual_temp-int_mat_auto_trim ==1)
-
-#calculate frame by frame CSI
-CSI <- (TruePositive/(TruePositive+FalseNegative+FalsePositive))*100
-
-CSI_val <- c(CSI_val,CSI)
-
-CSI <- NULL
-}else{ # if DF contains any Hit 
-  CSI_val <- c(CSI_val,0)
+  trimmed_AUTO_pred <- summary_PCA_vars_hit_PRED[which(summary_PCA_vars_hit_PRED$Predicted_Hit == 1 & summary_PCA_vars_hit_PRED$REPLICATE==REPLICATE & summary_PCA_vars_hit_PRED$PERIOD==PERIOD),]
   
-}
-
-  }## REPLICATE
+  #assign(paste0("trimmed_AUTO_pred","_", REPLICATE,PERIOD), trimmed_AUTO_pred) 
+  
+  IF_frames_temp <- get(grep(paste0("IF_frames","_", REPLICATE,PERIOD),ls(),value=TRUE))
+  int_mat_manual_temp <- get(grep(paste0("int_mat_manual","_", REPLICATE,PERIOD),ls(),value=TRUE))
+  
+  #this section replicates what is done in the matrix calculation
+  int_mat_auto_trim <- matrix(0L, nrow = dim(ids_pairs)[1], ncol = (dim(IF_frames_temp)[1] ))
+  rownames(int_mat_auto_trim) <- ids_pairs$pair
+  colnames(int_mat_auto_trim) <- c(IF_frames_temp$frame_num)
+  
+  
+  ## Trimmed Auto
+    if (nrow(trimmed_AUTO_pred)>0) {
+    for (i in 1:nrow(trimmed_AUTO_pred))
+      {  
+        PAIR <- trimmed_AUTO_pred$pair[i]
+        int_mat_auto_trim[PAIR,] <- int_mat_auto_trim[PAIR,] + c(rep(0,( trimmed_AUTO_pred$int_start_frame[i]-1)),
+                                                       rep(1,(trimmed_AUTO_pred$int_end_frame[i]) - trimmed_AUTO_pred$int_start_frame[i] + 1),
+                                                       rep(0,(length(IF_frames_temp$frame_num) - trimmed_AUTO_pred$int_end_frame[i])))
+      }#matrix
+      
+    
+    # new category of AUTO  (trimmed prediciton) after eliminating those predicted to be 0 from the LDA prediction and calculate CSI again
+    # recalculate frame by frame diff matrix using LDA output, but calculate things in a different way as:
+    
+     # ROW BY ROW COMPARISON OF DFS
+    TruePositive  <- sum(int_mat_manual_temp + int_mat_auto_trim==2 & int_mat_manual_temp-int_mat_auto_trim ==0)
+    TrueNegative  <- sum(int_mat_manual_temp + int_mat_auto_trim==0 & int_mat_manual_temp-int_mat_auto_trim ==0) #not exactly right... the calc should be constrained at certain parts? i.e. for pairs present in the Dataset
+    FalsePositive <- sum(int_mat_manual_temp-int_mat_auto_trim ==-1)
+    FalseNegative <- sum(int_mat_manual_temp-int_mat_auto_trim ==1)
+    
+    #calculate frame by frame CSI
+    CSI <- (TruePositive/(TruePositive+FalseNegative+FalsePositive))*100
+    CSI_val <- c(CSI_val,CSI)
+    
+    CSI <- NULL
+    }else{ # if trimmed_AUTO_pred contains no Hit 
+      CSI_val <- c(CSI_val,0)
+    }
+  #assign REP_PER name
+  CSI_REP_PER_name <-paste0("CSI_",MAN_int$REPLICATE, "-", MAN_int$PERIOD)
+    }## REPLICATE
     }##PERIOD
-
-
+#create DF, useful for the summary DF at the end of the loop
+CSI_scores <- data.frame( REP_PER = CSI_REP_PER_name, Freq = CSI_val)
+#calculate overall score
 perc_CSI <- sum(CSI_val)/length(CSI_val)
 
+t(column_to_rownames(CSI_scores,"REP_PER"))
 
-######INNCLUDE PCA in outer loop (described as outer of MAIN).
-# THE OUTPUT SHOULD INCLUDE:
-# VALUES FOR ALL VARS, SAMPLE SIZES, INFO ON CAPS USED (MAYBE), FINAL CSI SCORE
-
+###########################################################################
+## Ongoing work:
 
 # Effect size
 # Some suggest the use of eigenvalues as effect size measures, however, this is generally not supported.[9] Instead, the canonical correlation is the preferred measure of effect size. It is similar to the eigenvalue, but is the square root of the ratio of SSbetween and SStotal. It is the correlation between groups and the function.[9] Another popular measure of effect size is the percent of variance[clarification needed] for each function. This is calculated by: (λx/Σλi) X 100 where λx is the eigenvalue for the function and Σλi is the sum of all eigenvalues. This tells us how strong the prediction is for that particular function compared to the others

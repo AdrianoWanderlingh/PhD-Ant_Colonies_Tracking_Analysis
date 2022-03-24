@@ -1,6 +1,12 @@
-###############################################################################
-###### extract ant trajectories from hand-annotated data ######################
-###############################################################################
+##########################################################################################
+############## CUT TRAJECTORIES FOR THE MANUALLY ANNOTATED INTERACTIONS ##################
+##########################################################################################
+
+#script dependant on BEH_MAIN_behaviours_analysis_fort081.R
+
+#For previous versions of this script, explore: 
+# https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
+
 print(paste("EXTRACT ANT TRAJ FROM HAND ANNOTATED DATA ",REPLICATE, PERIOD))
 ####First let's extract ant's trajectories
 

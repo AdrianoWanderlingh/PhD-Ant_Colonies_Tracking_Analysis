@@ -1,9 +1,16 @@
 ##########################################################################################
-############## THIS VERSION IS FORT 0.8.1 COMPATIBLE #####################################
+############## BEH MAIN Behaviours Analysis ##############################################
 ##########################################################################################
-#this should be the version of the script maintained for long term use.
-#"https://formicidae-tracker.github.io/myrmidon/docs/latest/api/index.html"
 
+#### THIS VERSION IS FORT 0.8.1 COMPATIBLE ####
+
+#this should be the version of the script maintained for long term use.
+#For previous versions of this script and the sourced one, explore: 
+# https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
+
+#NOTE: at the current time (24 March 2022), the computational part of the script works but the saving of the plots does not (needs to be fixed, possibly according to plots_structure.R)
+
+#clean start
 rm(list=(c("e")))
 gc()
 rm(list=ls())
@@ -58,7 +65,7 @@ arrows.az <- function(x, y, azimuth, rho, HeadWidth, ..., units=c("degrees", "ra
 ###### LOAD LIBRARIES #########################################################
 ###############################################################################
 library(adehabitatHR) ####for home range and trajectory analyses
-library(FortMyrmidon) ####R bindings
+library(FortMyrmidon) ####R bindings https://formicidae-tracker.github.io/myrmidon/latest/index.html
 library(igraph)       ####for network analysis
 library(parsedate)
 library (trajr)
@@ -74,9 +81,23 @@ library(stringr)
 library(data.table)
 library(fields)
 library(sp) #calculate convex hull area
-library(bestNormalize)
-library(corrplot)
 #library(BAMBI) #angles wrapping
+
+library(Matrix) #behavioural matrices subtraction
+
+#LDA, PCA, etc
+library(FactoMineR)
+library(factoextra)
+library(missMDA) #PCA with missing values
+library(corrplot)
+require(MASS)
+require(ggplot2)
+require(scales)
+require(gridExtra)
+library(reshape2)
+library(ggbeeswarm)
+library(GGally) #plot multicollinearity
+library(bestNormalize)
 
 
 ###############################################################################
@@ -129,8 +150,8 @@ DT_dist_THRESHOLD           <- 0.3 # NOT HIGHER THAN 0.5 as it will cut a very l
 
 #FMmatchers specific for GROOMING used in script testing, some will be called in the  "OUTER PARAMETERS LOOP"
 MAX_INTERACTION_GAP         <- 10 ## in SECONDS, the maximum gap in tracking before cutting the trajectory or interactions in two different object
-AntDistanceSmallerThan      <- 264 #for higher accuracy, recalculate it from: max(interaction_MANUAL$straightline_dist_px,na.rm = T)
-AntDistanceGreaterThan      <- 63 #for higher accuracy, recalculate it from: min(interaction_MANUAL$straightline_dist_px,na.rm = T)
+AntDistanceSmallerThan      <- 300 #for higher accuracy, recalculate it from: max(interaction_MANUAL$straightline_dist_px,na.rm = T)
+AntDistanceGreaterThan      <- 70 #for higher accuracy, recalculate it from: min(interaction_MANUAL$straightline_dist_px,na.rm = T)
 ANT_LENGHT_PX               <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
 MAX_DISPLACEMENT            <- fmSecond(0.5) ##check every X seconds if ant has displaced more than ANT_LENGHT_PX
 
@@ -169,7 +190,7 @@ Grooming_LDA_output             <- data.frame()
 ###############################################################################
 
 CAPSULE_FILE <- NA #placeholder
-
+Loop_ID <- 0
 # #Varying capule shapes
 # for (CAPSULE_FILE in vector) { #list of CAPUSLE FILES TO BE USED
 #   ##THRESHOLD to exclude jitter in the individuals' movement (DISTANCE)
@@ -182,6 +203,8 @@ CAPSULE_FILE <- NA #placeholder
 #       for (DISAGREEMENT_THRESH in c(0.4,0.2)) {
 #         
 #       }}}} #these parenteses should go at the end of the script - here as placeholders-
+
+Loop_ID <- Loop_ID +1
 
 #set plots parameters (for plotting coords)
 #needs to be fixed (should be included in the plotting structure outlined in plots_structure.R)
@@ -414,93 +437,11 @@ for (REPLICATE in c("R3SP","R9SP"))
     ###############################################################################
     if (run_collisions){source(paste(SCRIPTDIR,"BEH_collisions_fort081.R",sep="/"))
       
-      ##############################################################################
-      ######### CAPSULES CALCULATIONS ##############################################
-      ##############################################################################
-      #Understand which capsules are used during the manual interaction
-      
-      ############# CHANGE ALL TO interaction_MANUAL once interaction_MANUAL_COLL is removed
-      ############# CARE MUST BE TAKEN WHEN PRODUCING THE FOLLOWING PLOTS AS THE CAPSULE N. SHOULD BE SUBSTITUTED WITH THE CAPSULE NAME!
-      
-      #ACCESS THE CAPSULE INFO
-      interaction_MANUAL_COLL$REP_PER_R_B <- paste(interaction_MANUAL_COLL$REPLICATE,interaction_MANUAL_COLL$PERIOD,interaction_MANUAL_COLL$ROW,interaction_MANUAL_COLL$BEH,sep="_")
-      split_types <- plyr::ldply(strsplit(interaction_MANUAL_COLL$types,","), rbind)
-      split_types$REP_PER_R_B <- interaction_MANUAL_COLL$REP_PER_R_B
-      
-      #select the unique TYPES combinations and make them into a dataframe to later add the missing cases to the counts
-      #uniq.split_types <- unique(interaction_MANUAL_COLL$types); uniq.split_types <- uniq.split_types[!is.na(uniq.split_types)]
-      uniq.split_types_FREQ <- as.data.frame(table(unlist(split_types[,-which(names(split_types)=="REP_PER_R_B")]))); names(uniq.split_types_FREQ) <- c("types","Freq")
-      uniq.split_types <- as.data.frame(uniq.split_types_FREQ[,which(names(uniq.split_types_FREQ)=="types")]); names(uniq.split_types) <- "types"
-      
-      #REP_PER_R_B <- as.data.frame(unique(split_types$REP_PER_R_B)); names(REP_PER_R_B) <- "ID"
-      int_types_counts_MAN <- NULL
-      for (ids in unique(split_types$REP_PER_R_B)) {
-        int_types <- split_types[which(split_types$REP_PER_R_B==ids),]
-        count <- table(unlist(int_types[,-which(names(int_types)=="REP_PER_R_B")]))
-        result <- data.frame(types = (names(count)),count = as.integer(count))
-        
-        ## add the missing cases
-        int_types_counts <- plyr::join (x = result , y=uniq.split_types, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
-        int_types_counts[is.na(int_types_counts)] <- 0
-        #calc pecerntage
-        #int_types_counts$perc <- round(int_types_counts$count/sum(int_types_counts$count),2)
-        int_types_counts$REP_PER_R_B <- ids
-        
-        int_types_counts_MAN   <- rbind(int_types_counts_MAN,     int_types_counts)
-        #the loop is looping over the same REP_PER_R_B and should be written to avoid it. A dirty fix is:
-      }
-      int_types_counts_MAN <- unique(int_types_counts_MAN)
-      
-      #int_types_count_TOT <- as.data.frame(tapply(int_types_counts_MAN$count, INDEX=list(int_types_counts_MAN$types),FUN=sum))
-      
-      #get total counts and percentages
-      int_types_counts_MAN.DT <- data.table(int_types_counts_MAN)
-      #for plotting purposes, let's make 2-3 and 3-2 the same
-      # CAREFUL HERE, USE THE CAPSULES NAMES NOT THEIR NUMBERS AS THEY MAY CHANGE!
-      int_types_counts_MAN.DT$types_inv <- int_types_counts_MAN.DT$types
-      int_types_counts_MAN.DT$types_inv <- as.character( int_types_counts_MAN.DT$types_inv)
-      int_types_counts_MAN.DT$types_inv[ int_types_counts_MAN.DT$types_inv == "3-2"] <- "2-3"
-      
-      # plot per int
-      ggplot( int_types_counts_MAN.DT, aes(fill=types_inv, y=count, x=REP_PER_R_B)) + 
-        geom_bar(position="fill", stat="identity") +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-        ggtitle("(CHECK IF INPUT FILE IS CORRECT) perc. capsule type involved in each interaction",paste("body_id is type",body_id,", head_id is type",head_id,sep=" "))
-      
-      #Getting % of capsules from collisions to understand which capsules are interacting more
-      int_types_count_TOT <- int_types_counts_MAN.DT[, list(fsum=sum(count)), by=types]
-      int_types_count_TOT$perc <- round(int_types_count_TOT$fsum/sum(int_types_count_TOT$fsum),2)
-      int_types_count_TOT
-      
-      #Frame by Frame Number of Manual annotations that do not include 2-3 or 3-2 capsules
-      types_FREQ <- as.data.frame(table(interaction_MANUAL_COLL$types))
-      types_FREQ$body_head <- NULL
-      types_FREQ$body_head <- ifelse(grepl('2-3|3-2', types_FREQ$Var1), 'yes', "no")
-      types_FREQ$body_head
-      aggregate(types_FREQ$Freq, by=list(body_head=types_FREQ$body_head), FUN=sum)
-      
-      #Interactionn by interaction Number of Manual annotations that do not include 2-3 or 3-2 capsules
-      interaction_MANUAL_COLL$body_head <- NULL
-      interaction_MANUAL_COLL$body_head <- ifelse(grepl('2-3|3-2', interaction_MANUAL_COLL$types), 'yes', "no")
-      interaction_MANUAL_COLL$body_head <- as.factor(interaction_MANUAL_COLL$body_head)
-      interaction_MANUAL_COLL$Freq <- 1
-      body_head_AGGREG <- aggregate(interaction_MANUAL_COLL$Freq, by=list(interaction_MANUAL_COLL$body_head,interaction_MANUAL_COLL$REP_PER_R_B), FUN=sum);names(body_head_AGGREG) <- c("body_head","REP_PER_R_B","Freq")
-      
-      #Plot Perc. of Manual annotations containing head-body capules
-      ggplot( body_head_AGGREG, aes(fill=body_head, y=Freq, x=REP_PER_R_B)) + 
-        geom_bar(position="fill", stat="identity") +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-        ggtitle("Perc. of Manual annotations that include 2-3 or 3-2 capsules")
-      
-      #get from long to wide format (this can be appended to SUMMARY file)
-      int_types_per_INT <- reshape(int_types_counts_MAN.DT, idvar = "REP_PER_R_B", timevar = "types", direction = "wide")
-      
-    
-      
       #stack output of collisions
       # THIS OUTPUT SHOULD BE PROBABLY SAVED INTO interaction_MANUAL DIRECTLY (AS IT IS JUST interaction_MANUAL + CAPSULE INFO)
       # BUT WHEN DOING SO CHECK THAT THIS DOES NOT HURT THE FOLLOWING interaction_AUTO FILE
       interaction_MANUAL_COLL <- rbind(interaction_MANUAL_COLL, interacts_MAN_REP_PER)
+      
       }# run_collisions
     
     #SAVE AND KEEP THE VARIOUS PRODUCED DATAFRAMES (outside of the REPLICATE and PERIOD)
@@ -533,6 +474,7 @@ if (run_AUTO_MAN_agreement)
   ## Make y-axis logarithmic in histogram and fix issues for 0 occurences with log
   par(mfrow=c(3,1))
   #all
+  summary_AUTO$disagreement <- as.numeric(as.character(summary_AUTO$disagreement))
   hist.data = hist(summary_AUTO$disagreement, breaks=seq(-1,0,0.05), plot=F)
   hist.data$counts <- replace(log10(hist.data$counts), log10(hist.data$counts)==-Inf, 0)
   highestCount <- max(hist.data$counts)
@@ -557,6 +499,94 @@ if (run_AUTO_MAN_agreement)
   mtext(paste("VARS: MaxIntGap",MAX_INTERACTION_GAP, "s",", Capsule file =",CapsuleDef ), side = 3, line = -1.5, outer = TRUE)
   
 }
+
+
+##############################################################################
+######### CAPSULES CALCULATIONS ##############################################
+##############################################################################
+#Understand which capsules are used during the manual interaction
+
+############# CHANGE ALL TO interaction_MANUAL once interaction_MANUAL_COLL is removed
+############# CARE MUST BE TAKEN WHEN PRODUCING THE FOLLOWING PLOTS AS THE CAPSULE N. SHOULD BE SUBSTITUTED WITH THE CAPSULE NAME!
+
+#ACCESS THE CAPSULE INFO
+interaction_MANUAL_COLL$REP_PER_R_B <- paste(interaction_MANUAL_COLL$REPLICATE,interaction_MANUAL_COLL$PERIOD,interaction_MANUAL_COLL$ROW,interaction_MANUAL_COLL$BEH,sep="_")
+
+#Check there is ANY overlap 
+if (length(interaction_MANUAL_COLL$types[!is.na(interaction_MANUAL_COLL$types)]) > 0) {
+  
+  split_types <- plyr::ldply(strsplit(interaction_MANUAL_COLL$types,","), rbind)
+  split_types$REP_PER_R_B <- interaction_MANUAL_COLL$REP_PER_R_B
+  
+  #select the unique TYPES combinations and make them into a dataframe to later add the missing cases to the counts
+  #uniq.split_types <- unique(interaction_MANUAL_COLL$types); uniq.split_types <- uniq.split_types[!is.na(uniq.split_types)]
+  uniq.split_types_FREQ <- as.data.frame(table(unlist(split_types[,-which(names(split_types)=="REP_PER_R_B")]))); names(uniq.split_types_FREQ) <- c("types","Freq")
+  uniq.split_types <- as.data.frame(uniq.split_types_FREQ[,which(names(uniq.split_types_FREQ)=="types")]); names(uniq.split_types) <- "types"
+  
+  #REP_PER_R_B <- as.data.frame(unique(split_types$REP_PER_R_B)); names(REP_PER_R_B) <- "ID"
+  int_types_counts_MAN <- NULL
+  for (ids in unique(split_types$REP_PER_R_B)) {
+    int_types <- split_types[which(split_types$REP_PER_R_B==ids),]
+    count <- table(unlist(int_types[,-which(names(int_types)=="REP_PER_R_B")]))
+    result <- data.frame(types = (names(count)),count = as.integer(count))
+    
+    ## add the missing cases
+    int_types_counts <- plyr::join (x = result , y=uniq.split_types, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+    int_types_counts[is.na(int_types_counts)] <- 0
+    #calc pecerntage
+    #int_types_counts$perc <- round(int_types_counts$count/sum(int_types_counts$count),2)
+    int_types_counts$REP_PER_R_B <- ids
+    
+    int_types_counts_MAN   <- rbind(int_types_counts_MAN,     int_types_counts)
+    #the loop is looping over the same REP_PER_R_B and should be written to avoid it. A dirty fix is:
+  }
+  int_types_counts_MAN <- unique(int_types_counts_MAN)
+  
+  #int_types_count_TOT <- as.data.frame(tapply(int_types_counts_MAN$count, INDEX=list(int_types_counts_MAN$types),FUN=sum))
+  
+  #get total counts and percentages
+  int_types_counts_MAN.DT <- data.table(int_types_counts_MAN)
+  #for plotting purposes, let's make 2-3 and 3-2 the same
+  # CAREFUL HERE, USE THE CAPSULES NAMES NOT THEIR NUMBERS AS THEY MAY CHANGE!
+  int_types_counts_MAN.DT$types_inv <- int_types_counts_MAN.DT$types
+  int_types_counts_MAN.DT$types_inv <- as.character( int_types_counts_MAN.DT$types_inv)
+  int_types_counts_MAN.DT$types_inv[ int_types_counts_MAN.DT$types_inv == "1-2"] <- "2-1"
+  
+  # plot per int
+  ggplot( int_types_counts_MAN.DT, aes(fill=types_inv, y=count, x=REP_PER_R_B)) + 
+    geom_bar(position="fill", stat="identity") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    ggtitle("(CHECK IF INPUT FILE IS CORRECT) perc. capsule type involved in each interaction",paste("body_id is type",body_id,", head_id is type",head_id,sep=" "))
+  
+  #Getting % of capsules from collisions to understand which capsules are interacting more
+  int_types_count_TOT <- int_types_counts_MAN.DT[, list(fsum=sum(count)), by=types]
+  int_types_count_TOT$perc <- round(int_types_count_TOT$fsum/sum(int_types_count_TOT$fsum),2)
+  int_types_count_TOT
+  
+  #Frame by Frame Number of Manual annotations that do not include 2-3 or 3-2 capsules
+  types_FREQ <- as.data.frame(table(interaction_MANUAL_COLL$types))
+  types_FREQ$body_head <- NULL
+  types_FREQ$body_head <- ifelse(grepl('2-1|1-2', types_FREQ$Var1), 'yes', "no")
+  types_FREQ$body_head
+  aggregate(types_FREQ$Freq, by=list(body_head=types_FREQ$body_head), FUN=sum)
+  
+  #Interactionn by interaction Number of Manual annotations that do not include 2-3 or 3-2 capsules
+  interaction_MANUAL_COLL$body_head <- NULL
+  interaction_MANUAL_COLL$body_head <- ifelse(grepl('2-1|1-2', interaction_MANUAL_COLL$types), 'yes', "no")
+  interaction_MANUAL_COLL$body_head <- as.factor(interaction_MANUAL_COLL$body_head)
+  interaction_MANUAL_COLL$Freq <- 1
+  body_head_AGGREG <- aggregate(interaction_MANUAL_COLL$Freq, by=list(interaction_MANUAL_COLL$body_head,interaction_MANUAL_COLL$REP_PER_R_B), FUN=sum);names(body_head_AGGREG) <- c("body_head","REP_PER_R_B","Freq")
+  
+  #Plot Perc. of Manual annotations containing head-body capules
+  ggplot( body_head_AGGREG, aes(fill=body_head, y=Freq, x=REP_PER_R_B)) + 
+    geom_bar(position="fill", stat="identity") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    ggtitle("Perc. of Manual annotations that include 2-1 or 1-2 capsules")
+  
+  #get from long to wide format (this can be appended to SUMMARY file)
+  int_types_per_INT <- reshape(int_types_counts_MAN.DT, idvar = "REP_PER_R_B", timevar = "types", direction = "wide")
+}
+
 
 ###################################################
 #### SUMMARY MANUAL ACT REC ID BY PARAMETERS ######
@@ -620,6 +650,27 @@ plot(summary_MANUAL_delta[,deltavar] ~ rep(1:length(summary_MANUAL_delta[,deltav
 ###### FINAL DATASET BUILDING/SAVING  #########################################
 ###############################################################################
 
+# produce Hit/Miss info
+AUTO_Hit              <- nrow(summary_AUTO[which(summary_AUTO$Hit==1),])
+AUTO_Miss             <- nrow(summary_AUTO[which(summary_AUTO$Hit==0),])
+
+# N of interactions per each MANUAL REP_PER  
+MAN_int               <- aggregate(BEH ~ REPLICATE + PERIOD, FUN=length, summary_MANUAL)
+MAN_int_Count         <- data.frame( REP_PER =paste0("MAN_int_",MAN_int$REPLICATE, "-", MAN_int$PERIOD), Freq = MAN_int$BEH)
+
+#create a row per each Loop run 
+Grooming_LDA_eachRun  <- data.frame(Loop_ID,CAPSULE_FILE,DT_dist_THRESHOLD, MAX_INTERACTION_GAP,DISAGREEMENT_THRESH, #looping Variables
+                                   t(column_to_rownames(MAN_int_Count,"REP_PER")), TOT_MAN_int = nrow(summary_MANUAL), #TOT and REP_PER info on MANUAL interactions
+                                   TOT_AUTO_int =nrow(summary_AUTO),AUTO_Hit, AUTO_Miss, #TOT and Hit/Miss info on AUTO interactions
+                                   t(column_to_rownames(CSI_scores,"REP_PER")),  perc_CSI, #TOT and REP_PER CSI score
+                                   stringsAsFactors = F,row.names = NULL)
+#stack 
+Grooming_LDA_output   <- rbind(Grooming_LDA_output,     Grooming_LDA_eachRun)
+
+#clear cache before running next loop. TO BE TESTED 
+# rm(list=(c("e")))
+# gc() # clear cache
+
 #check that a full run through REP and PER was performed.
 unique(interaction_MANUAL$PERIOD)
 unique(interaction_MANUAL$REPLICATE)
@@ -628,34 +679,16 @@ unique(interaction_MANUAL$REPLICATE)
 end.loop.time <- Sys.time()
 time.taken.loop <- end.loop.time - start.loop.time
 
-#Save the uber-large output of all cut trajectories as computing takes minutes
-#dput(interaction_AUTO_REP_PER, file = "/home/cf19810/Documents/Ants_behaviour_analysis/Data/interaction_AUTO_REP_PER_16feb22.txt")
-#dput(summary_AUTO_REP_PER, file = "/home/cf19810/Documents/Ants_behaviour_analysis/Data/summary_AUTO_REP_PER_16feb22.txt")
-
+## Save outputs with dput using:
 #dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
 #positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
 
 cat(paste0("**LOOP COMPLETED**" ,
            "\n\nNotes: \n -Activate outer loop with all varying vars
-                       \n -Save all the plots per loop!
-                       \n -Save output for all the main components for further tests (Decision Trees,Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)"
-           ))
+                       \n -Save all the plots per loop in a dedicated folder named as the Loop_ID
+                       \n -Save in Loop_ID the output for all the main components for further tests (Decision Trees,Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)"
+))
 time.taken.loop
-
-# store in a DF the output per iteration
-AUTO_Hit  <- nrow(summary_AUTO[which(summary_AUTO$Hit==1),])
-AUTO_Miss <- nrow(summary_AUTO[which(summary_AUTO$Hit==0),])
-
-Grooming_LDA_eachRun <- data.frame(CAPSULE_FILE,DT_dist_THRESHOLD, MAX_INTERACTION_GAP,DISAGREEMENT_THRESH,
-                                   nrow(summary_AUTO),nrow(summary_MANUAL), AUTO_Hit, AUTO_Miss,
-                                   perc_CSI,t(CSI_val),
-                                   stringsAsFactors = F)
-
-Grooming_LDA_output   <- rbind(Grooming_LDA_output,     Grooming_LDA_eachRun)
-
-#clear cache before running next loop. TO BE TESTED 
-# rm(list=(c("e")))
-# gc() # clear cache
 
 # }}}} ### OUTER PARAMETERS LOOP end
 

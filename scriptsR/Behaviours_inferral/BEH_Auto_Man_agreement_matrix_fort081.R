@@ -1,6 +1,13 @@
-print(paste("AUTO-MAN AGREEMENT MATRIX",REPLICATE, PERIOD))
+##########################################################################################
+############## AUTO-MAN AGREEMENT MATRIX #################################################
+##########################################################################################
 
-library(Matrix)
+#script dependant on BEH_MAIN_behaviours_analysis_fort081.R
+
+#For previous versions of this script, explore: 
+# https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
+
+print(paste("AUTO-MAN AGREEMENT MATRIX",REPLICATE, PERIOD))
 
 # # pointer to list of all the possible ids pairs ordered 
 ant_id1 <- rep(1:35);  ant_id2 <- rep(1:35) ## THIS IS SHIT!

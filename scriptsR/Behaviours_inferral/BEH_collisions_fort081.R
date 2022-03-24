@@ -1,6 +1,11 @@
-########################################################################################################################
-########################################################################################################################
-# COLLISIONS
+##########################################################################################
+############## BEH COLLISIONS ############################################################
+##########################################################################################
+
+#script dependant on BEH_MAIN_behaviours_analysis_fort081.R
+
+#For previous versions of this script, explore: 
+# https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
 
 ##creates a ID string for each ant: ant_1, ant_2,...
 collisions$collisions$ant1_str <- paste("ant_",collisions$collisions$ant1,sep="") 
@@ -46,13 +51,13 @@ collisions_merge <- merge(collisions_coll, collisions_frames[,-match(c("height",
 
 ##if(collisions_coll$frames_row_index[125] == collisions_merge$frames_row_index[125]) {print("TRUE")}
 
-# add new column to interaction data when conditions are met (eg. time + ant ID)
-#RENAME COLUMN TRAJBOTHREC IN time 
-#merge with equal time and any order of the couple Act_Name-Rec_Name=ant1_str-ant2_str (any order). HOW?
-nrow(collisions_merge)
-str(collisions_merge)
-nrow(interacts_MAN_REP_PER)
-str(interacts_MAN_REP_PER)
+# # add new column to interaction data when conditions are met (eg. time + ant ID)
+# #RENAME COLUMN TRAJBOTHREC IN time 
+# #merge with equal time and any order of the couple Act_Name-Rec_Name=ant1_str-ant2_str (any order). HOW?
+# nrow(collisions_merge)
+# str(collisions_merge)
+# nrow(interacts_MAN_REP_PER)
+# str(interacts_MAN_REP_PER)
 
 #create new variable by pasting ant numbers "low,high" for collisions_merge
 # collisions_merge$pair <- apply(collisions_merge[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
@@ -122,7 +127,7 @@ for (PR in unique(interacts_MAN_REP_PER$pair))
 
 ## ADRIANO TO DO: WRAP EVERYTHIN IN AN OUTER LOOP TO PROGRESSIVELY INCREASE THE SIZE OF THE CAPSULES , 
 ## SO THAT THERE ARE FEWER MISSING (NA) MATCHES: 
-table(interacts_MAN_REP_PER$types, useNA="al")
+#table(interacts_MAN_REP_PER$types, useNA="al")
   
 
   # rowIndex <- I_in_C_rows; type_match <- collisions_merge$types[I_in_C_rows]
