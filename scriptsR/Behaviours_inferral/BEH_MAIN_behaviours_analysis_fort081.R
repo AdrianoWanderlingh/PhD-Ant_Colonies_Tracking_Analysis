@@ -98,7 +98,13 @@ library(reshape2)
 library(ggbeeswarm)
 library(GGally) #plot multicollinearity
 library(bestNormalize)
-
+library(car) # homogeinity of variance
+library(MVN) # test multivariate normality ditribution
+library(biotools) #BoxM test for homoscedasticity (maybe is better t use the Bartlett sphericity test)
+library(CORElearn) # for RELIEF algorithm
+#install.packages("remotes"); remotes::install_github("insilico/STIR")
+library(stir) # calculation of statistical significance of features and adjustment for multiple testing of Relief-based scores
+library(heplots) #Hypotesis testing plots to check Equal Covariance Ellipses in LDA vars assumptions check
 
 ###############################################################################
 ###### GLOSSARY ###############################################################
