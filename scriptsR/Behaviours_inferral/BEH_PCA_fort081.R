@@ -33,6 +33,7 @@ and reduce the number of variables in the X data matrix.-- \n\nRef:\nMetabolites
 
 Also, is collinearity reduced after variables transformation via BestNormalize? NO
 
+Careful: correlated and collinear is not the same thing!
 remove correlated var following https://stats.stackexchange.com/questions/121131/removing-collinear-variables-for-lda-qda-in-r
 
 2. ######## Take care of missing cases as they badly affect the analysis given the quantity of NAs ######## 
@@ -90,48 +91,98 @@ results.cor <- cor(summary_AUTO_vars_NAOmit)
 #          p.mat = res1$p, sig.level = 0.05, insig = "blank", method = "number", number.cex = .7)
 
 
+
+#######################################################
+######### MISSING CASES ###############################
+#######################################################
+
+#### ISSUEEE
+#LOTS of missing values affecting the analysis
+
+#summary_LDA_vars <- summary_AUTO_vars[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_transf))] 
+sapply(summary_AUTO_vars, function(x) sum(is.na(x)))
+#summary_LDA_vars_hit <- cbind(summary_LDA_vars,Hit=summary_AUTO_transf$Hit)
+
+#N of rows including missing cases:
+sum(!complete.cases(summary_AUTO_vars))
+
+#prop of NAs over total in % (missing values)
+propNAs_total <- (sum(sapply(summary_AUTO_vars, function(x) sum(is.na(x)))) /(nrow(summary_AUTO_vars) * ncol(summary_AUTO_vars))) *100
+##prop missing by variable in %
+propNAs_byvar <- round((sapply(summary_AUTO_vars, function(x) sum(is.na(x)))/nrow(summary_AUTO_vars)),2) * 100
+
+##prop missing by row (show only top) - potentially droppable rows?
+prop_Na_row <- (apply(summary_AUTO_vars, 1, function(x) sum(is.na(x)))/ncol(summary_AUTO_vars))*100
+prop_Na_row <- data.frame(prop_missing=sort(prop_Na_row, decreasing=TRUE))
+propNAs_byrow_25perc <- ((length(prop_Na_row[which(prop_Na_row>25),]))/nrow(summary_AUTO_vars))*100 #show all rows with values over 25% missing
+hist(prop_Na_row$prop_missing) #+ abline(v=20, col="blue")
+#summary of Nas distribution
+cat("prop of NAs over total in %",propNAs_total, "\n\nProp missing by variable \n",propNAs_byvar,"\n\nprop of rows with more than 25% missing",propNAs_byrow_25perc)
+
+
+### NAs by class
+Hit_FULL.yes <- subset(summary_AUTO, Hit == 1)
+Hit_FULL.no <- subset(summary_AUTO, Hit == 0)
+
+round((sapply(Hit_FULL.yes, function(x) sum(is.na(x)))/nrow(Hit_FULL.yes)),3)*100
+round((sapply(Hit_FULL.no, function(x) sum(is.na(x)))/nrow(Hit_FULL.no)),3)*100
+
+#drop jerk as it has >5% missing cases for the Hit.yes (minority class) and >17.8%  missing cases for the hit.no (majority class). 
+# redun and hierarchical clustering have shown anyway that it is a droppable feature (predictable by other dataset variables)
+
+#Also, currently dropping prop_time_undetected_REC/ACT as they have a very difficult distribution (hard to normalise)
+TRIM <- c("mean_jerk_PxPerSec3_ACT","mean_jerk_PxPerSec3_REC","prop_time_undetected_REC","prop_time_undetected_ACT")
+summary_AUTO.1 <- summary_AUTO[, -match(c(TRIM), names(summary_AUTO))]
+
+##############################################################################
+########## DROP NAs ##########################################################
+##############################################################################
+
+# Many NAs are present only in the False positives (majority class), therefore dropping them is going to affect only very few cases of the True Postives
+summary_AUTO_NAOmit <- summary_AUTO.1[complete.cases(summary_AUTO.1), ]
+
 ###############################################################################
-###### NORMALISE VARS BEFORE LDA ##############################################
+###### NORMALISE VARS BEFORE CLASSIFICATION ###################################
 ###############################################################################
 ###SPEED UP WITH THE PARALLEL PACKAGE?
 #empty base
-summary_AUTO_transf <- data.frame()[1:nrow(summary_AUTO), ]
-summary_AUTO$ACT <- as.factor(summary_AUTO$ACT)
-summary_AUTO$REC <- as.factor(summary_AUTO$REC)
-summary_AUTO$Hit <- as.factor(summary_AUTO$Hit)
-summary_AUTO$disagreement <- as.factor(summary_AUTO$disagreement)
+summary_AUTO_NAOmit_transf <- data.frame()[1:nrow(summary_AUTO_NAOmit), ]
+summary_AUTO_NAOmit$ACT <- as.factor(summary_AUTO_NAOmit$ACT)
+summary_AUTO_NAOmit$REC <- as.factor(summary_AUTO_NAOmit$REC)
+summary_AUTO_NAOmit$Hit <- as.factor(summary_AUTO_NAOmit$Hit)
+summary_AUTO_NAOmit$disagreement <- as.factor(summary_AUTO_NAOmit$disagreement)
 
-summary_AUTO$int_start_frame <- as.character(summary_AUTO$int_start_frame)
-summary_AUTO$int_end_frame <- as.character(summary_AUTO$int_end_frame)
+summary_AUTO_NAOmit$int_start_frame <- as.character(summary_AUTO_NAOmit$int_start_frame)
+summary_AUTO_NAOmit$int_end_frame <- as.character(summary_AUTO_NAOmit$int_end_frame)
 
 #transform variables if they are not normal
 start.time <- Sys.time()
-for (variable in names(summary_AUTO)){
-  if (is.numeric(summary_AUTO[,variable])) {
-    val <- shapiro.test(summary_AUTO[,variable])
+for (variable in names(summary_AUTO_NAOmit)){
+  if (is.numeric(summary_AUTO_NAOmit[,variable])) {
+    val <- shapiro.test(summary_AUTO_NAOmit[,variable])
     if (unname(val$p.value)<0.05) {
       print(paste("for [",variable, "] the Shapiro-Wilk Test has p < 0.05, the data is not normal. Transform it.",sep=" "))
       #scale variable (as reccomended for data prep for LDA in Metabolites 2014, 4, 433-452; doi:10.3390/metabo4020433)
-      scaled_VAR <- scale(summary_AUTO[,variable])
+      scaled_VAR <- scale(summary_AUTO_NAOmit[,variable])
       #find the best transformation
       #This function currently estimates the Yeo-Johnson, the Box Cox  (if the data is positive), the log_10(x+a), the square-root (x+a), the arcsinh and the ordered quantile normalization
       BNobject <- bestNormalize(scaled_VAR,standardize = FALSE) #with standardize = FALSE also no_tranformation is attempted 
-      summary_AUTO_transf$var <- BNobject$x.t; names(summary_AUTO_transf)[names(summary_AUTO_transf) == 'var'] <- paste(variable,class(BNobject$chosen_transform)[1],sep=".")
+      summary_AUTO_NAOmit_transf$var <- BNobject$x.t; names(summary_AUTO_NAOmit_transf)[names(summary_AUTO_NAOmit_transf) == 'var'] <- paste(variable,class(BNobject$chosen_transform)[1],sep=".")
     }else{print(paste("for [",variable,"] the Shapiro-Wilk Test has p > 0.05, the data is normal. Keep it.",sep=" "))
-          summary_AUTO_transf[variable]<- scale(summary_AUTO[,variable])
+          summary_AUTO_NAOmit_transf[variable]<- scale(summary_AUTO_NAOmit[,variable])
     }}else{print(paste("non numeric attribute. Pasting [",variable,"] in the new dataset",sep = " "))
-           summary_AUTO_transf[variable]<- summary_AUTO[,variable]}
+           summary_AUTO_NAOmit_transf[variable]<- summary_AUTO_NAOmit[,variable]}
 }
 end.time <- Sys.time()
 (time.taken <- end.time - start.time)
 
-#### CORR PLOT AFTER TRANSFROMATION
-summary_AUTO_transf_vars <- summary_AUTO_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_transf))] 
-summary_AUTO_transf_vars_NAOmit <- summary_AUTO_transf_vars[(apply(summary_AUTO_transf_vars, 1, function(x) sum(is.na(x)))/ncol(summary_AUTO_transf_vars)) < 0.05,]
+#### CORR PLOT AFTER TRANSFORMATION
+summary_AUTO_NAOmit_transf_vars <- summary_AUTO_NAOmit_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_NAOmit_transf))] 
+#summary_AUTO_transf_vars_NAOmit <- summary_AUTO_transf_vars[(apply(summary_AUTO_transf_vars, 1, function(x) sum(is.na(x)))/ncol(summary_AUTO_transf_vars)) < 0.05,]
 
-results.cor_transf <- cor(summary_AUTO_transf_vars_NAOmit)
+results.cor_transf <- cor(summary_AUTO_NAOmit_transf_vars)
 
-pdf(file=paste(DATADIR,"CorrPlots","AUTO","Gap",MAX_INTERACTION_GAP, sep = "_"), width=20, height=5)
+pdf(file=paste(DATADIR,"CorrPlots","AUTO","Gap",MAX_INTERACTION_GAP, ".pdf", sep = "_"), width=20, height=5)
 par(mfrow=c(1,2),mar = c(4.5, 3.8, 1, 1.1))
 corrplot(results.cor, type="upper", tl.cex= .4,title = "\nresults.cor",)
 corrplot(results.cor_transf, type="upper", tl.cex= .4,title = "\nresults.cor_transf",)
@@ -141,17 +192,14 @@ dev.off()
 
 
 #summary_AUTO_REP_PER_dget <- dget("/home/cf19810/Documents/Ants_behaviour_analysis/Data/summary_AUTO_REP_PER_16feb22.txt") # load file created with dput 
-summary_AUTO_transf$Hit <- as.factor(summary_AUTO_transf$Hit)
+summary_AUTO_NAOmit_transf$Hit <- as.factor(summary_AUTO_NAOmit_transf$Hit)
 
 #check N of missing values per variable
-#TRIM <- c("mean_jerk_PxPerSec3_ACT","mean_jerk_PxPerSec3_REC","mean_accel_PxPerSec2_ACT","mean_accel_PxPerSec2_REC","mean_abs_turnAngle_ACT","mean_abs_turnAngle_REC")
 #remove ant names/rep/int/etc in pca (keep only vars)
-summary_LDA_vars <- summary_AUTO_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_transf))] 
+summary_LDA_vars <- summary_AUTO_NAOmit_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_NAOmit_transf))] 
 sapply(summary_LDA_vars, function(x) sum(is.na(x)))
-sapply(summary_LDA_vars, function(x) sum(is.infinite(x))) 
-summary_LDA_vars_hit <- cbind(summary_LDA_vars,Hit=summary_AUTO_transf$Hit)
+summary_LDA_vars_hit <- cbind(summary_LDA_vars,Hit=summary_AUTO_NAOmit_transf$Hit)
 
-#summary_LDA_vars_trim <- summary_AUTO_transf[, -match(c(TRIM,"REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","agreement","disagreement","Hit"), names(summary_AUTO_transf))] 
 ## eventually trimunwanted vars
 #sapply(summary_LDA_vars_trim, function(x) sum(is.na(x))) 
 
@@ -219,7 +267,7 @@ estReliefF[order(estReliefF$estReliefF,decreasing = TRUE),]
 # LE, Trang T., et al. Statistical inference Relief (STIR) feature selection. Bioinformatics, 2019, 35.8: 1358-1365. 
 
 #RF.method = "multisurf" # SURF identifies nearest neighbors (both hits and misses) based on a distance threshold from the target instance defined by the average distance between all pairs of instances in the training data.[20] Results suggest improved power to detect 2-way epistatic interactions over ReliefF. 
-metric <- "euclidean"# manhattan #using it instead of euclidean as it is the most common choice as sugegsted by Le et al.2019 
+metric <- "manhattan"# manhattan #using it instead of euclidean as it is the most common choice as sugegsted by Le et al.2019 
 #BUT manhattan is suggested for high-dimensional data (N of features > )
 
 #this takes a few seconds to compute
@@ -228,21 +276,95 @@ metric <- "euclidean"# manhattan #using it instead of euclidean as it is the mos
 neighbor.idx.observed <- find.neighbors(summary_LDA_vars, summary_LDA_vars_hit$Hit, k = 0, method = "multisurf")
 results.list <- stir(summary_LDA_vars, neighbor.idx.observed, k = k, metric = metric, method = "multisurf")
 t_sorted_multisurf <- results.list$STIR_T
-t_sorted_multisurf$attribute <- rownames(t_sorted_multisurf)
+t_sorted_multisurf$Variable <- rownames(t_sorted_multisurf)
 round(t_sorted_multisurf$t.pval.adj,5)
+
+#add information of missing cases to the Relief feature score
+estReliefStir <- plyr::join(x=estReliefF, y=t_sorted_multisurf, type = "full", match = "all")
+
+
 #select only variables with p<0.05
-RELIEF_selected <- t_sorted_multisurf[which(t_sorted_multisurf$t.pval.adj<0.05),"attribute"]
+RELIEF_selected <- t_sorted_multisurf[which(t_sorted_multisurf$t.pval.adj<0.01),"Variable"]
 summary_LDA_vars_RELIEF <- summary_LDA_vars[, match(c(RELIEF_selected), names(summary_LDA_vars))] 
-#add the classes
-summary_LDA_vars_RELIEF_hit <- cbind(summary_LDA_vars_RELIEF,Hit=summary_AUTO_transf$Hit)
+#check vars correlation
+results.cor_RELIEF <- cor(summary_LDA_vars_RELIEF) 
+corrplot(results.cor_RELIEF, type="upper", tl.cex= .4,title = "\nresults.cor",)
 
-
-
-#TODOs: test it on untransformed variables, also: why Nas??
-
-
+#add the Hit classes
+summary_LDA_vars_RELIEF_hit <- cbind(summary_LDA_vars_RELIEF,Hit=summary_AUTO_NAOmit_transf$Hit)
 
 ##### corelearn can also be used to try other models using CoreModel
+
+# #############################
+# ####### PCA #################
+# #############################
+# 
+######### PERFORM PCA TO REMOVE CORRELATED VARIABLES, NOT LINKED WITH RELIEF ########
+#
+# #PCA with missing values according to Dray & Josse (2015) https://doi.org/10.1007/s11258-014-0406-z
+# #imputePCA of the R package missMDA
+# #Impute the missing values of a dataset with the Principal Components Analysis model. 
+# #Can be used as a preliminary step before performing a PCA on an incomplete dataset.
+# #missing values are replaced by random values, and then PCA is applied on the completed data set, and missing values are then updated by the fitted values
+# ## Imputation for LDA_VARS which contains NAs
+# res.comp <- imputePCA(LDA_VARS,method="Regularized")
+# 
+# ## 1. A PCA can be performed on the imputed data for LDA_VARS
+# res.pca1 <- PCA(res.comp$completeObs)
+# 
+## 2. PCA on the base data for LDA_VARS_trim
+RES.PCA <- PCA(summary_LDA_vars, scale.unit = FALSE) #scaled when normalised
+
+#with relief selected features
+RES.PCA <- PCA(results.cor_RELIEF, scale.unit = FALSE) #scaled when normalised
+
+
+# #for (RES.PCA in c(res.pca1,res.pca2)) {
+# 
+# # Extract eigenvalues/variances
+# get_eig(res.pca2)
+# # Visualize eigenvalues/variances
+# fviz_screeplot(RES.PCA, addlabels = TRUE, ylim = c(0, 50))
+# # Extract the results for variables
+# var <- get_pca_var(RES.PCA)
+# var
+# 
+# corrplot(var$cos2, is.corr = FALSE)
+# 
+# # Coordinates of variables
+# head(var$coord)
+# # Contribution of variables
+# head(var$contrib)
+# # Graph of variables
+# # Control variable colors using their contributions
+# fviz_pca_var(RES.PCA, col.var="contrib",
+#              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+#              repel = TRUE # Avoid text overlapping
+# )
+# # Contributions of variables to PC1
+# fviz_contrib(RES.PCA, choice = "var", axes = 1, top = 10)
+# # Contributions of variables to PC2
+# fviz_contrib(RES.PCA, choice = "var", axes = 2, top = 10)
+# # Extract the results for individuals #GIVE ROWNAME TO DO THIS (I.E. HIT OR INT)
+# ind <- get_pca_ind(RES.PCA)
+# ind
+# # Coordinates of individuals
+# head(ind$coord)
+# 
+# 
+# 
+# Use habillage to specify groups for coloring
+# fviz_pca_ind(RES.PCA, pointsize =summary_AUTO_NAOmit_transf$disagreement,
+#              label = "none", # hide individual labels
+#              title = "PCA - indivdual interactions \nPointsize by disagreement rate",
+#              habillage = as.factor(summary_AUTO_NAOmit_transf$Hit), # color by groups
+#              addEllipses = TRUE
+# )
+# 
+# #}
+# 
+
+
 
 #######################################################
 ######### CHOOSE DATA #################################
@@ -255,31 +377,22 @@ if(LDA_DATA =="RELIEF"){LDA_VARS <- summary_LDA_vars_RELIEF; LDA_VARS_HIT <- sum
 
 
 #######################################################
-######### MISSING CASES ###############################
+######### TEST DATA for LDA/QDA #######################
 #######################################################
 
-#### ISSUEEE
-#LOTS of missing values affecting the analysis
-#N of rows including missing cases:
-sum(!complete.cases(LDA_VARS))
+# #LDA: Linear discriminant analysis also called DFA D.function.A.
+# #LDA focuses on finding a feature subspace that maximizes the separability between the groups. 
 
-#prop of NAs over total in % (missing values)
-propNAs_total <- (sum(sapply(LDA_VARS, function(x) sum(is.na(x)))) /(nrow(LDA_VARS) * ncol(LDA_VARS))) *100
-##prop missing by variable in %
-propNAs_byvar <- (sapply(LDA_VARS, function(x) sum(is.na(x)))/nrow(LDA_VARS)) * 100
 
-##prop missing by row (show only top) - potentially droppable rows?
-prop_Na_row <- (apply(LDA_VARS, 1, function(x) sum(is.na(x)))/ncol(LDA_VARS))*100
-prop_Na_row <- data.frame(prop_missing=sort(prop_Na_row, decreasing=TRUE))
-propNAs_byrow_25perc <- ((length(prop_Na_row[which(prop_Na_row>25),]))/nrow(LDA_VARS))*100 #show all rows with values over 25% missing
-hist(prop_Na_row$prop_missing) #+ abline(v=20, col="blue")
-#summary of Nas distribution
-cat("prop of NAs over total in %",propNAs_total, "\n\nProp missing by variable \n",propNAs_byvar,"\n\nprop of rows with more than 25% missing",propNAs_byrow_25perc)
+# #PCA can only be performed if ImputePCA is performed or if rows with NA (many!!!!) are removed
+# pca_prcomp <- prcomp(LDA_VARS,
+#               center = TRUE,
+#               scale. = TRUE) 
+# 
+# prop.RES.PCA = pca_prcomp$sdev^2/sum(pca_prcomp$sdev^2)
 
-#######################################################
-######### TEST DATA ##################################
-#######################################################
 
+#### Assumptions testing #####
 ### Homogeneity of variance/covariance (homoscedasticity) ###
 #Box’s M Test is extremely sensitive to departures from normality; the fundamental test assumption is that your data is multivariate normally distributed. Therefore, if your samples don’t meet the assumption of normality, you shouldn’t use this test.
 # mvn(data = LDA_VARS,subset = LDA_VARS_HIT$Hit,mvnTest="mardia") #crashes R
@@ -291,7 +404,7 @@ heplots::covEllipses(LDA_VARS,
                      fill = TRUE, 
                      pooled = FALSE, 
                      col = c("blue", "red"), 
-                     variables = c(1:3), 
+                     variables = c(1:14), 
                      fill.alpha = 0.05)
 #using the BoxM test in order to check our assumption of homogeneity of variance-covariance matrices
 # for p<0.05 there is a problem of heterogeneity of variance-covariance matrices
@@ -299,47 +412,33 @@ boxm <- heplots::boxM(LDA_VARS, LDA_VARS_HIT$Hit)
 boxm #NOT met for the summary_LDA_vars_RELIEF
 plot(boxm)
 
+###### Checking Multicollinearity
+# One way to detect multicollinearity is to check the Choleski decomposition of the correlation matrix 
+#- if there's multicollinearity there will be some diagonal elements that are close to zero
+Choleski_decomp <- chol(cor(LDA_VARS))
+diag(Choleski_decomp) #looks good
+
 ### Checking Assumption of Normality
 Hit.yes <- subset(LDA_VARS_HIT, Hit == 1) 
 Hit.no <- subset(LDA_VARS_HIT, Hit == 0)
-
-par(mfrow = c(2, 2)) 
-for(i in names(LDA_VARS)) { 
-  qqnorm(Hit.yes[[i]]); qqline(Hit.yes[[i]], col = 2) 
-}
-
-for(i in names(LDA_VARS)) { 
-  qqnorm(Hit.no[[i]]); qqline(Hit.no[[i]], col = 2) 
-}
-##"prop_time_undetected_REC.sqrt_x is very not normal!
-
+## plotting QQplots
+# par(mfrow = c(4, 4)) 
+# for(i in names(LDA_VARS)) { 
+#   qqnorm(Hit.yes[[i]]); qqline(Hit.yes[[i]], col = 2) 
+# }
+# 
+# for(i in names(LDA_VARS)) { 
+#   qqnorm(Hit.no[[i]]); qqline(Hit.no[[i]], col = 2) 
+# }
 
 # As covariances are not equal, quadratic discriminant analysis will be used.
 ############# ASSUMPTIONS FOR QDA #################
 
 # - Observation of each class is drawn from a normal distribution (same as LDA).
-#   Just showed to be not valid for prop_time_undetected_REC.sqrt_x!!!
+#   may be strong enough, make sure vars are normalised!
 
 # - QDA assumes that each class has its own covariance matrix (different from LDA).
 #   this one is met
-
-####################################
-#### LOGISTIC REGRESSION ###########
-####################################
-paste(names(LDA_VARS),sep = "+")
-
-model1 = glm(LDA_VARS_HIT$Hit ~ . , data=LDA_VARS, family=binomial) # binomial as there are 2 classes
-summary(model1)
-
-model2 = update(model1, ~ .-mean_Mov_Orient_delta_angle_REC.orderNorm)
-summary(model2)
-
-###Predict for training data and find training accuracy
-pred.prob = predict(model2, type="response")
-pred.prob = ifelse(pred.prob > 0.5, 1, 0)
-table(pred.prob, LDA_VARS_HIT$Hit) #terrible...
-
-#Rare event logistic regression?
 
 
 ####################################
@@ -376,81 +475,45 @@ summ_vars_plot_box + geom_violin(alpha = 0.5) #+ geom_beeswarm() #careful with s
 
 }
 
-# #############################
-# ####### PCA #################
-# #############################
-# 
-# #PCA with missing values according to Dray & Josse (2015) https://doi.org/10.1007/s11258-014-0406-z
-# #imputePCA of the R package missMDA
-# #Impute the missing values of a dataset with the Principal Components Analysis model. 
-# #Can be used as a preliminary step before performing a PCA on an incomplete dataset.
-# #missing values are replaced by random values, and then PCA is applied on the completed data set, and missing values are then updated by the fitted values
-# ## Imputation for LDA_VARS which contains NAs
-# res.comp <- imputePCA(LDA_VARS,method="Regularized")
-# 
-# ## 1. A PCA can be performed on the imputed data for LDA_VARS
-# res.pca1 <- PCA(res.comp$completeObs)
-# 
-# ## 2. PCA on the base data for LDA_VARS_trim
-# RES.PCA <- PCA(LDA_VARS_trim) #more explained variance without the trimmeed vars
-# 
-# #for (RES.PCA in c(res.pca1,res.pca2)) {
-# 
-# # Extract eigenvalues/variances
-# get_eig(res.pca2)
-# # Visualize eigenvalues/variances
-# fviz_screeplot(RES.PCA, addlabels = TRUE, ylim = c(0, 50))
-# # Extract the results for variables
-# var <- get_pca_var(RES.PCA)
-# var
-# 
-# corrplot(var$cos2, is.corr = FALSE)
-# 
-# # Coordinates of variables
-# head(var$coord)
-# # Contribution of variables
-# head(var$contrib)
-# # Graph of variables
-# # Control variable colors using their contributions
-# fviz_pca_var(RES.PCA, col.var="contrib",
-#              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-#              repel = TRUE # Avoid text overlapping
-# )
-# # Contributions of variables to PC1
-# fviz_contrib(RES.PCA, choice = "var", axes = 1, top = 10)
-# # Contributions of variables to PC2
-# fviz_contrib(RES.PCA, choice = "var", axes = 2, top = 10)
-# # Extract the results for individuals #GIVE ROWNAME TO DO THIS (I.E. HIT OR INT)
-# ind <- get_pca_ind(RES.PCA)
-# ind
-# # Coordinates of individuals
-# head(ind$coord)
-# 
-# 
-# 
-# # Use habillage to specify groups for coloring
-# fviz_pca_ind(RES.PCA, pointsize =summary_AUTO_transf$disagreement,
-#              label = "none", # hide individual labels
-#              title = "PCA - indivdual interactions \nPointsize by disagreement rate",
-#              habillage = as.factor(summary_AUTO_transf$Hit), # color by groups
-#              addEllipses = TRUE
-# )
-# 
-# #}
-# 
-# #LDA: Linear discriminant analysis also called DFA D.function.A.
-# #LDA focuses on finding a feature subspace that maximizes the separability between the groups. 
 
-#############################
-####### LDA #################
-#############################
+##############################################################################
+########## TESTED MODELS #####################################################
+##############################################################################
 
-# #PCA can only be performed if ImputePCA is performed or if rows with NA (many!!!!) are removed
-# pca_prcomp <- prcomp(LDA_VARS,
-#               center = TRUE,
-#               scale. = TRUE) 
-# 
-# prop.RES.PCA = pca_prcomp$sdev^2/sum(pca_prcomp$sdev^2)
+
+####################################
+#### LOGISTIC REGRESSION ###########
+####################################
+
+model1 = glm(LDA_VARS_HIT$Hit ~ . , data=LDA_VARS, family=binomial) # binomial as there are 2 classes
+summary(model1)
+
+#Boolean vector of the coefficients can indeed be extracted by:
+toselect.x <- summary(model1)$coeff[-1,4] < 0.05
+# select sig. variables
+relevant.x <- names(toselect.x)[toselect.x == TRUE] 
+# formula with only sig variables
+sig.formula <- as.formula(paste("LDA_VARS_HIT$Hit ~",paste(relevant.x, collapse= "+"))) #sig.formula <- as.formula(paste("y ~",relevant.x))
+sig.terms <- paste(relevant.x, collapse= "+") #sig.formula <- as.formula(paste("y ~",relevant.x))
+
+
+#Update model with just the significant variables
+model2 <- glm(formula=sig.formula,data=LDA_VARS,family=binomial)
+
+#model2 = update(model1, ~ sig.terms)
+summary(model2)
+
+###Predict for training data and find training accuracy
+pred.prob = predict(model2, type="response")
+pred.prob = ifelse(pred.prob > 0.05, 1, 0)
+table(pred.prob, LDA_VARS_HIT$Hit) #terrible...
+
+#Rare event logistic regression?
+
+#maybe  under-sampling nonevents for rare events data as in Logistic Regression for Massive Data with Rare Events
+# However, when π0 > 0.1, the performances of the under-sampled
+# estimators are almost as good as the full-data estimator.
+#see WANG, HaiYing. Logistic regression for massive data with rare events. In: International Conference on Machine Learning. PMLR, 2020. p. 9829-9836.
 
 
 ##############################
@@ -462,7 +525,7 @@ table(LDA_VARS_HIT$Hit)
 length(LDA_VARS)
 #it is a bit risky as they are very close...
 
-lda <- lda(LDA_VARS_HIT$Hit ~ ., 
+lda <- qda(LDA_VARS_HIT$Hit ~ ., 
            LDA_VARS)
 
 ## proportion of LDs that encapsulate the variation (in case of 1 Ld, the prop.lda = 1)
@@ -476,20 +539,20 @@ plda <- predict(object = lda,
 
 
 #create a histogram of the discriminant function values
-par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
-ldahist(data = plda$x[,1], g=LDA_VARS_HIT$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
+#par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
+#ldahist(data = plda$x[,1], g=LDA_VARS_HIT$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
 ## ASSIGN THE PREDICTION TO THE dataframe
-LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_transf$REPLICATE,
-                                    "PERIOD" = summary_AUTO_transf$PERIOD,
-                                    "pair" = summary_AUTO_transf$pair,
-                                    "int_start_frame "= summary_AUTO_transf$int_start_frame,
-                                    "int_end_frame" = summary_AUTO_transf$int_end_frame,
+LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
+                                    "PERIOD" = summary_AUTO_NAOmit_transf$PERIOD,
+                                    "pair" = summary_AUTO_NAOmit_transf$pair,
+                                    "int_start_frame "= summary_AUTO_NAOmit_transf$int_start_frame,
+                                    "int_end_frame" = summary_AUTO_NAOmit_transf$int_end_frame,
                                     LDA_VARS_HIT, 
                                     "Predicted_Hit" =  plda$class)
 
-#########################################
-### critical success index (CSI) ########
-#########################################
+#################################################
+### critical success index (CSI) FOR QDA ########
+#################################################
 
 # # CSI is a verification measure of categorical forecast performance
 # # calculated as CSI= (hits)/(hits + false alarms + misses)
@@ -546,6 +609,9 @@ for (REPLICATE in c("R3SP","R9SP"))
     CSI <- (TruePositive/(TruePositive+FalseNegative+FalsePositive))*100
     CSI_val <- c(CSI_val,CSI)
     
+    #F1 Score
+    F1 <- TruePositive/(TruePositive+0.5*(FalsePositive+FalseNegative))
+    
     CSI <- NULL
     }else{ # if trimmed_AUTO_pred contains no Hit 
       CSI_val <- c(CSI_val,0)
@@ -561,7 +627,29 @@ perc_CSI <- sum(CSI_val)/length(CSI_val)
 
 #t(column_to_rownames(CSI_scores,"REP_PER"))
 
-###########################################################################
+
+
+#########################################################
+### CURING IMBALANCE ###################################
+########################################################
+
+# USE THE TECHNIQUE REPORTED IN Uma R. Salunkhe and Suresh N. Mali / Procedia Computer Science 85 (2016) 725 – 732
+# "Classifier Ensemble Design for Imbalanced Data Classification: A Hybrid Approach"
+
+#AND THIS
+# https://machinelearningmastery.com/framework-for-imbalanced-classification-projects/
+
+
+
+
+
+
+
+##########################################################################
+##########################################################################
+##### EXTRA STUFF FOR PCA AND LDAs #######################################
+
+
 ## Ongoing work:
 
 # Effect size
