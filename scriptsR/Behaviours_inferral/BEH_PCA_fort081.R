@@ -198,9 +198,20 @@ summary_AUTO_NAOmit_transf$Hit <- as.factor(summary_AUTO_NAOmit_transf$Hit)
 #remove ant names/rep/int/etc in pca (keep only vars)
 summary_LDA_vars <- summary_AUTO_NAOmit_transf[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_NAOmit_transf))] 
 sapply(summary_LDA_vars, function(x) sum(is.na(x)))
+
+
+#strip attributes so that variables are just numeric (now they contain info on center and scaling)
+for (var in colnames(summary_LDA_vars)) {
+  # attr(summary_LDA_vars[,deparse(as.name(var))], "scaled:center") <- NULL
+  # attr(summary_LDA_vars[,deparse(as.name(var))], "scaled:scale") <- NULL
+  summary_LDA_vars[,var]    <-     as.numeric(summary_LDA_vars[,var])
+}
+
+#Re-add the class Hit
 summary_LDA_vars_hit <- cbind(summary_LDA_vars,Hit=summary_AUTO_NAOmit_transf$Hit)
 
-## eventually trimunwanted vars
+
+## eventually trim unwanted vars
 #sapply(summary_LDA_vars_trim, function(x) sum(is.na(x))) 
 
 
@@ -474,6 +485,94 @@ summ_vars_plot_box + geom_boxplot(alpha = 0.5)
 summ_vars_plot_box + geom_violin(alpha = 0.5) #+ geom_beeswarm() #careful with swarm
 
 }
+###########################
+###### DATA SAMPLING ######
+###########################
+
+#TESTING SMOTE AS IT PROVED TO BE THE HISHEST SCORING FOR F1-SCORE FOR A DATASET (ABALONE) OF VERY SIMILAR CARACTHERISTICS (IMBALANCE, N CASES, N PARAMS)
+# IDEA DERIVED FROM TAHIR, Muhammad Atif; KITTLER, Josef; YAN, Fei. Inverse random under sampling for class imbalance problem and its application to multi-label classification. Pattern Recognition, 2012, 45.10: 3738-3750.
+
+# prepare for the display of classification performance 
+display <- function(prediction, reference, Hitclass) {
+  cm <- caret::confusionMatrix(data=prediction, reference=reference,
+                               mode = "sens_spec", positive=Hitclass)
+  print(cm$table)
+  data.frame(Accuracy=cm$overall[1], Sensitivity=cm$byClass[1], Specificity=cm$byClass[2],
+             row.names=NULL)
+}
+
+
+
+
+
+#dataset
+table(LDA_VARS_HIT$Hit)
+
+#Now we use sampling algorithms to balance the dataset.
+#The classification performance of Random Forests on four balanced datasets by respectively using these four strategies would be shown below.
+set.seed(2019)
+train_sbc <- SBC(LDA_VARS_HIT, "Hit")
+train_ros <- ROS(LDA_VARS_HIT, "Hit")
+train_rus <- RUS(LDA_VARS_HIT, "Hit")
+train_smote <- SMOTE(LDA_VARS_HIT, "Hit")
+fit_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc)
+fit_ros <- randomForest::randomForest(Hit ~ ., data=train_ros)
+fit_rus <- randomForest::randomForest(Hit ~ ., data=train_rus)
+fit_smote <- randomForest::randomForest(Hit ~ ., data=train_smote)
+pred_class_sbc <- predict(fit_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
+perf_sbc <- display(pred_class_sbc, LDA_VARS_HIT$Hit, "1") #Under-Sampling Based on Clustering (SBC)
+pred_class_ros <- predict(fit_ros, LDA_VARS_HIT, type="response")
+perf_ros <- display(pred_class_ros, LDA_VARS_HIT$Hit, "1")  
+pred_class_rus <- predict(fit_rus, LDA_VARS_HIT, type="response")
+perf_rus <- display(pred_class_rus, LDA_VARS_HIT$Hit, "1")
+pred_class_smote <- predict(fit_smote, LDA_VARS_HIT, type="response")
+perf_smote <- display(pred_class_smote, LDA_VARS_HIT$Hit, "1")
+RandForestPred <- rbind(perf_ros, perf_rus, perf_sbc, perf_smote)
+rownames(RandForestPred) <- c("Balanced by ROS", "Balanced by RUS",
+                      "Balanced by SBC", "Balanced by SMOTE")
+RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
+#IF THIS IS THE CASE, UNDERSAMPLING SHOULD BE USED TO EVALUATE QUALITY
+
+#As we can see, all of these four algorithms helped to improve the performance of random forest more or less. On the premise of ensuring a good accuracy of a classifier, the sensitivity, which is highly related to the minority class that we are more concerned, is improved by our resampling strategies.
+
+# Undersampling involves deleting examples from the majority class, such as randomly or using an algorithm to carefully choose which examples to delete. Popular editing algorithms include the edited nearest neighbors and Tomek links.
+# 
+# Examples of data undersampling methods include:
+#   
+# Random Undersampling
+# Condensed Nearest Neighbor
+# Tomek Links
+# Edited Nearest Neighbors
+# Neighborhood Cleaning Rule
+# One-Sided Selection
+
+##### COST SENSITIVE #####
+# There are many cost-sensitive algorithms to choose from, although it might be practical to test a range of cost-sensitive versions of linear, nonlinear, and ensemble algorithms.
+# 
+# Some examples of machine learning algorithms that can be configured using cost-sensitive training include:
+#   
+#   Logistic Regression
+# Decision Trees
+# Support Vector Machines
+# Artificial Neural Networks
+# Bagged Decision Trees
+# Random Forest
+# Stochastic Gradient Boosting
+
+
+####Hyperparameter Tuning#######
+
+# After spot-checking machine learning algorithms and imbalanced algorithms, you will have some idea of what works and what does not on your specific dataset.
+# 
+# The simplest approach to hyperparameter tuning is to select the top five or 10 algorithms or algorithm combinations that performed well and tune the hyperparameters for each.
+# 
+# There are three popular hyperparameter tuning algorithms that you may choose from:
+#   
+#   Random Search
+# Grid Search
+# Bayesian Optimization
+# 
+# A good default is grid search if you know what hyperparameter values to try, otherwise, random search should be used. Bayesian optimization should be used if possible but can be more challenging to set up and run.
 
 
 ##############################################################################
@@ -543,39 +642,85 @@ plda <- predict(object = lda,
 #ldahist(data = plda$x[,1], g=LDA_VARS_HIT$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
 ## ASSIGN THE PREDICTION TO THE dataframe
 LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
-                                    "PERIOD" = summary_AUTO_NAOmit_transf$PERIOD,
-                                    "pair" = summary_AUTO_NAOmit_transf$pair,
-                                    "int_start_frame "= summary_AUTO_NAOmit_transf$int_start_frame,
-                                    "int_end_frame" = summary_AUTO_NAOmit_transf$int_end_frame,
-                                    LDA_VARS_HIT, 
-                                    "Predicted_Hit" =  plda$class)
+                            "PERIOD" = summary_AUTO_NAOmit_transf$PERIOD,
+                            "pair" = summary_AUTO_NAOmit_transf$pair,
+                            "int_start_frame "= summary_AUTO_NAOmit_transf$int_start_frame,
+                            "int_end_frame" = summary_AUTO_NAOmit_transf$int_end_frame,
+                            LDA_VARS_HIT,
+                            #Quadratic Discriminant analysis on imbalanced dataset
+                            #NOTE: test done on the training dataset
+                            "QDA_pred_Hit" =  plda$class,
+                            #RandomForest analysis on dataset balanced with a variety of over and under sampling techniques
+                            #NOTE: test done on the FULL training dataset, train done on under or over-sampled dataset
+                            "RF_SBC_pred_Hit" = pred_class_sbc, #Under-Sampling Based on Clustering (SBC)
+                            "RF_ROS_pred_Hit" = pred_class_ros, #random over-sampling algorithm (ROS)
+                            "RF_RUS_pred_Hit" = pred_class_rus, #random under-sampling algorithm (RUS)
+                            "RF_SMOTE_pred_Hit" = pred_class_smote #synthetic minority over-sampling technique (SMOTE)
+                            #synthetic minority over-sampling technique-Nominal Continuous (SMOTE-NC)
+                    )
+
+
+
+###############################################
+### kernel discriminant analysis ################
+################################################
+# Sparse KOS requires the construction of a n × n kernel
+# matrix K and is therefore computationally prohibitive
+# for large n cases.
+###TAKES SEVERAL MINUTES TO COMPUTE ON A SMALL DATATEST OF 4 FEATURES AND 179 OBSERVATIONS
+#UNUSABLE.....
+###SelectParams( LDA_VARS, LDA_VARS_HIT$Hit, Sigma = NULL, Gamma = NULL)
+# 
+# SelectParams(Data = Data$TrainData,
+#              Cat = Data$CatTrain)
+# 
+# Predict( Data = Data$TrainData,
+#          Cat = Data$CatTrain)
+# POSSIBILITY OF USING A SIMPLER VERSION? KOS INSTEAD OF sparseKOS? .....
+
+
+
+#########################################################
+#Decision tree (C4.5) is used as the base classifier. Since pruning can reduce the minority class coverage in the decision trees in highly unbalanced data sets [32], [9], all the results reported are without pruning. Laplace smoothing which is often used to smooth the frequency-based estimates in C4.5 is used to estimate probabilities [32]. The WEKA [33] implementation (J48) is used for C4.5.
+########################################################################
+
+
 
 #################################################
-### critical success index (CSI) FOR QDA ########
+### Algorithm quality scores ####################
 #################################################
 
+### critical success index (CSI)
 # # CSI is a verification measure of categorical forecast performance
 # # calculated as CSI= (hits)/(hits + false alarms + misses)
 # # The CSI is not affected by the number of non-event forecasts that verify (correct rejections).
+
+### F1 score
+# # F1 score is a performance metric useful when predicting class labels, where the positive class is more important and FNeg and FPos are equally costly. ###
 
 #convert int_start and int_end back to frames
 LDA_VARS_HIT_PRED$int_start_frame <- as.numeric(LDA_VARS_HIT_PRED$int_start_frame)
 LDA_VARS_HIT_PRED$int_end_frame <- as.numeric(LDA_VARS_HIT_PRED$int_end_frame)
 
 CSI_val <- NULL
-CSI_scores <- NULL
+CSI_scores_PRED_REP_PER <- NULL
+CSI_scores_ALL <- NULL
 CSI_REP_PER_name <- NULL
 
-#create matrix
+F1_val <- NULL
+F1_scores_PRED_REP_PER <- NULL
+F1_scores_ALL <- NULL
+F1_REP_PER_name <- NULL
+
+# test all the predictions frame by frame
+for (PRED_HIT in grep("pred_Hit", names(LDA_VARS_HIT_PRED), value=TRUE)) {
+
+#create matrices for each REP_PER
 for (REPLICATE in c("R3SP","R9SP")) 
 {
   for (PERIOD in c("pre","post"))
     {
-  
-  trimmed_AUTO_pred <- LDA_VARS_HIT_PRED[which(LDA_VARS_HIT_PRED$Predicted_Hit == 1 & LDA_VARS_HIT_PRED$REPLICATE==REPLICATE & LDA_VARS_HIT_PRED$PERIOD==PERIOD),]
-  
-  #assign(paste0("trimmed_AUTO_pred","_", REPLICATE,PERIOD), trimmed_AUTO_pred) 
-  
+
   IF_frames_temp <- get(grep(paste0("IF_frames","_", REPLICATE,PERIOD),ls(),value=TRUE))
   int_mat_manual_temp <- get(grep(paste0("int_mat_manual","_", REPLICATE,PERIOD),ls(),value=TRUE))
   
@@ -584,9 +729,14 @@ for (REPLICATE in c("R3SP","R9SP"))
   rownames(int_mat_auto_trim) <- ids_pairs$pair
   colnames(int_mat_auto_trim) <- c(IF_frames_temp$frame_num)
   
+  #Create subset of data for the matrix construction
+  trimmed_AUTO_pred <- LDA_VARS_HIT_PRED[which(LDA_VARS_HIT_PRED[,PRED_HIT] == 1 & LDA_VARS_HIT_PRED$REPLICATE==REPLICATE & LDA_VARS_HIT_PRED$PERIOD==PERIOD),]
+  trimmed_AUTO_Hit  <- LDA_VARS_HIT[which(LDA_VARS_HIT$Hit == 1 & LDA_VARS_HIT_PRED$REPLICATE==REPLICATE & LDA_VARS_HIT_PRED$PERIOD==PERIOD),]
   
   ## Trimmed Auto
-    if (nrow(trimmed_AUTO_pred)>0) {
+    if (nrow(trimmed_AUTO_Hit)>0) {
+      if (nrow(trimmed_AUTO_pred)>0) {
+        print("pred and Hit >0")
     for (i in 1:nrow(trimmed_AUTO_pred))
       {  
         PAIR <- trimmed_AUTO_pred$pair[i]
@@ -606,27 +756,57 @@ for (REPLICATE in c("R3SP","R9SP"))
     FalseNegative <- sum(int_mat_manual_temp-int_mat_auto_trim ==1)
     
     #calculate frame by frame CSI
-    CSI <- (TruePositive/(TruePositive+FalseNegative+FalsePositive))*100
+    CSI <- (TruePositive/(TruePositive+FalseNegative+FalsePositive))
     CSI_val <- c(CSI_val,CSI)
     
     #F1 Score
     F1 <- TruePositive/(TruePositive+0.5*(FalsePositive+FalseNegative))
+    F1_val <- c(F1_val,F1)
     
     CSI <- NULL
-    }else{ # if trimmed_AUTO_pred contains no Hit 
-      CSI_val <- c(CSI_val,0)
-    }
+    F1 <- NULL
+      }else{print("pred = 0 and Hit >0, prediction score is 0 (no matrix has been built)")
+            CSI_val <- c(CSI_val,0)
+            F1_val <- c(F1_val,0)
+      }
+    }else{ # if trimmed_AUTO_pred = 0 and trimmed_AUTO_Hit= 0
+      print("Hit = 0, there is nothing to predict here")
+      CSI_val <- c(CSI_val,NA)
+      F1_val <- c(F1_val,NA)
+      }
+  
   #assign REP_PER name
+  #CURRENTLY NOT ASSIGNED IN THE RIGHT ORDER!!
   CSI_REP_PER_name <-paste0("CSI_",MAN_int$REPLICATE, "-", MAN_int$PERIOD)
-    }## REPLICATE
+  F1_REP_PER_name <-paste0("F1_",MAN_int$REPLICATE, "-", MAN_int$PERIOD)
+    
+  }## REPLICATE
     }##PERIOD
 #create DF, useful for the summary DF at the end of the loop
-CSI_scores <- data.frame( REP_PER = CSI_REP_PER_name, Freq = CSI_val)
-#calculate overall score
-perc_CSI <- sum(CSI_val)/length(CSI_val)
+CSI_scores_PRED_REP_PER <- data.frame( REP_PER = CSI_REP_PER_name, Freq = CSI_val, PRED_HIT)
+F1_scores_PRED_REP_PER <- data.frame( REP_PER = F1_REP_PER_name, Freq = F1_val, PRED_HIT)
+
+#stack 
+CSI_scores_ALL <- rbind(CSI_scores_ALL,CSI_scores_PRED_REP_PER)
+F1_scores_ALL <- rbind(F1_scores_ALL,F1_scores_PRED_REP_PER)
+
 
 #t(column_to_rownames(CSI_scores,"REP_PER"))
+CSI_val <- NULL
+F1_val <- NULL
+}
 
+
+#calculate overall score
+# do it in a more clever way, eg. using AGGREGATE
+#perc_CSI <- sum(CSI_val,na.rm = T)/length(CSI_val[!is.na(CSI_val)])
+CSI <- setnames(aggregate(CSI_scores_ALL$Freq, list(CSI_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","CSI_score"))
+F1 <- setnames(aggregate(F1_scores_ALL$Freq, list(F1_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","F1_score"))
+
+
+#CAREFUL: SMOTE and ROS report a certain score (i.e. 0.42) and their performance is 100% 
+RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
+#IF THIS IS THE CASE, UNDERSAMPLING SHOULD BE USED TO EVALUATE QUALITY
 
 
 #########################################################

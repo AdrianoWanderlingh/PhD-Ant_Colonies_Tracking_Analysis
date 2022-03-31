@@ -105,6 +105,14 @@ library(CORElearn) # for RELIEF algorithm
 #install.packages("remotes"); remotes::install_github("insilico/STIR")
 library(stir) # calculation of statistical significance of features and adjustment for multiple testing of Relief-based scores
 library(heplots) #Hypotesis testing plots to check Equal Covariance Ellipses in LDA vars assumptions check
+library(devtools)
+#RandForOld <- "https://cran.r-project.org/src/contrib/Archive/randomForest/randomForest_4.6-14.tar.gz"
+#install.packages(RandForOld, repos=NULL, type="source") 
+library(randomForest)
+#devtools::install_github("aflapan/sparseKOS")
+library(sparseKOS) # sparseKOS, unlikely used for issues reported in the TASKs SHEET
+#devtools::install_github("dongyuanwu/RSBID")
+library(RSBID) # Resampling Strategies for Binary Imbalanced Datasets
 
 ###############################################################################
 ###### GLOSSARY ###############################################################
@@ -670,6 +678,9 @@ Grooming_LDA_eachRun  <- data.frame(Loop_ID,CAPSULE_FILE,DT_dist_THRESHOLD, MAX_
                                    TOT_AUTO_int =nrow(summary_AUTO),AUTO_Hit, AUTO_Miss, #TOT and Hit/Miss info on AUTO interactions
                                    t(column_to_rownames(CSI_scores,"REP_PER")),  perc_CSI, #TOT and REP_PER CSI score
                                    stringsAsFactors = F,row.names = NULL)
+#report the CSI score here
+CSI
+
 #stack 
 Grooming_LDA_output   <- rbind(Grooming_LDA_output,     Grooming_LDA_eachRun)
 
