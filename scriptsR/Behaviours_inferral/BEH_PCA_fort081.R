@@ -162,7 +162,7 @@ for (variable in names(summary_AUTO_NAOmit)){
     val <- shapiro.test(summary_AUTO_NAOmit[,variable])
     if (unname(val$p.value)<0.05) {
       print(paste("for [",variable, "] the Shapiro-Wilk Test has p < 0.05, the data is not normal. Transform it.",sep=" "))
-      #scale variable (as reccomended for data prep for LDA in Metabolites 2014, 4, 433-452; doi:10.3390/metabo4020433)
+      #scale and center variable (as reccomended for data prep for LDA in Metabolites 2014, 4, 433-452; doi:10.3390/metabo4020433)
       scaled_VAR <- scale(summary_AUTO_NAOmit[,variable])
       #find the best transformation
       #This function currently estimates the Yeo-Johnson, the Box Cox  (if the data is positive), the log_10(x+a), the square-root (x+a), the arcsinh and the ordered quantile normalization
@@ -299,7 +299,7 @@ RELIEF_selected <- t_sorted_multisurf[which(t_sorted_multisurf$t.pval.adj<0.01),
 summary_LDA_vars_RELIEF <- summary_LDA_vars[, match(c(RELIEF_selected), names(summary_LDA_vars))] 
 #check vars correlation
 results.cor_RELIEF <- cor(summary_LDA_vars_RELIEF) 
-corrplot(results.cor_RELIEF, type="upper", tl.cex= .4,title = "\nresults.cor",)
+#corrplot(results.cor_RELIEF, type="upper", tl.cex= .4,title = "\nresults.cor",)
 
 #add the Hit classes
 summary_LDA_vars_RELIEF_hit <- cbind(summary_LDA_vars_RELIEF,Hit=summary_AUTO_NAOmit_transf$Hit)
@@ -410,13 +410,13 @@ if(LDA_DATA =="RELIEF"){LDA_VARS <- summary_LDA_vars_RELIEF; LDA_VARS_HIT <- sum
 
 ##### Checking Assumption of Equal Variance-Covariance matrices
 #Checking the Assumption of Equal Covariance Ellipse
-heplots::covEllipses(LDA_VARS, 
-                     LDA_VARS_HIT$Hit, 
-                     fill = TRUE, 
-                     pooled = FALSE, 
-                     col = c("blue", "red"), 
-                     variables = c(1:14), 
-                     fill.alpha = 0.05)
+# heplots::covEllipses(LDA_VARS, 
+#                      LDA_VARS_HIT$Hit, 
+#                      fill = TRUE, 
+#                      pooled = FALSE, 
+#                      col = c("blue", "red"), 
+#                      variables = c(1:14), 
+#                      fill.alpha = 0.05)
 #using the BoxM test in order to check our assumption of homogeneity of variance-covariance matrices
 # for p<0.05 there is a problem of heterogeneity of variance-covariance matrices
 boxm <- heplots::boxM(LDA_VARS, LDA_VARS_HIT$Hit)
@@ -430,8 +430,8 @@ Choleski_decomp <- chol(cor(LDA_VARS))
 diag(Choleski_decomp) #looks good
 
 ### Checking Assumption of Normality
-Hit.yes <- subset(LDA_VARS_HIT, Hit == 1) 
-Hit.no <- subset(LDA_VARS_HIT, Hit == 0)
+# Hit.yes <- subset(LDA_VARS_HIT, Hit == 1) 
+# Hit.no <- subset(LDA_VARS_HIT, Hit == 0)
 ## plotting QQplots
 # par(mfrow = c(4, 4)) 
 # for(i in names(LDA_VARS)) { 
@@ -499,7 +499,7 @@ display <- function(prediction, reference, Hitclass) {
   print(cm$table)
   data.frame(Accuracy=cm$overall[1], Sensitivity=cm$byClass[1], Specificity=cm$byClass[2],
              row.names=NULL)
-}
+            }
 
 
 
@@ -508,30 +508,91 @@ display <- function(prediction, reference, Hitclass) {
 #dataset
 table(LDA_VARS_HIT$Hit)
 
-#Now we use sampling algorithms to balance the dataset.
-#The classification performance of Random Forests on four balanced datasets by respectively using these four strategies would be shown below.
+####################################################
+###### CLASSIFIERS ON THE BALANCED DATASET #########
+####################################################
+
+#Now we test several sampling algorithms to balance the dataset.
 set.seed(2019)
-train_sbc <- SBC(LDA_VARS_HIT, "Hit")
-train_ros <- ROS(LDA_VARS_HIT, "Hit")
-train_rus <- RUS(LDA_VARS_HIT, "Hit")
-train_smote <- SMOTE(LDA_VARS_HIT, "Hit")
-fit_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc)
-fit_ros <- randomForest::randomForest(Hit ~ ., data=train_ros)
-fit_rus <- randomForest::randomForest(Hit ~ ., data=train_rus)
-fit_smote <- randomForest::randomForest(Hit ~ ., data=train_smote)
-pred_class_sbc <- predict(fit_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
-perf_sbc <- display(pred_class_sbc, LDA_VARS_HIT$Hit, "1") #Under-Sampling Based on Clustering (SBC)
-pred_class_ros <- predict(fit_ros, LDA_VARS_HIT, type="response")
-perf_ros <- display(pred_class_ros, LDA_VARS_HIT$Hit, "1")  
-pred_class_rus <- predict(fit_rus, LDA_VARS_HIT, type="response")
-perf_rus <- display(pred_class_rus, LDA_VARS_HIT$Hit, "1")
-pred_class_smote <- predict(fit_smote, LDA_VARS_HIT, type="response")
-perf_smote <- display(pred_class_smote, LDA_VARS_HIT$Hit, "1")
-RandForestPred <- rbind(perf_ros, perf_rus, perf_sbc, perf_smote)
+train_sbc   <- SBC(LDA_VARS_HIT,   "Hit") #Under-Sampling Based on Clustering (SBC)
+train_ros   <- ROS(LDA_VARS_HIT,   "Hit") #random over-sampling algorithm (ROS)
+train_rus   <- RUS(LDA_VARS_HIT,   "Hit") #random under-sampling algorithm (RUS)
+train_smote <- SMOTE(LDA_VARS_HIT, "Hit") #synthetic minority over-sampling technique (SMOTE)
+
+
+##############################
+### LDA / QDA ################
+##############################
+
+### Quadratic Discriminant Analysis
+
+#train on the class-balanced dataset
+fit_QDA_sbc <- qda(Hit ~ ., data = train_sbc)
+fit_QDA_ros <- qda(Hit ~ ., data=train_ros)
+fit_QDA_rus <- qda(Hit ~ ., data=train_rus)
+fit_QDA_smote <- qda(Hit ~ ., data=train_smote)
+#predict class on the full dataset
+pred_class_QDA_sbc <- predict(fit_QDA_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
+perf_QDA_sbc <- display(pred_class_QDA_sbc$class, LDA_VARS_HIT$Hit, "1") 
+pred_class_QDA_ros <- predict(fit_QDA_ros, LDA_VARS_HIT, type="response")
+perf_QDA_ros <- display(pred_class_QDA_ros$class, LDA_VARS_HIT$Hit, "1")  
+pred_class_QDA_rus <- predict(fit_QDA_rus, LDA_VARS_HIT, type="response")
+perf_QDA_rus <- display(pred_class_QDA_rus$class, LDA_VARS_HIT$Hit, "1")
+pred_class_QDA_smote <- predict(fit_QDA_smote, LDA_VARS_HIT, type="response")
+perf_QDA_smote <- display(pred_class_QDA_smote$class, LDA_VARS_HIT$Hit, "1")
+QDAPred <- rbind(perf_QDA_ros, perf_QDA_rus, perf_QDA_sbc, perf_QDA_smote)
+rownames(QDAPred) <- c("Balanced by ROS", "Balanced by RUS",
+                              "Balanced by SBC", "Balanced by SMOTE")
+QDAPred
+
+##############################
+### RANDOM FOREST ############
+##############################
+
+#Random forests is an ensemble learning method for classification that operates by constructing a multitude of decision
+#trees at training time. For classification tasks, the output of the random forest is the class selected by most trees.
+# to plot RF: https://rpubs.com/markloessi/498787
+
+####hyperparam tuning
+# RF parameters: 
+# mtry: Number of variables randomly sampled as candidates at each split.
+# ntree: Number of trees to grow.
+
+# Random Search
+# control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
+# set.seed(2019)
+# metric <- "Accuracy"
+# #TEST ON SBC!
+# #rf_random <- train(Hit ~ ., data = train_sbc, method="rf", tuneLength=15, trControl=control)
+# fit_RF_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc, metric=metric, tuneLength=15, trControl=control) #gives similar but different results from the above
+# print(rf_random)
+# plot(rf_random)
+
+##it seems to improve classification with the rf_random file but it is not predictable using "predict"
+# fix it!
+
+#The classification performance of Random Forests on four balanced datasets by respectively using these four strategies would be shown below.
+
+#train on the class-balanced dataset
+fit_RF_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc)
+fit_RF_ros <- randomForest::randomForest(Hit ~ ., data=train_ros)
+fit_RF_rus <- randomForest::randomForest(Hit ~ ., data=train_rus)
+fit_RF_smote <- randomForest::randomForest(Hit ~ ., data=train_smote)
+
+#predict class on the full dataset
+pred_class_RF_sbc <- predict(fit_RF_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
+perf_RF_sbc <- display(pred_class_RF_sbc, LDA_VARS_HIT$Hit, "1")
+pred_class_RF_ros <- predict(fit_RF_ros, LDA_VARS_HIT, type="response")
+perf_RF_ros <- display(pred_class_RF_ros, LDA_VARS_HIT$Hit, "1")  
+pred_class_RF_rus <- predict(fit_RF_rus, LDA_VARS_HIT, type="response")
+perf_RF_rus <- display(pred_class_RF_rus, LDA_VARS_HIT$Hit, "1")
+pred_class_RF_smote <- predict(fit_RF_smote, LDA_VARS_HIT, type="response")
+perf_RF_smote <- display(pred_class_RF_smote, LDA_VARS_HIT$Hit, "1")
+RandForestPred <- rbind(perf_RF_ros, perf_RF_rus, perf_RF_sbc, perf_RF_smote)
 rownames(RandForestPred) <- c("Balanced by ROS", "Balanced by RUS",
                       "Balanced by SBC", "Balanced by SMOTE")
 RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
-#IF THIS IS THE CASE, UNDERSAMPLING SHOULD BE USED TO EVALUATE QUALITY
+#SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
 
 #As we can see, all of these four algorithms helped to improve the performance of random forest more or less. On the premise of ensuring a good accuracy of a classifier, the sensitivity, which is highly related to the minority class that we are more concerned, is improved by our resampling strategies.
 
@@ -546,39 +607,27 @@ RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING 
 # Neighborhood Cleaning Rule
 # One-Sided Selection
 
-##### COST SENSITIVE #####
-# There are many cost-sensitive algorithms to choose from, although it might be practical to test a range of cost-sensitive versions of linear, nonlinear, and ensemble algorithms.
-# 
-# Some examples of machine learning algorithms that can be configured using cost-sensitive training include:
-#   
-#   Logistic Regression
-# Decision Trees
-# Support Vector Machines
-# Artificial Neural Networks
-# Bagged Decision Trees
-# Random Forest
-# Stochastic Gradient Boosting
+
+############ RULE EXTRACTION FOR RF ###################
+# Stable and Interpretable RUle Set for RandomForests,
+
+#data prep for sirus
+#TESTED ONLY ON SBC
+train_sbc$Hit <- as.numeric(as.character(train_sbc$Hit))
 
 
-####Hyperparameter Tuning#######
-
-# After spot-checking machine learning algorithms and imbalanced algorithms, you will have some idea of what works and what does not on your specific dataset.
-# 
-# The simplest approach to hyperparameter tuning is to select the top five or 10 algorithms or algorithm combinations that performed well and tune the hyperparameters for each.
-# 
-# There are three popular hyperparameter tuning algorithms that you may choose from:
-#   
-#   Random Search
-# Grid Search
-# Bayesian Optimization
-# 
-# A good default is grid search if you know what hyperparameter values to try, otherwise, random search should be used. Bayesian optimization should be used if possible but can be more challenging to set up and run.
+## fit SIRUS
+# cross_val_p0 <- sirus.cv(data, y, type = "classif") #takes a while  #Estimate the optimal hyperparameter p0 used to select rules in sirus.fit using cross-validation (Benard et al. 2020, 2021).
+sirus.m <- sirus.fit(train_sbc, train_sbc$Hit, type = "classif") # ,p0= cross_val_p0$p0.stab)
+pred_class_RF_sbc <- sirus.predict(sirus.m, LDA_VARS_HIT)
+sirus.print(sirus.m, digits = 3)
+pred_class_RF_sbc <- predict(fit_RF_sbc, LDA_VARS_HIT, type="response")
+perf_RF_sbc <- display(pred_class_RF_sbc, LDA_VARS_HIT$Hit, "1")
 
 
-##############################################################################
-########## TESTED MODELS #####################################################
-##############################################################################
-
+######################################################
+###### CLASSIFIERS ON THE IMBALANCED DATASET #########
+######################################################
 
 ####################################
 #### LOGISTIC REGRESSION ###########
@@ -619,11 +668,6 @@ table(pred.prob, LDA_VARS_HIT$Hit) #terrible...
 ### LDA / QDA ################
 ##############################
 
-#check if I have more predictor vars than the size of the smallest group
-table(LDA_VARS_HIT$Hit)
-length(LDA_VARS)
-#it is a bit risky as they are very close...
-
 lda <- qda(LDA_VARS_HIT$Hit ~ ., 
            LDA_VARS)
 
@@ -632,7 +676,7 @@ lda <- qda(LDA_VARS_HIT$Hit ~ .,
 
 ## get / compute LDA scores from LDA coefficients / loadings
 
-#PREDICTION SHOULD BE PERFORMED IN THE SECOND HALF OF THE DATASET? (NOT HEREBY ANALYSED)
+#train and prediction on the full, imbalanced, dataset
 plda <- predict(object = lda,
                 newdata = LDA_VARS) #predict(lda_TEST)$x
 
@@ -640,6 +684,7 @@ plda <- predict(object = lda,
 #create a histogram of the discriminant function values
 #par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
 #ldahist(data = plda$x[,1], g=LDA_VARS_HIT$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
+
 ## ASSIGN THE PREDICTION TO THE dataframe
 LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
                             "PERIOD" = summary_AUTO_NAOmit_transf$PERIOD,
@@ -647,19 +692,31 @@ LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
                             "int_start_frame "= summary_AUTO_NAOmit_transf$int_start_frame,
                             "int_end_frame" = summary_AUTO_NAOmit_transf$int_end_frame,
                             LDA_VARS_HIT,
-                            #Quadratic Discriminant analysis on imbalanced dataset
-                            #NOTE: test done on the training dataset
+                            # CLASSIFICATION on the imbalanced dataset
+                            #NOTE: train and predict done on the training dataset
+                            # Quadratic Discriminant analysis
                             "QDA_pred_Hit" =  plda$class,
-                            #RandomForest analysis on dataset balanced with a variety of over and under sampling techniques
+                            # CLASSIFICATION on dataset balanced with a variety of over and under sampling techniques
+                            ## QDA
+                            "QDA_SBC_pred_Hit" = pred_class_QDA_sbc$class, #Under-Sampling Based on Clustering (SBC)
+                            "QDA_ROS_pred_Hit" = pred_class_QDA_ros$class, #random over-sampling algorithm (ROS)
+                            "QDA_RUS_pred_Hit" = pred_class_QDA_rus$class, #random under-sampling algorithm (RUS)
+                            "QDA_SMOTE_pred_Hit" = pred_class_QDA_smote$class, #synthetic minority over-sampling technique (SMOTE)
+                            # pred_class_QDA_sbc$class
+                            ## RandomForest 
                             #NOTE: test done on the FULL training dataset, train done on under or over-sampled dataset
-                            "RF_SBC_pred_Hit" = pred_class_sbc, #Under-Sampling Based on Clustering (SBC)
-                            "RF_ROS_pred_Hit" = pred_class_ros, #random over-sampling algorithm (ROS)
-                            "RF_RUS_pred_Hit" = pred_class_rus, #random under-sampling algorithm (RUS)
-                            "RF_SMOTE_pred_Hit" = pred_class_smote #synthetic minority over-sampling technique (SMOTE)
+                            "RF_SBC_pred_Hit" = pred_class_RF_sbc, #Under-Sampling Based on Clustering (SBC)
+                            "RF_ROS_pred_Hit" = pred_class_RF_ros, #random over-sampling algorithm (ROS)
+                            "RF_RUS_pred_Hit" = pred_class_RF_rus, #random under-sampling algorithm (RUS)
+                            "RF_SMOTE_pred_Hit" = pred_class_RF_smote #synthetic minority over-sampling technique (SMOTE)
                             #synthetic minority over-sampling technique-Nominal Continuous (SMOTE-NC)
                     )
 
+##############################
+### RANDOM FOREST ############
+##############################
 
+# not included: when RF is trained and tested on the same dataset, it shows always 100% accuracy
 
 ###############################################
 ### kernel discriminant analysis ################
@@ -678,12 +735,9 @@ LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
 #          Cat = Data$CatTrain)
 # POSSIBILITY OF USING A SIMPLER VERSION? KOS INSTEAD OF sparseKOS? .....
 
-
-
 #########################################################
 #Decision tree (C4.5) is used as the base classifier. Since pruning can reduce the minority class coverage in the decision trees in highly unbalanced data sets [32], [9], all the results reported are without pruning. Laplace smoothing which is often used to smooth the frequency-based estimates in C4.5 is used to estimate probabilities [32]. The WEKA [33] implementation (J48) is used for C4.5.
 ########################################################################
-
 
 
 #################################################

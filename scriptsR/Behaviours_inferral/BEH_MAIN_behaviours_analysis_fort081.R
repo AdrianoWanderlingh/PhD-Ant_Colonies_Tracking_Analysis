@@ -113,6 +113,8 @@ library(randomForest)
 library(sparseKOS) # sparseKOS, unlikely used for issues reported in the TASKs SHEET
 #devtools::install_github("dongyuanwu/RSBID")
 library(RSBID) # Resampling Strategies for Binary Imbalanced Datasets
+library(caret) #to tune RandomForest Hyperparameters
+library(sirus) # Stable and Interpretable RUle Set for RandomForests
 
 ###############################################################################
 ###### GLOSSARY ###############################################################
