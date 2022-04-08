@@ -678,8 +678,22 @@ MAN_int_Count         <- data.frame( REP_PER =paste0("MAN_int_",MAN_int$REPLICAT
 Grooming_LDA_eachRun  <- data.frame(Loop_ID,CAPSULE_FILE,DT_dist_THRESHOLD, MAX_INTERACTION_GAP,DISAGREEMENT_THRESH, #looping Variables
                                    t(column_to_rownames(MAN_int_Count,"REP_PER")), TOT_MAN_int = nrow(summary_MANUAL), #TOT and REP_PER info on MANUAL interactions
                                    TOT_AUTO_int =nrow(summary_AUTO),AUTO_Hit, AUTO_Miss, #TOT and Hit/Miss info on AUTO interactions
-                                   t(column_to_rownames(CSI_scores,"REP_PER")),  perc_CSI, #TOT and REP_PER CSI score
+                                   #t(column_to_rownames(CSI_scores,"REP_PER")),  perc_CSI, #TOT and REP_PER CSI score
+                                   t(CSI),
+                                   #CSI$Classifier = CSI$CSI_score, ###FIXXX
                                    stringsAsFactors = F,row.names = NULL)
+
+#save the SIRUS rules as text file (see BEH_PCA_fort081.R)
+#output a text file from a list of objects
+fnlist <- function(x, fil){ z <- deparse(substitute(x))
+cat(z, "\n", file=fil)
+nams=names(x) 
+for (i in seq_along(x) ){ cat(nams[i], "\t",  x[[i]], "\n", 
+                              file=fil, append=TRUE) }
+}
+fnlist(SirusRules, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Rules_Loop_ID_",Loop_ID,".txt"))
+
+
 #report the CSI score here
 CSI
 
@@ -705,7 +719,11 @@ time.taken.loop <- end.loop.time - start.loop.time
 cat(paste0("**LOOP COMPLETED**" ,
            "\n\nNotes: \n -Activate outer loop with all varying vars
                        \n -Save all the plots per loop in a dedicated folder named as the Loop_ID
-                       \n -Save in Loop_ID the output for all the main components for further tests (Decision Trees,Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)"
+                       \n -Save in Loop_ID the output for all the main components for further tests (Decision Trees,Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)
+                       \n - #CAREFUL: SMOTE and ROS performance is 100% 
+# RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
+# #SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
+"
 ))
 time.taken.loop
 

@@ -513,7 +513,6 @@ table(LDA_VARS_HIT$Hit)
 ####################################################
 
 #Now we test several sampling algorithms to balance the dataset.
-set.seed(2019)
 train_sbc   <- SBC(LDA_VARS_HIT,   "Hit") #Under-Sampling Based on Clustering (SBC)
 train_ros   <- ROS(LDA_VARS_HIT,   "Hit") #random over-sampling algorithm (ROS)
 train_rus   <- RUS(LDA_VARS_HIT,   "Hit") #random under-sampling algorithm (RUS)
@@ -533,17 +532,18 @@ fit_QDA_rus <- qda(Hit ~ ., data=train_rus)
 fit_QDA_smote <- qda(Hit ~ ., data=train_smote)
 #predict class on the full dataset
 pred_class_QDA_sbc <- predict(fit_QDA_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
-perf_QDA_sbc <- display(pred_class_QDA_sbc$class, LDA_VARS_HIT$Hit, "1") 
 pred_class_QDA_ros <- predict(fit_QDA_ros, LDA_VARS_HIT, type="response")
-perf_QDA_ros <- display(pred_class_QDA_ros$class, LDA_VARS_HIT$Hit, "1")  
 pred_class_QDA_rus <- predict(fit_QDA_rus, LDA_VARS_HIT, type="response")
-perf_QDA_rus <- display(pred_class_QDA_rus$class, LDA_VARS_HIT$Hit, "1")
 pred_class_QDA_smote <- predict(fit_QDA_smote, LDA_VARS_HIT, type="response")
-perf_QDA_smote <- display(pred_class_QDA_smote$class, LDA_VARS_HIT$Hit, "1")
-QDAPred <- rbind(perf_QDA_ros, perf_QDA_rus, perf_QDA_sbc, perf_QDA_smote)
-rownames(QDAPred) <- c("Balanced by ROS", "Balanced by RUS",
-                              "Balanced by SBC", "Balanced by SMOTE")
-QDAPred
+# #check performance 
+# perf_QDA_sbc <- display(pred_class_QDA_sbc$class, LDA_VARS_HIT$Hit, "1") 
+# perf_QDA_ros <- display(pred_class_QDA_ros$class, LDA_VARS_HIT$Hit, "1")  
+# perf_QDA_rus <- display(pred_class_QDA_rus$class, LDA_VARS_HIT$Hit, "1")
+# perf_QDA_smote <- display(pred_class_QDA_smote$class, LDA_VARS_HIT$Hit, "1")
+# QDAPred <- rbind(perf_QDA_ros, perf_QDA_rus, perf_QDA_sbc, perf_QDA_smote)
+# rownames(QDAPred) <- c("Balanced by ROS", "Balanced by RUS",
+#                               "Balanced by SBC", "Balanced by SMOTE")
+# QDAPred
 
 ##############################
 ### RANDOM FOREST ############
@@ -553,76 +553,134 @@ QDAPred
 #trees at training time. For classification tasks, the output of the random forest is the class selected by most trees.
 # to plot RF: https://rpubs.com/markloessi/498787
 
-####hyperparam tuning
-# RF parameters: 
-# mtry: Number of variables randomly sampled as candidates at each split.
-# ntree: Number of trees to grow.
+#### hyperparam tuning
+# # NOT USED, doesn't seem to bring significant improvements to the classification
+# # RF parameters: 
+# # mtry: Number of variables randomly sampled as candidates at each split.
+# #test with rus here:
+# mtry_rus<- tuneRF(train_rus[1:(length(train_rus)-1)],train_rus$Hit, ntreeTry=500) # The trace specifies whether to print the progress of the search
+#                #, trace=TRUE, plot=TRUE) #The plot specifies whether to plot the OOB error as function of mtry
+# best.m <- mtry_rus[mtry_rus[, 2] == min(mtry_rus[, 2]), 1]
+# print(best.m)
+# print(best.m[1]) #first solution
+# 
+# fit_RF_rus <-randomForest(Hit~.,data=train_rus, mtry=best.m[1])
+# print(fit_RF_smote)
 
-# Random Search
-# control <- trainControl(method="repeatedcv", number=10, repeats=3, search="random")
-# set.seed(2019)
-# metric <- "Accuracy"
-# #TEST ON SBC!
-# #rf_random <- train(Hit ~ ., data = train_sbc, method="rf", tuneLength=15, trControl=control)
-# fit_RF_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc, metric=metric, tuneLength=15, trControl=control) #gives similar but different results from the above
-# print(rf_random)
-# plot(rf_random)
-
-##it seems to improve classification with the rf_random file but it is not predictable using "predict"
-# fix it!
-
-#The classification performance of Random Forests on four balanced datasets by respectively using these four strategies would be shown below.
+#### hyperparam tuning: Random Search
+# you can use the trainControl function to specify a number of parameters (including sampling parameters) in your model. 
+#The object that is outputted from trainControl will be provided as an argument for RF train
+control <- trainControl(method="repeatedcv", number=10, repeats=10, search="random") # Repeated K Fold Cross-Validation
 
 #train on the class-balanced dataset
-fit_RF_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc)
-fit_RF_ros <- randomForest::randomForest(Hit ~ ., data=train_ros)
-fit_RF_rus <- randomForest::randomForest(Hit ~ ., data=train_rus)
-fit_RF_smote <- randomForest::randomForest(Hit ~ ., data=train_smote)
+fit_RF_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc, tuneLength=20, trControl=control)
+fit_RF_ros <- randomForest::randomForest(Hit ~ ., data=train_ros, tuneLength=20, trControl=control)
+fit_RF_rus <- randomForest::randomForest(Hit ~ ., data=train_rus, tuneLength=20, trControl=control)
+fit_RF_smote <- randomForest::randomForest(Hit ~ ., data=train_smote, tuneLength=20, trControl=control)
+#tuneLength : It allows system to tune algorithm automatically. It indicates the number of different values to try for each tunning parameter.
+#trControl : looks for the random search parameters established by caret::trainControl
+#plot(fit_RF_sbc)
 
 #predict class on the full dataset
 pred_class_RF_sbc <- predict(fit_RF_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
-perf_RF_sbc <- display(pred_class_RF_sbc, LDA_VARS_HIT$Hit, "1")
 pred_class_RF_ros <- predict(fit_RF_ros, LDA_VARS_HIT, type="response")
 perf_RF_ros <- display(pred_class_RF_ros, LDA_VARS_HIT$Hit, "1")  
 pred_class_RF_rus <- predict(fit_RF_rus, LDA_VARS_HIT, type="response")
-perf_RF_rus <- display(pred_class_RF_rus, LDA_VARS_HIT$Hit, "1")
 pred_class_RF_smote <- predict(fit_RF_smote, LDA_VARS_HIT, type="response")
-perf_RF_smote <- display(pred_class_RF_smote, LDA_VARS_HIT$Hit, "1")
-RandForestPred <- rbind(perf_RF_ros, perf_RF_rus, perf_RF_sbc, perf_RF_smote)
-rownames(RandForestPred) <- c("Balanced by ROS", "Balanced by RUS",
-                      "Balanced by SBC", "Balanced by SMOTE")
-RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
-#SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
+# #check performance 
+# perf_RF_sbc <- display(pred_class_RF_sbc, LDA_VARS_HIT$Hit, "1")
+# perf_RF_ros <- display(pred_class_RF_ros, LDA_VARS_HIT$Hit, "1")  
+# perf_RF_rus <- display(pred_class_RF_rus, LDA_VARS_HIT$Hit, "1")
+# perf_RF_smote <- display(pred_class_RF_smote, LDA_VARS_HIT$Hit, "1")
+# RandForestPred <- rbind(perf_RF_ros, perf_RF_rus, perf_RF_sbc, perf_RF_smote)
+# rownames(RandForestPred) <- c("Balanced by ROS", "Balanced by RUS",
+#                       "Balanced by SBC", "Balanced by SMOTE")
+# RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
+# #SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
 
 #As we can see, all of these four algorithms helped to improve the performance of random forest more or less. On the premise of ensuring a good accuracy of a classifier, the sensitivity, which is highly related to the minority class that we are more concerned, is improved by our resampling strategies.
 
-# Undersampling involves deleting examples from the majority class, such as randomly or using an algorithm to carefully choose which examples to delete. Popular editing algorithms include the edited nearest neighbors and Tomek links.
-# 
-# Examples of data undersampling methods include:
-#   
-# Random Undersampling
-# Condensed Nearest Neighbor
-# Tomek Links
-# Edited Nearest Neighbors
-# Neighborhood Cleaning Rule
-# One-Sided Selection
+## Evaluate variable importance
+# importance(fit_RF_smote)
+# varImpPlot(fit_RF_smote)
 
 
 ############ RULE EXTRACTION FOR RF ###################
 # Stable and Interpretable RUle Set for RandomForests,
+# Should output an easily interpretable ruleset for classification of a RandomForest algorithm
+# compared to the RandomForest output, the SIRUS rule selection is more stable with respect to data perturbation.
+# (Benard et al. 2021)
 
-#data prep for sirus
-#TESTED ONLY ON SBC
-train_sbc$Hit <- as.numeric(as.character(train_sbc$Hit))
+train_sbc$Hit   <- as.numeric(as.character(train_sbc$Hit))
+train_ros$Hit   <- as.numeric(as.character(train_ros$Hit))
+train_rus$Hit   <- as.numeric(as.character(train_rus$Hit))
+train_smote$Hit <- as.numeric(as.character(train_smote$Hit))
 
+# train SIRUS on the class-balanced dataset
+#cross_val_p0 <- sirus.cv(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif") #takes a while  #Estimate the optimal hyperparameter p0 used to select rules in sirus.fit using cross-validation (Benard et al. 2020, 2021).
+fit_RFsirus_sbc   <- sirus.fit(train_sbc[1:(length(train_sbc)-1)], train_sbc$Hit, type = "classif")  # ,p0= cross_val_p0$p0.stab)
+fit_RFsirus_ros   <- sirus.fit(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif") 
+fit_RFsirus_rus   <- sirus.fit(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif") 
+fit_RFsirus_smote <- sirus.fit(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif")
 
-## fit SIRUS
-# cross_val_p0 <- sirus.cv(data, y, type = "classif") #takes a while  #Estimate the optimal hyperparameter p0 used to select rules in sirus.fit using cross-validation (Benard et al. 2020, 2021).
-sirus.m <- sirus.fit(train_sbc, train_sbc$Hit, type = "classif") # ,p0= cross_val_p0$p0.stab)
-pred_class_RF_sbc <- sirus.predict(sirus.m, LDA_VARS_HIT)
-sirus.print(sirus.m, digits = 3)
-pred_class_RF_sbc <- predict(fit_RF_sbc, LDA_VARS_HIT, type="response")
-perf_RF_sbc <- display(pred_class_RF_sbc, LDA_VARS_HIT$Hit, "1")
+#predict class on the full dataset
+class_probs_RFsirus_sbc     <- sirus.predict(fit_RFsirus_sbc, LDA_VARS)
+class_probs_RFsirus_ros     <- sirus.predict(fit_RFsirus_ros, LDA_VARS)
+class_probs_RFsirus_rus     <- sirus.predict(fit_RFsirus_rus, LDA_VARS)
+class_probs_RFsirus_smote   <- sirus.predict(fit_RFsirus_smote, LDA_VARS)
+
+#ASSIGN CLASS (mimick the output of predict(fit_RF_sbc, LDA_VARS_HIT, type="response"))
+#create empty vector
+pred_class_RFsirus_sbc <- vector(mode="numeric", length=length(class_probs_RFsirus_sbc))
+pred_class_RFsirus_ros <- vector(mode="numeric", length=length(class_probs_RFsirus_ros))
+pred_class_RFsirus_rus <- vector(mode="numeric", length=length(class_probs_RFsirus_rus))
+pred_class_RFsirus_smote <- vector(mode="numeric", length=length(class_probs_RFsirus_smote))
+#assign 1 when the class probability is bigger than the proportion of the minority class
+pred_class_RFsirus_sbc <- replace(pred_class_RFsirus_sbc, which(class_probs_RFsirus_sbc>fit_RFsirus_sbc$mean), 1)
+pred_class_RFsirus_ros <- replace(pred_class_RFsirus_ros, which(class_probs_RFsirus_ros>fit_RFsirus_ros$mean), 1)
+pred_class_RFsirus_rus <- replace(pred_class_RFsirus_rus, which(class_probs_RFsirus_rus>fit_RFsirus_rus$mean), 1)
+pred_class_RFsirus_smote <- replace(pred_class_RFsirus_smote, which(class_probs_RFsirus_smote>fit_RFsirus_smote$mean), 1)
+
+# table(LDA_VARS_HIT$Hit)
+# table(pred_class_RFsirus_sbc)
+
+pred_class_RFsirus_sbc <- as.factor(pred_class_RFsirus_sbc)
+pred_class_RFsirus_ros <- as.factor(pred_class_RFsirus_ros)
+pred_class_RFsirus_rus <- as.factor(pred_class_RFsirus_rus)
+pred_class_RFsirus_smote <- as.factor(pred_class_RFsirus_smote)
+
+#perf_class_RFsirus_sbc <- display(pred_class_RFsirus_sbc, LDA_VARS_HIT$Hit, "1")
+
+#print the rule set (saved at the bottom of MAIN)
+SirusRules <- list(SIRUS_rules_sbc =sirus.print(fit_RFsirus_sbc, digits = 5),
+              SIRUS_rules_ros =sirus.print(fit_RFsirus_ros, digits = 5),
+              SIRUS_rules_rus =sirus.print(fit_RFsirus_rus, digits = 5),
+              SIRUS_rules_smote =sirus.print(fit_RFsirus_smote, digits = 5))
+
+#return to factor after SIRUS
+train_sbc$Hit <- as.factor(train_sbc$Hit)
+train_ros$Hit <- as.factor(train_ros$Hit)
+train_rus$Hit <- as.factor(train_rus$Hit)
+train_smote$Hit <- as.factor(train_smote$Hit)
+
+##########################################
+make sure output works correctly with the new implementation of CSI and F1
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+##
+#
+#
+#
+#
 
 
 ######################################################
@@ -685,33 +743,6 @@ plda <- predict(object = lda,
 #par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
 #ldahist(data = plda$x[,1], g=LDA_VARS_HIT$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
 
-## ASSIGN THE PREDICTION TO THE dataframe
-LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
-                            "PERIOD" = summary_AUTO_NAOmit_transf$PERIOD,
-                            "pair" = summary_AUTO_NAOmit_transf$pair,
-                            "int_start_frame "= summary_AUTO_NAOmit_transf$int_start_frame,
-                            "int_end_frame" = summary_AUTO_NAOmit_transf$int_end_frame,
-                            LDA_VARS_HIT,
-                            # CLASSIFICATION on the imbalanced dataset
-                            #NOTE: train and predict done on the training dataset
-                            # Quadratic Discriminant analysis
-                            "QDA_pred_Hit" =  plda$class,
-                            # CLASSIFICATION on dataset balanced with a variety of over and under sampling techniques
-                            ## QDA
-                            "QDA_SBC_pred_Hit" = pred_class_QDA_sbc$class, #Under-Sampling Based on Clustering (SBC)
-                            "QDA_ROS_pred_Hit" = pred_class_QDA_ros$class, #random over-sampling algorithm (ROS)
-                            "QDA_RUS_pred_Hit" = pred_class_QDA_rus$class, #random under-sampling algorithm (RUS)
-                            "QDA_SMOTE_pred_Hit" = pred_class_QDA_smote$class, #synthetic minority over-sampling technique (SMOTE)
-                            # pred_class_QDA_sbc$class
-                            ## RandomForest 
-                            #NOTE: test done on the FULL training dataset, train done on under or over-sampled dataset
-                            "RF_SBC_pred_Hit" = pred_class_RF_sbc, #Under-Sampling Based on Clustering (SBC)
-                            "RF_ROS_pred_Hit" = pred_class_RF_ros, #random over-sampling algorithm (ROS)
-                            "RF_RUS_pred_Hit" = pred_class_RF_rus, #random under-sampling algorithm (RUS)
-                            "RF_SMOTE_pred_Hit" = pred_class_RF_smote #synthetic minority over-sampling technique (SMOTE)
-                            #synthetic minority over-sampling technique-Nominal Continuous (SMOTE-NC)
-                    )
-
 ##############################
 ### RANDOM FOREST ############
 ##############################
@@ -735,9 +766,37 @@ LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
 #          Cat = Data$CatTrain)
 # POSSIBILITY OF USING A SIMPLER VERSION? KOS INSTEAD OF sparseKOS? .....
 
-#########################################################
-#Decision tree (C4.5) is used as the base classifier. Since pruning can reduce the minority class coverage in the decision trees in highly unbalanced data sets [32], [9], all the results reported are without pruning. Laplace smoothing which is often used to smooth the frequency-based estimates in C4.5 is used to estimate probabilities [32]. The WEKA [33] implementation (J48) is used for C4.5.
-########################################################################
+
+######## ASSIGN THE PREDICTIONS TO THE dataframe #################
+LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
+                            "PERIOD" = summary_AUTO_NAOmit_transf$PERIOD,
+                            "pair" = summary_AUTO_NAOmit_transf$pair,
+                            "int_start_frame "= summary_AUTO_NAOmit_transf$int_start_frame,
+                            "int_end_frame" = summary_AUTO_NAOmit_transf$int_end_frame,
+                            LDA_VARS_HIT,
+                            # CLASSIFICATION on the imbalanced dataset
+                            #NOTE: train and predict done on the training dataset
+                            # Quadratic Discriminant analysis
+                            "QDA_pred_Hit" =  plda$class,
+                            # CLASSIFICATION on dataset balanced with a variety of over and under sampling techniques
+                            ## QDA
+                            "QDA_SBC_pred_Hit" = pred_class_QDA_sbc$class, #Under-Sampling Based on Clustering (SBC)
+                            "QDA_ROS_pred_Hit" = pred_class_QDA_ros$class, #random over-sampling algorithm (ROS)
+                            "QDA_RUS_pred_Hit" = pred_class_QDA_rus$class, #random under-sampling algorithm (RUS)
+                            "QDA_SMOTE_pred_Hit" = pred_class_QDA_smote$class, #synthetic minority over-sampling technique (SMOTE)
+                            # pred_class_QDA_sbc$class
+                            ## RandomForest 
+                            #NOTE: test done on the FULL training dataset, train done on under or over-sampled dataset
+                            "RF_SBC_pred_Hit" = pred_class_RF_sbc, #Under-Sampling Based on Clustering (SBC)
+                            "RF_ROS_pred_Hit" = pred_class_RF_ros, #random over-sampling algorithm (ROS)
+                            "RF_RUS_pred_Hit" = pred_class_RF_rus, #random under-sampling algorithm (RUS)
+                            "RF_SMOTE_pred_Hit" = pred_class_RF_smote, #synthetic minority over-sampling technique (SMOTE)
+                            ## Sirus RandomForest
+                            "RFsirus_SBC_pred_Hit" = pred_class_RFsirus_sbc, #Under-Sampling Based on Clustering (SBC)
+                            "RFsirus_ROS_pred_Hit" = pred_class_RFsirus_ros, #random over-sampling algorithm (ROS)
+                            "RFsirus_RUS_pred_Hit" = pred_class_RFsirus_rus, #random under-sampling algorithm (RUS)
+                            "RFsirus_SMOTE_pred_Hit" = pred_class_RFsirus_smote #synthetic minority over-sampling technique (SMOTE)
+)
 
 
 #################################################
@@ -857,25 +916,8 @@ F1_val <- NULL
 CSI <- setnames(aggregate(CSI_scores_ALL$Freq, list(CSI_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","CSI_score"))
 F1 <- setnames(aggregate(F1_scores_ALL$Freq, list(F1_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","F1_score"))
 
-
-#CAREFUL: SMOTE and ROS report a certain score (i.e. 0.42) and their performance is 100% 
-RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
-#IF THIS IS THE CASE, UNDERSAMPLING SHOULD BE USED TO EVALUATE QUALITY
-
-
-#########################################################
-### CURING IMBALANCE ###################################
-########################################################
-
-# USE THE TECHNIQUE REPORTED IN Uma R. Salunkhe and Suresh N. Mali / Procedia Computer Science 85 (2016) 725 – 732
-# "Classifier Ensemble Design for Imbalanced Data Classification: A Hybrid Approach"
-
-#AND THIS
-# https://machinelearningmastery.com/framework-for-imbalanced-classification-projects/
-
-
-
-
+tCSI <- t(CSI)
+#FIX
 
 
 
