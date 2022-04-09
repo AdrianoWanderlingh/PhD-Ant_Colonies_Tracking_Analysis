@@ -1,5 +1,5 @@
 ##########################################################################################
-############## BEH DISCRIMINANT ANALYSIS #################################################
+############## BEH CLASSIFICATION ANALYSIS #################################################
 ##########################################################################################
 
 #script dependant on BEH_MAIN_behaviours_analysis_fort081.R
@@ -8,11 +8,18 @@
 # https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
 
 
-print(paste("PERFORM LDA ",unique(interaction_MANUAL$PERIOD), unique(interaction_MANUAL$REPLICATE)))
+print(paste("PERFORM CLASSIFICATION for the Loop_ID",Loop_ID))
 
 # FORECAST VERIFICATION
 # https://www.swpc.noaa.gov/sites/default/files/images/u30/Forecast%20Verification%20Glossary.pdf
 # https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+
+##########################################################################################
+############## LDA ASSUMPTIONS ANALYSIS ##################################################
+##########################################################################################
+ 
+# The script starts with the assumptions checking for the LDA/QDA. Data are checked and transformed accordingly.
+# the transformed data are later on used to classify using RandomForest algorithms
 
 cat(
 "
@@ -96,7 +103,6 @@ results.cor <- cor(summary_AUTO_vars_NAOmit)
 ######### MISSING CASES ###############################
 #######################################################
 
-#### ISSUEEE
 #LOTS of missing values affecting the analysis
 
 #summary_LDA_vars <- summary_AUTO_vars[, -match(c("REPLICATE", "PERIOD","INT","ACT","REC","pair","int_start_frame","int_end_frame","disagreement","Hit"), names(summary_AUTO_transf))] 
@@ -115,10 +121,9 @@ propNAs_byvar <- round((sapply(summary_AUTO_vars, function(x) sum(is.na(x)))/nro
 prop_Na_row <- (apply(summary_AUTO_vars, 1, function(x) sum(is.na(x)))/ncol(summary_AUTO_vars))*100
 prop_Na_row <- data.frame(prop_missing=sort(prop_Na_row, decreasing=TRUE))
 propNAs_byrow_25perc <- ((length(prop_Na_row[which(prop_Na_row>25),]))/nrow(summary_AUTO_vars))*100 #show all rows with values over 25% missing
-hist(prop_Na_row$prop_missing) #+ abline(v=20, col="blue")
+#hist(prop_Na_row$prop_missing) #+ abline(v=20, col="blue")
 #summary of Nas distribution
 cat("prop of NAs over total in %",propNAs_total, "\n\nProp missing by variable \n",propNAs_byvar,"\n\nprop of rows with more than 25% missing",propNAs_byrow_25perc)
-
 
 ### NAs by class
 Hit_FULL.yes <- subset(summary_AUTO, Hit == 1)
@@ -324,10 +329,10 @@ summary_LDA_vars_RELIEF_hit <- cbind(summary_LDA_vars_RELIEF,Hit=summary_AUTO_NA
 # res.pca1 <- PCA(res.comp$completeObs)
 # 
 ## 2. PCA on the base data for LDA_VARS_trim
-RES.PCA <- PCA(summary_LDA_vars, scale.unit = FALSE) #scaled when normalised
+#RES.PCA <- PCA(summary_LDA_vars, scale.unit = FALSE) #scaled when normalised
 
 #with relief selected features
-RES.PCA <- PCA(results.cor_RELIEF, scale.unit = FALSE) #scaled when normalised
+#RES.PCA <- PCA(results.cor_RELIEF, scale.unit = FALSE) #scaled when normalised
 
 
 # #for (RES.PCA in c(res.pca1,res.pca2)) {
@@ -501,10 +506,6 @@ display <- function(prediction, reference, Hitclass) {
              row.names=NULL)
             }
 
-
-
-
-
 #dataset
 table(LDA_VARS_HIT$Hit)
 
@@ -640,6 +641,8 @@ pred_class_RFsirus_sbc <- replace(pred_class_RFsirus_sbc, which(class_probs_RFsi
 pred_class_RFsirus_ros <- replace(pred_class_RFsirus_ros, which(class_probs_RFsirus_ros>fit_RFsirus_ros$mean), 1)
 pred_class_RFsirus_rus <- replace(pred_class_RFsirus_rus, which(class_probs_RFsirus_rus>fit_RFsirus_rus$mean), 1)
 pred_class_RFsirus_smote <- replace(pred_class_RFsirus_smote, which(class_probs_RFsirus_smote>fit_RFsirus_smote$mean), 1)
+#ERROR? when looking at the CSI and F1 scores, it seems like the prediction score is very low
+# this may be due to the pred_class_RF done in the wrong way? wrong mean probability used?
 
 # table(LDA_VARS_HIT$Hit)
 # table(pred_class_RFsirus_sbc)
@@ -663,26 +666,6 @@ train_ros$Hit <- as.factor(train_ros$Hit)
 train_rus$Hit <- as.factor(train_rus$Hit)
 train_smote$Hit <- as.factor(train_smote$Hit)
 
-##########################################
-make sure output works correctly with the new implementation of CSI and F1
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-#
-##
-#
-#
-#
-#
-
-
 ######################################################
 ###### CLASSIFIERS ON THE IMBALANCED DATASET #########
 ######################################################
@@ -702,7 +685,6 @@ relevant.x <- names(toselect.x)[toselect.x == TRUE]
 sig.formula <- as.formula(paste("LDA_VARS_HIT$Hit ~",paste(relevant.x, collapse= "+"))) #sig.formula <- as.formula(paste("y ~",relevant.x))
 sig.terms <- paste(relevant.x, collapse= "+") #sig.formula <- as.formula(paste("y ~",relevant.x))
 
-
 #Update model with just the significant variables
 model2 <- glm(formula=sig.formula,data=LDA_VARS,family=binomial)
 
@@ -721,7 +703,6 @@ table(pred.prob, LDA_VARS_HIT$Hit) #terrible...
 # estimators are almost as good as the full-data estimator.
 #see WANG, HaiYing. Logistic regression for massive data with rare events. In: International Conference on Machine Learning. PMLR, 2020. p. 9829-9836.
 
-
 ##############################
 ### LDA / QDA ################
 ##############################
@@ -737,7 +718,6 @@ lda <- qda(LDA_VARS_HIT$Hit ~ .,
 #train and prediction on the full, imbalanced, dataset
 plda <- predict(object = lda,
                 newdata = LDA_VARS) #predict(lda_TEST)$x
-
 
 #create a histogram of the discriminant function values
 #par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
@@ -765,7 +745,6 @@ plda <- predict(object = lda,
 # Predict( Data = Data$TrainData,
 #          Cat = Data$CatTrain)
 # POSSIBILITY OF USING A SIMPLER VERSION? KOS INSTEAD OF sparseKOS? .....
-
 
 ######## ASSIGN THE PREDICTIONS TO THE dataframe #################
 LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
@@ -916,15 +895,21 @@ F1_val <- NULL
 CSI <- setnames(aggregate(CSI_scores_ALL$Freq, list(CSI_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","CSI_score"))
 F1 <- setnames(aggregate(F1_scores_ALL$Freq, list(F1_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","F1_score"))
 
-tCSI <- t(CSI)
-#FIX
+CSI$CSI_score <- round(CSI$CSI_score,3)
+F1$F1_score <- round(F1$F1_score,3)
+
+#transpose to incorporate in the final output and rename the columns with the quality metric name
+tCSI <- setNames(data.frame(t(CSI[,-1])), CSI[,1])
+names(tCSI) <- gsub(x = names(tCSI), pattern = "pred_Hit", replacement = "CSI")  
+tF1 <- setNames(data.frame(t(F1[,-1])), F1[,1])
+names(tF1) <- gsub(x = names(tF1), pattern = "pred_Hit", replacement = "F1")  
+
 
 
 
 ##########################################################################
 ##########################################################################
 ##### EXTRA STUFF FOR PCA AND LDAs #######################################
-
 
 ## Ongoing work:
 
@@ -962,8 +947,6 @@ cat(paste(" from https://en.wikipedia.org/wiki/Linear_discriminant_analysis#LDA_
 #        y = paste("PC2 (", percent(prop.RES.PCA[2]), ")", sep=""))
 # 
 # grid.arrange(p1, p2)
-
-
 
 
 ###EXTRA #############################################

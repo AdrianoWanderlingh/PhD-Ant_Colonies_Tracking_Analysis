@@ -220,7 +220,7 @@ Loop_ID <- 0
 #         
 #       }}}} #these parenteses should go at the end of the script - here as placeholders-
 
-Loop_ID <- Loop_ID +1
+Loop_ID <- Loop_ID + 1
 
 #set plots parameters (for plotting coords)
 #needs to be fixed (should be included in the plotting structure outlined in plots_structure.R)
@@ -666,6 +666,14 @@ plot(summary_MANUAL_delta[,deltavar] ~ rep(1:length(summary_MANUAL_delta[,deltav
 ###### FINAL DATASET BUILDING/SAVING  #########################################
 ###############################################################################
 
+subDir <- paste0("Loop_ID_",Loop_ID)
+
+if (file.exists(subDir)){
+  print("folder already exists!")
+} else {
+  dir.create(file.path(DATADIR, subDir))
+}
+
 # produce Hit/Miss info
 AUTO_Hit              <- nrow(summary_AUTO[which(summary_AUTO$Hit==1),])
 AUTO_Miss             <- nrow(summary_AUTO[which(summary_AUTO$Hit==0),])
@@ -679,8 +687,8 @@ Grooming_LDA_eachRun  <- data.frame(Loop_ID,CAPSULE_FILE,DT_dist_THRESHOLD, MAX_
                                    t(column_to_rownames(MAN_int_Count,"REP_PER")), TOT_MAN_int = nrow(summary_MANUAL), #TOT and REP_PER info on MANUAL interactions
                                    TOT_AUTO_int =nrow(summary_AUTO),AUTO_Hit, AUTO_Miss, #TOT and Hit/Miss info on AUTO interactions
                                    #t(column_to_rownames(CSI_scores,"REP_PER")),  perc_CSI, #TOT and REP_PER CSI score
-                                   t(CSI),
-                                   #CSI$Classifier = CSI$CSI_score, ###FIXXX
+                                   tCSI,
+                                   tF1,
                                    stringsAsFactors = F,row.names = NULL)
 
 #save the SIRUS rules as text file (see BEH_PCA_fort081.R)
@@ -691,11 +699,18 @@ nams=names(x)
 for (i in seq_along(x) ){ cat(nams[i], "\t",  x[[i]], "\n", 
                               file=fil, append=TRUE) }
 }
-fnlist(SirusRules, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Rules_Loop_ID_",Loop_ID,".txt"))
+fnlist(SirusRules, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/SIRUS_Rules_Loop_ID_",Loop_ID,".txt"))
 
+#Save the RELIEF selected variables as text file (see BEH_PCA_fort081.R)
+write(RELIEF_selected, file.path(DATADIR, subDir,paste0("RELIEF_selected_vars_Loop_ID_",Loop_ID,".txt")))
 
-#report the CSI score here
-CSI
+################################################
+################################################
+################################################
+# SAVE PLOT OUTPUT!!! in the Loop_ID folder!
+################################################
+################################################
+################################################
 
 #stack 
 Grooming_LDA_output   <- rbind(Grooming_LDA_output,     Grooming_LDA_eachRun)
@@ -716,17 +731,28 @@ time.taken.loop <- end.loop.time - start.loop.time
 #dput(positions, file = "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt")
 #positions_dget <- dget("/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/reproducible_example_Adriano/R3SP_Post1_positions.txt") # load file created with dput 
 
+
+# }}}} ### OUTER PARAMETERS LOOP end
+
+
+#SAVE LOOP OUTPUT TO CSV
+if (file.exists(paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Grooming_LDA_output_",format(Sys.time(), "%Y-%m-%d"),".csv"))){
+  print("file already exists! save new one")
+  write.csv(Grooming_LDA_output,paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Grooming_LDA_output_",format(Sys.time(), "%Y-%m-%d_%H:%M"),".csv"), row.names = FALSE)
+} else {
+  write.csv(Grooming_LDA_output,paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Grooming_LDA_output_",format(Sys.time(), "%Y-%m-%d"),".csv"), row.names = FALSE)
+}
+
+#notes
 cat(paste0("**LOOP COMPLETED**" ,
            "\n\nNotes: \n -Activate outer loop with all varying vars
                        \n -Save all the plots per loop in a dedicated folder named as the Loop_ID
-                       \n -Save in Loop_ID the output for all the main components for further tests (Decision Trees,Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)
+                       \n -Save in Loop_ID the output for all the main components for further tests (Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)
+                       \n -Should cleaning of all leftover data be performed before restarting loop?
+                       \n -Weird SIRUS scores, seem very low!
                        \n - #CAREFUL: SMOTE and ROS performance is 100% 
 # RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
 # #SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
 "
 ))
 time.taken.loop
-
-# }}}} ### OUTER PARAMETERS LOOP end
-
-
