@@ -61,6 +61,23 @@ arrows.az <- function(x, y, azimuth, rho, HeadWidth, ..., units=c("degrees", "ra
          ..., col=Kol, lwd=Lwd)
 }
 
+# prepare for the display of classification performance (not used in the output)
+display <- function(prediction, reference, Hitclass) {
+  cm <- caret::confusionMatrix(data=prediction, reference=reference,
+                               mode = "sens_spec", positive=Hitclass)
+  print(cm$table)
+  data.frame(Accuracy=cm$overall[1], Sensitivity=cm$byClass[1], Specificity=cm$byClass[2],
+             row.names=NULL)
+}
+
+#output a text file from a list of objects (for SIRUS Rules output)
+fnlist <- function(x, fil){ z <- deparse(substitute(x))
+cat(z, "\n", file=fil)
+nams=names(x) 
+for (i in seq_along(x) ){ cat(nams[i], "\t",  x[[i]], "\n", 
+                              file=fil, append=TRUE) }
+}
+
 ###############################################################################
 ###### LOAD LIBRARIES #########################################################
 ###############################################################################
@@ -199,7 +216,7 @@ annotations$T_stop_sec <- round(as.numeric(annotations$T_stop_UNIX),N_DECIMALS)
 
 #start fresh
 Grooming_LDA_output             <- data.frame()
-
+Grooming_LDA_eachRun<- data.frame()
 
 ###############################################################################
 ###### OUTER PARAMETERS LOOP ##################################################
@@ -207,19 +224,25 @@ Grooming_LDA_output             <- data.frame()
 
 CAPSULE_FILE <- NA #placeholder
 Loop_ID <- 0
-# #Varying capule shapes
+#Varying capule shapes
+
+# to_keep <- (ls(),c("to_keep",CAPSULE_FILE,DT_dist_THRESHOLD,MAX_INTERACTION_GAP,DISAGREEMENT_THRESH)
+# 
 # for (CAPSULE_FILE in vector) { #list of CAPUSLE FILES TO BE USED
 #   ##THRESHOLD to exclude jitter in the individuals' movement (DISTANCE)
-#   for (DT_dist_THRESHOLD in c(0.3,0.5)) { #NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
+#   for (DT_dist_THRESHOLD in c(0,0.3,0.5)) { #NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
 #     #fmQueryComputeAntInteractions matcher for the max time interval in iteraction when the ant pair disengages the interaction. Specific for GROOMING
 #     #Sequentially vary the interaction gap-filling to check what effect this has on the agreement between the MANUAL & AUTOMATIC interactions
 #     for (MAX_INTERACTION_GAP in c(5,10)) { #IN SECONDS
 #       # Assign Hit based on threshold
-#       # maybe can be put somewhere better as it involves a later stage of the analysis 
-#       for (DISAGREEMENT_THRESH in c(0.4,0.2)) {
-#         
-#       }}}} #these parenteses should go at the end of the script - here as placeholders-
-
+#       # maybe can be put somewhere better as it involves a later stage of the analysis
+#       for (DISAGREEMENT_THRESH in c(0.2,0.5,0.8)) {
+# 
+# #       }}}} #these parenteses should go at the end of the script - here as placeholders-
+# 
+# rm(   list   =  ls()[which(!ls()%in%to_keep)]    )  
+# gc()        
+        
 Loop_ID <- Loop_ID + 1
 
 #set plots parameters (for plotting coords)
@@ -690,15 +713,27 @@ Grooming_LDA_eachRun  <- data.frame(Loop_ID,CAPSULE_FILE,DT_dist_THRESHOLD, MAX_
                                    tCSI,
                                    tF1,
                                    stringsAsFactors = F,row.names = NULL)
+#save QDA models
+saveRDS(fit_QDA_sbc, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_QDA_sbc_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_QDA_ros, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_QDA_ros_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_QDA_rus, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_QDA_rus_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_QDA_smote, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_QDA_smote_Loop_ID_",Loop_ID,".rds"))
+
+#save RF models (size between ~0.5 and ~6 Mb)
+saveRDS(fit_RF_sbc, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RF_sbc_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_RF_ros, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RF_ros_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_RF_rus, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RF_rus_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_RF_smote, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RF_smote_Loop_ID_",Loop_ID,".rds"))
+#save RF SIRUS models
+saveRDS(fit_RFsirus_sbc, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RFsirus_sbc_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_RFsirus_ros, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RFsirus_ros_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_RFsirus_rus, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RFsirus_rus_Loop_ID_",Loop_ID,".rds"))
+saveRDS(fit_RFsirus_smote, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/fit_RFsirus_smote_Loop_ID_",Loop_ID,".rds"))
+
+
+#CHECK FOLDER WHEN STUFF IS SAVED (SHOULD BE LOOP DIR)
 
 #save the SIRUS rules as text file (see BEH_PCA_fort081.R)
-#output a text file from a list of objects
-fnlist <- function(x, fil){ z <- deparse(substitute(x))
-cat(z, "\n", file=fil)
-nams=names(x) 
-for (i in seq_along(x) ){ cat(nams[i], "\t",  x[[i]], "\n", 
-                              file=fil, append=TRUE) }
-}
 fnlist(SirusRules, paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_",Loop_ID,"/SIRUS_Rules_Loop_ID_",Loop_ID,".txt"))
 
 #Save the RELIEF selected variables as text file (see BEH_PCA_fort081.R)
@@ -750,9 +785,65 @@ cat(paste0("**LOOP COMPLETED**" ,
                        \n -Save in Loop_ID the output for all the main components for further tests (Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)
                        \n -Should cleaning of all leftover data be performed before restarting loop?
                        \n -Weird SIRUS scores, seem very low!
+                       \n -QUICK analysis (3.1 min) with TUNE_SIRUS=FALSE, with TRUE IT TAKES 16.5 min
                        \n - #CAREFUL: SMOTE and ROS performance is 100% 
 # RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
 # #SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
 "
 ))
 time.taken.loop
+
+
+
+
+###########################
+##TEST THE REUSE OF THE MODEL AFTER SAVE
+
+TEST_OUTPUT <- FALSE
+if (TEST_OUTPUT) {
+  #save dataset to test LDA_VARS_HIT as txt file
+  dput(LDA_VARS_HIT, file = "/home/cf19810/Documents/Ants_behaviour_analysis/Data/summary_AUTO_LDA_VARS_HIT.txt")
+  
+  #clean
+  rm(list=(c("e")))
+  gc() # clear cache
+  
+  library(randomForest)
+  library(sirus)
+  
+  #load dataset 
+  LDA_VARS_HIT_dget <- dget("/home/cf19810/Documents/Ants_behaviour_analysis/Data/summary_AUTO_LDA_VARS_HIT.txt") # load file created with dput
+  
+  #load classifiers
+  rf_model_test <- readRDS("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_1/fit_RF_sbc_Loop_ID_1.rds")
+  rfSIRUS_model_test <- readRDS("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Loop_ID_1/fit_RFsirus_sbc_Loop_ID_1.rds")
+  
+  ###RF predict
+  LDA_VARS_HIT_dget$Hit=as.factor(LDA_VARS_HIT_dget$Hit)
+  prediction_rf_test<- predict(rf_model_test, LDA_VARS_HIT_dget, type="response") #predict class on the full train dataset
+  
+  cm <- caret::confusionMatrix(data=prediction_rf_test, reference=LDA_VARS_HIT_dget$Hit,
+                               mode = "sens_spec") #, positive=Hitclass
+  print(cm$table)
+  
+  ###RF SIRUS predict
+  LDA_VARS_HIT_dget$Hit=as.numeric(as.character(LDA_VARS_HIT_dget$Hit))
+  class_probs_RFsirus_test<- sirus.predict(rfSIRUS_model_test, LDA_VARS_HIT_dget[1:(length(LDA_VARS_HIT_dget)-1)]) #predict class on the full train dataset, excluding the HIT column
+  #ASSIGN CLASS (mimick the output of predict(fit_RF_sbc, LDA_VARS_HIT, type="response"))
+  #create empty vector
+  pred_class_RFsirus_sbc <- vector(mode="numeric", length=length(class_probs_RFsirus_test))
+  #assign 1 when the class probability for minority class is bigger than 50%
+  pred_class_RFsirus_sbc <- replace(pred_class_RFsirus_sbc, which(class_probs_RFsirus_test>0.5), 1)
+  
+  LDA_VARS_HIT_dget$Hit=as.factor(LDA_VARS_HIT_dget$Hit)
+  pred_class_RFsirus_sbc <- as.factor(pred_class_RFsirus_sbc)
+  
+  cm1 <- caret::confusionMatrix(data=pred_class_RFsirus_sbc, reference=LDA_VARS_HIT_dget$Hit,
+                               mode = "sens_spec") #, positive=Hitclass
+  print(cm1$table)
+  
+  ###QDA predict
+}
+
+#######################################
+#How to save the QDA prediction?????????????????? SAME?

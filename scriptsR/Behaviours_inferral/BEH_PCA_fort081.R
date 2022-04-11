@@ -497,15 +497,6 @@ summ_vars_plot_box + geom_violin(alpha = 0.5) #+ geom_beeswarm() #careful with s
 #TESTING SMOTE AS IT PROVED TO BE THE HISHEST SCORING FOR F1-SCORE FOR A DATASET (ABALONE) OF VERY SIMILAR CARACTHERISTICS (IMBALANCE, N CASES, N PARAMS)
 # IDEA DERIVED FROM TAHIR, Muhammad Atif; KITTLER, Josef; YAN, Fei. Inverse random under sampling for class imbalance problem and its application to multi-label classification. Pattern Recognition, 2012, 45.10: 3738-3750.
 
-# prepare for the display of classification performance 
-display <- function(prediction, reference, Hitclass) {
-  cm <- caret::confusionMatrix(data=prediction, reference=reference,
-                               mode = "sens_spec", positive=Hitclass)
-  print(cm$table)
-  data.frame(Accuracy=cm$overall[1], Sensitivity=cm$byClass[1], Specificity=cm$byClass[2],
-             row.names=NULL)
-            }
-
 #dataset
 table(LDA_VARS_HIT$Hit)
 
@@ -585,7 +576,6 @@ fit_RF_smote <- randomForest::randomForest(Hit ~ ., data=train_smote, tuneLength
 #predict class on the full dataset
 pred_class_RF_sbc <- predict(fit_RF_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
 pred_class_RF_ros <- predict(fit_RF_ros, LDA_VARS_HIT, type="response")
-perf_RF_ros <- display(pred_class_RF_ros, LDA_VARS_HIT$Hit, "1")  
 pred_class_RF_rus <- predict(fit_RF_rus, LDA_VARS_HIT, type="response")
 pred_class_RF_smote <- predict(fit_RF_smote, LDA_VARS_HIT, type="response")
 # #check performance 
@@ -618,11 +608,26 @@ train_rus$Hit   <- as.numeric(as.character(train_rus$Hit))
 train_smote$Hit <- as.numeric(as.character(train_smote$Hit))
 
 # train SIRUS on the class-balanced dataset
-#cross_val_p0 <- sirus.cv(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif") #takes a while  #Estimate the optimal hyperparameter p0 used to select rules in sirus.fit using cross-validation (Benard et al. 2020, 2021).
-fit_RFsirus_sbc   <- sirus.fit(train_sbc[1:(length(train_sbc)-1)], train_sbc$Hit, type = "classif")  # ,p0= cross_val_p0$p0.stab)
-fit_RFsirus_ros   <- sirus.fit(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif") 
-fit_RFsirus_rus   <- sirus.fit(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif") 
-fit_RFsirus_smote <- sirus.fit(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif")
+
+TUNE_SIRUS <- FALSE
+if (TUNE_SIRUS) {
+  # Estimate the optimal hyperparameter p0 used to select rules in sirus.fit using cross-validation (Benard et al. 2020, 2021).
+  # p0 is the only tunable hyperparameter.
+  cross_val_p0_sbc <- sirus.cv(train_sbc[1:(length(train_sbc)-1)], train_sbc$Hit, type = "classif") #takes a while  
+  cross_val_p0_ros <- sirus.cv(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif") #takes a while  
+  cross_val_p0_rus <- sirus.cv(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif") #takes a while  
+  cross_val_p0_smote <- sirus.cv(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif") #takes a while  
+  
+  fit_RFsirus_sbc   <- sirus.fit(train_sbc[1:(length(train_sbc)-1)], train_sbc$Hit, type = "classif",p0= cross_val_p0_sbc$p0.stab)
+  fit_RFsirus_ros   <- sirus.fit(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif",p0= cross_val_p0_ros$p0.stab) 
+  fit_RFsirus_rus   <- sirus.fit(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif",p0= cross_val_p0_rus$p0.stab) 
+  fit_RFsirus_smote <- sirus.fit(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif",p0= cross_val_p0_smote$p0.stab)
+}else{
+  fit_RFsirus_sbc   <- sirus.fit(train_sbc[1:(length(train_sbc)-1)], train_sbc$Hit, type = "classif")
+  fit_RFsirus_ros   <- sirus.fit(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif") 
+  fit_RFsirus_rus   <- sirus.fit(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif") 
+  fit_RFsirus_smote <- sirus.fit(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif")
+}
 
 #predict class on the full dataset
 class_probs_RFsirus_sbc     <- sirus.predict(fit_RFsirus_sbc, LDA_VARS)
@@ -636,11 +641,11 @@ pred_class_RFsirus_sbc <- vector(mode="numeric", length=length(class_probs_RFsir
 pred_class_RFsirus_ros <- vector(mode="numeric", length=length(class_probs_RFsirus_ros))
 pred_class_RFsirus_rus <- vector(mode="numeric", length=length(class_probs_RFsirus_rus))
 pred_class_RFsirus_smote <- vector(mode="numeric", length=length(class_probs_RFsirus_smote))
-#assign 1 when the class probability is bigger than the proportion of the minority class
-pred_class_RFsirus_sbc <- replace(pred_class_RFsirus_sbc, which(class_probs_RFsirus_sbc>fit_RFsirus_sbc$mean), 1)
-pred_class_RFsirus_ros <- replace(pred_class_RFsirus_ros, which(class_probs_RFsirus_ros>fit_RFsirus_ros$mean), 1)
-pred_class_RFsirus_rus <- replace(pred_class_RFsirus_rus, which(class_probs_RFsirus_rus>fit_RFsirus_rus$mean), 1)
-pred_class_RFsirus_smote <- replace(pred_class_RFsirus_smote, which(class_probs_RFsirus_smote>fit_RFsirus_smote$mean), 1)
+#assign 1 when the class probability for minority class is bigger than 50%
+pred_class_RFsirus_sbc <- replace(pred_class_RFsirus_sbc, which(class_probs_RFsirus_sbc>0.5), 1) #fit_RFsirus_sbc$mean
+pred_class_RFsirus_ros <- replace(pred_class_RFsirus_ros, which(class_probs_RFsirus_ros>0.5), 1)
+pred_class_RFsirus_rus <- replace(pred_class_RFsirus_rus, which(class_probs_RFsirus_rus>0.5), 1)
+pred_class_RFsirus_smote <- replace(pred_class_RFsirus_smote, which(class_probs_RFsirus_smote>0.5), 1)
 #ERROR? when looking at the CSI and F1 scores, it seems like the prediction score is very low
 # this may be due to the pred_class_RF done in the wrong way? wrong mean probability used?
 
@@ -794,11 +799,13 @@ LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
 LDA_VARS_HIT_PRED$int_start_frame <- as.numeric(LDA_VARS_HIT_PRED$int_start_frame)
 LDA_VARS_HIT_PRED$int_end_frame <- as.numeric(LDA_VARS_HIT_PRED$int_end_frame)
 
+CSI <- NULL
 CSI_val <- NULL
 CSI_scores_PRED_REP_PER <- NULL
 CSI_scores_ALL <- NULL
 CSI_REP_PER_name <- NULL
 
+F1 <- NULL
 F1_val <- NULL
 F1_scores_PRED_REP_PER <- NULL
 F1_scores_ALL <- NULL
@@ -812,7 +819,8 @@ for (REPLICATE in c("R3SP","R9SP"))
 {
   for (PERIOD in c("pre","post"))
     {
-
+print(paste(PRED_HIT,"REPLICATE",REPLICATE,", PERIOD",PERIOD,sep=" "))
+    
   IF_frames_temp <- get(grep(paste0("IF_frames","_", REPLICATE,PERIOD),ls(),value=TRUE))
   int_mat_manual_temp <- get(grep(paste0("int_mat_manual","_", REPLICATE,PERIOD),ls(),value=TRUE))
   
