@@ -508,8 +508,9 @@ table(LDA_VARS_HIT$Hit)
 train_sbc   <- SBC(LDA_VARS_HIT,   "Hit") #Under-Sampling Based on Clustering (SBC)
 train_ros   <- ROS(LDA_VARS_HIT,   "Hit") #random over-sampling algorithm (ROS)
 train_rus   <- RUS(LDA_VARS_HIT,   "Hit") #random under-sampling algorithm (RUS)
-train_smote <- SMOTE(LDA_VARS_HIT, "Hit") #synthetic minority over-sampling technique (SMOTE)
-
+train_smote <- RSBID::SMOTE(LDA_VARS_HIT, "Hit") #synthetic minority over-sampling technique (SMOTE)
+train_Bsmote <- smotefamily::BLSMOTE(subset(LDA_VARS_HIT, select = -c(Hit)), LDA_VARS_HIT$Hit) #synthetic minority over-sampling technique (SMOTE), oversampling instances at the decision border between groups
+train_Bsmote <- train_Bsmote$data; train_Bsmote$class <- as.factor(train_Bsmote$class); names(train_Bsmote)[grepl("class", names(train_Bsmote))] <- "Hit" #extract resulting dataset and re-assing "Hit" colname
 
 ##############################
 ### LDA / QDA ################
@@ -522,11 +523,14 @@ fit_QDA_sbc <- qda(Hit ~ ., data = train_sbc)
 fit_QDA_ros <- qda(Hit ~ ., data=train_ros)
 fit_QDA_rus <- qda(Hit ~ ., data=train_rus)
 fit_QDA_smote <- qda(Hit ~ ., data=train_smote)
+fit_QDA_Bsmote <- qda(Hit ~ ., data=train_Bsmote)
 #predict class on the full dataset
 pred_class_QDA_sbc <- predict(fit_QDA_sbc, LDA_VARS_HIT, type="response") #predict class on the full train dataset
 pred_class_QDA_ros <- predict(fit_QDA_ros, LDA_VARS_HIT, type="response")
 pred_class_QDA_rus <- predict(fit_QDA_rus, LDA_VARS_HIT, type="response")
 pred_class_QDA_smote <- predict(fit_QDA_smote, LDA_VARS_HIT, type="response")
+pred_class_QDA_Bsmote <- predict(fit_QDA_Bsmote, LDA_VARS_HIT, type="response")
+
 # #check performance 
 # perf_QDA_sbc <- display(pred_class_QDA_sbc$class, LDA_VARS_HIT$Hit, "1") 
 # perf_QDA_ros <- display(pred_class_QDA_ros$class, LDA_VARS_HIT$Hit, "1")  
@@ -569,6 +573,8 @@ fit_RF_sbc <- randomForest::randomForest(Hit ~ ., data = train_sbc, tuneLength=2
 fit_RF_ros <- randomForest::randomForest(Hit ~ ., data=train_ros, tuneLength=20, trControl=control)
 fit_RF_rus <- randomForest::randomForest(Hit ~ ., data=train_rus, tuneLength=20, trControl=control)
 fit_RF_smote <- randomForest::randomForest(Hit ~ ., data=train_smote, tuneLength=20, trControl=control)
+fit_RF_Bsmote <- randomForest::randomForest(Hit ~ ., data=train_Bsmote, tuneLength=20, trControl=control)
+
 #tuneLength : It allows system to tune algorithm automatically. It indicates the number of different values to try for each tunning parameter.
 #trControl : looks for the random search parameters established by caret::trainControl
 #plot(fit_RF_sbc)
@@ -578,14 +584,17 @@ pred_class_RF_sbc <- predict(fit_RF_sbc, LDA_VARS_HIT, type="response") #predict
 pred_class_RF_ros <- predict(fit_RF_ros, LDA_VARS_HIT, type="response")
 pred_class_RF_rus <- predict(fit_RF_rus, LDA_VARS_HIT, type="response")
 pred_class_RF_smote <- predict(fit_RF_smote, LDA_VARS_HIT, type="response")
+pred_class_RF_Bsmote <- predict(fit_RF_Bsmote, LDA_VARS_HIT, type="response")
+
 # #check performance 
 # perf_RF_sbc <- display(pred_class_RF_sbc, LDA_VARS_HIT$Hit, "1")
 # perf_RF_ros <- display(pred_class_RF_ros, LDA_VARS_HIT$Hit, "1")  
 # perf_RF_rus <- display(pred_class_RF_rus, LDA_VARS_HIT$Hit, "1")
 # perf_RF_smote <- display(pred_class_RF_smote, LDA_VARS_HIT$Hit, "1")
-# RandForestPred <- rbind(perf_RF_ros, perf_RF_rus, perf_RF_sbc, perf_RF_smote)
+# perf_RF_Bsmote <- display(pred_class_RF_Bsmote, LDA_VARS_HIT$Hit, "1")
+# RandForestPred <- rbind(perf_RF_ros, perf_RF_rus, perf_RF_sbc, perf_RF_smote,perf_RF_Bsmote)
 # rownames(RandForestPred) <- c("Balanced by ROS", "Balanced by RUS",
-#                       "Balanced by SBC", "Balanced by SMOTE")
+#                       "Balanced by SBC", "Balanced by SMOTE","Balanced by BSMOTE")
 # RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
 # #SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
 
@@ -606,6 +615,8 @@ train_sbc$Hit   <- as.numeric(as.character(train_sbc$Hit))
 train_ros$Hit   <- as.numeric(as.character(train_ros$Hit))
 train_rus$Hit   <- as.numeric(as.character(train_rus$Hit))
 train_smote$Hit <- as.numeric(as.character(train_smote$Hit))
+train_Bsmote$Hit <- as.numeric(as.character(train_Bsmote$Hit))
+
 
 # train SIRUS on the class-balanced dataset
 
@@ -617,16 +628,19 @@ if (TUNE_SIRUS) {
   cross_val_p0_ros <- sirus.cv(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif") #takes a while  
   cross_val_p0_rus <- sirus.cv(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif") #takes a while  
   cross_val_p0_smote <- sirus.cv(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif") #takes a while  
+  cross_val_p0_Bsmote <- sirus.cv(train_Bsmote[1:(length(train_Bsmote)-1)], train_Bsmote$Hit, type = "classif") #takes a while  
   
   fit_RFsirus_sbc   <- sirus.fit(train_sbc[1:(length(train_sbc)-1)], train_sbc$Hit, type = "classif",p0= cross_val_p0_sbc$p0.stab)
   fit_RFsirus_ros   <- sirus.fit(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif",p0= cross_val_p0_ros$p0.stab) 
   fit_RFsirus_rus   <- sirus.fit(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif",p0= cross_val_p0_rus$p0.stab) 
   fit_RFsirus_smote <- sirus.fit(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif",p0= cross_val_p0_smote$p0.stab)
+  fit_RFsirus_Bsmote <- sirus.fit(train_Bsmote[1:(length(train_Bsmote)-1)], train_Bsmote$Hit, type = "classif",p0= cross_val_p0_Bsmote$p0.stab)
 }else{
   fit_RFsirus_sbc   <- sirus.fit(train_sbc[1:(length(train_sbc)-1)], train_sbc$Hit, type = "classif")
   fit_RFsirus_ros   <- sirus.fit(train_ros[1:(length(train_ros)-1)], train_ros$Hit, type = "classif") 
   fit_RFsirus_rus   <- sirus.fit(train_rus[1:(length(train_rus)-1)], train_rus$Hit, type = "classif") 
   fit_RFsirus_smote <- sirus.fit(train_smote[1:(length(train_smote)-1)], train_smote$Hit, type = "classif")
+  fit_RFsirus_Bsmote <- sirus.fit(train_Bsmote[1:(length(train_Bsmote)-1)], train_Bsmote$Hit, type = "classif")
 }
 
 #predict class on the full dataset
@@ -634,6 +648,8 @@ class_probs_RFsirus_sbc     <- sirus.predict(fit_RFsirus_sbc, LDA_VARS)
 class_probs_RFsirus_ros     <- sirus.predict(fit_RFsirus_ros, LDA_VARS)
 class_probs_RFsirus_rus     <- sirus.predict(fit_RFsirus_rus, LDA_VARS)
 class_probs_RFsirus_smote   <- sirus.predict(fit_RFsirus_smote, LDA_VARS)
+class_probs_RFsirus_Bsmote   <- sirus.predict(fit_RFsirus_Bsmote, LDA_VARS)
+
 
 #ASSIGN CLASS (mimick the output of predict(fit_RF_sbc, LDA_VARS_HIT, type="response"))
 #create empty vector
@@ -641,14 +657,24 @@ pred_class_RFsirus_sbc <- vector(mode="numeric", length=length(class_probs_RFsir
 pred_class_RFsirus_ros <- vector(mode="numeric", length=length(class_probs_RFsirus_ros))
 pred_class_RFsirus_rus <- vector(mode="numeric", length=length(class_probs_RFsirus_rus))
 pred_class_RFsirus_smote <- vector(mode="numeric", length=length(class_probs_RFsirus_smote))
+pred_class_RFsirus_Bsmote <- vector(mode="numeric", length=length(class_probs_RFsirus_Bsmote))
+
 #assign 1 when the class probability for minority class is bigger than 50%
-pred_class_RFsirus_sbc <- replace(pred_class_RFsirus_sbc, which(class_probs_RFsirus_sbc>0.5), 1) #fit_RFsirus_sbc$mean
-pred_class_RFsirus_ros <- replace(pred_class_RFsirus_ros, which(class_probs_RFsirus_ros>0.5), 1)
-pred_class_RFsirus_rus <- replace(pred_class_RFsirus_rus, which(class_probs_RFsirus_rus>0.5), 1)
-pred_class_RFsirus_smote <- replace(pred_class_RFsirus_smote, which(class_probs_RFsirus_smote>0.5), 1)
+pred_class_RFsirus_sbc <- replace(pred_class_RFsirus_sbc, which(class_probs_RFsirus_sbc>0.05), 1) #fit_RFsirus_sbc$mean
+pred_class_RFsirus_ros <- replace(pred_class_RFsirus_ros, which(class_probs_RFsirus_ros>0.05), 1)
+pred_class_RFsirus_rus <- replace(pred_class_RFsirus_rus, which(class_probs_RFsirus_rus>0.05), 1)
+pred_class_RFsirus_smote <- replace(pred_class_RFsirus_smote, which(class_probs_RFsirus_smote>0.05), 1)
+pred_class_RFsirus_Bsmote <- replace(pred_class_RFsirus_Bsmote, which(class_probs_RFsirus_Bsmote>0.05), 1)
 #ERROR? when looking at the CSI and F1 scores, it seems like the prediction score is very low
 # this may be due to the pred_class_RF done in the wrong way? wrong mean probability used?
 
+#----------------------------------------------
+# ### test this!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# pred.prob = predict(model2,LDA_VARS_HIT, type="response")
+# pred_class_LR = ifelse(pred.prob > 0.5, 1, 0)
+# print(table(pred_class_LR, LDA_VARS_HIT$Hit)) #terrible...
+#-----------------------------------------------
+  
 # table(LDA_VARS_HIT$Hit)
 # table(pred_class_RFsirus_sbc)
 
@@ -656,6 +682,7 @@ pred_class_RFsirus_sbc <- as.factor(pred_class_RFsirus_sbc)
 pred_class_RFsirus_ros <- as.factor(pred_class_RFsirus_ros)
 pred_class_RFsirus_rus <- as.factor(pred_class_RFsirus_rus)
 pred_class_RFsirus_smote <- as.factor(pred_class_RFsirus_smote)
+pred_class_RFsirus_Bsmote <- as.factor(pred_class_RFsirus_Bsmote)
 
 #perf_class_RFsirus_sbc <- display(pred_class_RFsirus_sbc, LDA_VARS_HIT$Hit, "1")
 
@@ -663,13 +690,15 @@ pred_class_RFsirus_smote <- as.factor(pred_class_RFsirus_smote)
 SirusRules <- list(SIRUS_rules_sbc =sirus.print(fit_RFsirus_sbc, digits = 5),
               SIRUS_rules_ros =sirus.print(fit_RFsirus_ros, digits = 5),
               SIRUS_rules_rus =sirus.print(fit_RFsirus_rus, digits = 5),
-              SIRUS_rules_smote =sirus.print(fit_RFsirus_smote, digits = 5))
+              SIRUS_rules_smote =sirus.print(fit_RFsirus_smote, digits = 5),
+              SIRUS_rules_Bsmote =sirus.print(fit_RFsirus_Bsmote, digits = 5))
 
 #return to factor after SIRUS
 train_sbc$Hit <- as.factor(train_sbc$Hit)
 train_ros$Hit <- as.factor(train_ros$Hit)
 train_rus$Hit <- as.factor(train_rus$Hit)
 train_smote$Hit <- as.factor(train_smote$Hit)
+train_Bsmote$Hit <- as.factor(train_Bsmote$Hit)
 
 ######################################################
 ###### CLASSIFIERS ON THE IMBALANCED DATASET #########
@@ -679,8 +708,10 @@ train_smote$Hit <- as.factor(train_smote$Hit)
 #### LOGISTIC REGRESSION ###########
 ####################################
 
+#ALL ATTEMPT AT LOGISTIC REGRESSION YELDED VERY POOR PERFORMANCE
+
 model1 = glm(LDA_VARS_HIT$Hit ~ . , data=LDA_VARS, family=binomial) # binomial as there are 2 classes
-summary(model1)
+#summary(model1)
 
 #Boolean vector of the coefficients can indeed be extracted by:
 toselect.x <- summary(model1)$coeff[-1,4] < 0.05
@@ -694,12 +725,50 @@ sig.terms <- paste(relevant.x, collapse= "+") #sig.formula <- as.formula(paste("
 model2 <- glm(formula=sig.formula,data=LDA_VARS,family=binomial)
 
 #model2 = update(model1, ~ sig.terms)
-summary(model2)
+#summary(model2)
 
 ###Predict for training data and find training accuracy
 pred.prob = predict(model2, type="response")
 pred.prob = ifelse(pred.prob > 0.05, 1, 0)
 table(pred.prob, LDA_VARS_HIT$Hit) #terrible...
+
+################################################
+#### LOGISTIC REGRESSION ON BALANCED ###########
+################################################
+
+pred_class_LR_list <- list()
+
+for (BAL_TRAIN in c("train_sbc","train_ros","train_rus","train_smote","train_Bsmote")) {
+Bal_Train <- get(BAL_TRAIN)
+model1 = glm(Bal_Train$Hit ~ . , data=Bal_Train, family=binomial) # binomial as there are 2 classes
+#summary(model1)
+
+#Boolean vector of the coefficients can indeed be extracted by:
+toselect.x <- summary(model1)$coeff[-1,4] < 0.05
+# select sig. variables
+relevant.x <- names(toselect.x)[toselect.x == TRUE] 
+# formula with only sig variables
+sig.formula <- as.formula(paste("Bal_Train$Hit ~",paste(relevant.x, collapse= "+"))) #sig.formula <- as.formula(paste("y ~",relevant.x))
+sig.terms <- paste(relevant.x, collapse= "+") #sig.formula <- as.formula(paste("y ~",relevant.x))
+
+#Update model with just the significant variables
+model2 <- glm(formula=sig.formula,data=Bal_Train,family=binomial)
+
+#model2 = update(model1, ~ sig.terms)
+#summary(model2)
+
+###Predict for training data and find training accuracy
+pred.prob = predict(model2,LDA_VARS_HIT, type="response")
+pred_class_LR = ifelse(pred.prob > 0.5, 1, 0)
+print(table(pred_class_LR, LDA_VARS_HIT$Hit)) #terrible...
+
+#pred_class_LR[BAL_TRAIN] <- pred_class_LR
+
+pred_class_LR_list[[BAL_TRAIN]] <- pred_class_LR
+
+}
+
+names(pred_class_LR) <- BAL_TRAIN
 
 #Rare event logistic regression?
 
@@ -721,12 +790,12 @@ lda <- qda(LDA_VARS_HIT$Hit ~ .,
 ## get / compute LDA scores from LDA coefficients / loadings
 
 #train and prediction on the full, imbalanced, dataset
-plda <- predict(object = lda,
+pred_class_QDA <- predict(object = lda,
                 newdata = LDA_VARS) #predict(lda_TEST)$x
 
 #create a histogram of the discriminant function values
 #par(mfrow=c(1,1), oma=c(0,0,2,0),mar = c(4.5, 3.8, 1, 1.1))
-#ldahist(data = plda$x[,1], g=LDA_VARS_HIT$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
+#ldahist(data = pred_class_QDA$x[,1], g=LDA_VARS_HIT$Hit,nbins = 80) + mtext("LDA hist", line=0, side=3, outer=TRUE)
 
 ##############################
 ### RANDOM FOREST ############
@@ -761,13 +830,14 @@ LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
                             # CLASSIFICATION on the imbalanced dataset
                             #NOTE: train and predict done on the training dataset
                             # Quadratic Discriminant analysis
-                            "QDA_pred_Hit" =  plda$class,
+                            "QDA_pred_Hit" =  pred_class_QDA$class,
                             # CLASSIFICATION on dataset balanced with a variety of over and under sampling techniques
                             ## QDA
                             "QDA_SBC_pred_Hit" = pred_class_QDA_sbc$class, #Under-Sampling Based on Clustering (SBC)
                             "QDA_ROS_pred_Hit" = pred_class_QDA_ros$class, #random over-sampling algorithm (ROS)
                             "QDA_RUS_pred_Hit" = pred_class_QDA_rus$class, #random under-sampling algorithm (RUS)
                             "QDA_SMOTE_pred_Hit" = pred_class_QDA_smote$class, #synthetic minority over-sampling technique (SMOTE)
+                            "QDA_BSMOTE_pred_Hit" = pred_class_QDA_Bsmote$class, #Borderline SMOTE
                             # pred_class_QDA_sbc$class
                             ## RandomForest 
                             #NOTE: test done on the FULL training dataset, train done on under or over-sampled dataset
@@ -775,11 +845,13 @@ LDA_VARS_HIT_PRED <-  cbind("REPLICATE" = summary_AUTO_NAOmit_transf$REPLICATE,
                             "RF_ROS_pred_Hit" = pred_class_RF_ros, #random over-sampling algorithm (ROS)
                             "RF_RUS_pred_Hit" = pred_class_RF_rus, #random under-sampling algorithm (RUS)
                             "RF_SMOTE_pred_Hit" = pred_class_RF_smote, #synthetic minority over-sampling technique (SMOTE)
+                            "RF_BSMOTE_pred_Hit" = pred_class_RF_Bsmote, #Borderline SMOTE
                             ## Sirus RandomForest
                             "RFsirus_SBC_pred_Hit" = pred_class_RFsirus_sbc, #Under-Sampling Based on Clustering (SBC)
                             "RFsirus_ROS_pred_Hit" = pred_class_RFsirus_ros, #random over-sampling algorithm (ROS)
                             "RFsirus_RUS_pred_Hit" = pred_class_RFsirus_rus, #random under-sampling algorithm (RUS)
-                            "RFsirus_SMOTE_pred_Hit" = pred_class_RFsirus_smote #synthetic minority over-sampling technique (SMOTE)
+                            "RFsirus_SMOTE_pred_Hit" = pred_class_RFsirus_smote, #synthetic minority over-sampling technique (SMOTE)
+                            "RFsirus_BSMOTE_pred_Hit" = pred_class_RFsirus_Bsmote #Borderline SMOTE
 )
 
 
@@ -896,9 +968,7 @@ CSI_val <- NULL
 F1_val <- NULL
 }
 
-
 #calculate overall score
-# do it in a more clever way, eg. using AGGREGATE
 #perc_CSI <- sum(CSI_val,na.rm = T)/length(CSI_val[!is.na(CSI_val)])
 CSI <- setnames(aggregate(CSI_scores_ALL$Freq, list(CSI_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","CSI_score"))
 F1 <- setnames(aggregate(F1_scores_ALL$Freq, list(F1_scores_ALL$PRED_HIT), FUN=mean,na.rm=T), c("Classifier","F1_score"))
@@ -908,7 +978,8 @@ F1$F1_score <- round(F1$F1_score,3)
 
 #transpose to incorporate in the final output and rename the columns with the quality metric name
 tCSI <- setNames(data.frame(t(CSI[,-1])), CSI[,1])
-names(tCSI) <- gsub(x = names(tCSI), pattern = "pred_Hit", replacement = "CSI")  
+names(tCSI) <- gsub(x = names(tCSI), pattern = "pred_Hit", replacement = "CSI")
+
 tF1 <- setNames(data.frame(t(F1[,-1])), F1[,1])
 names(tF1) <- gsub(x = names(tF1), pattern = "pred_Hit", replacement = "F1")  
 
@@ -936,7 +1007,7 @@ cat(paste(" from https://en.wikipedia.org/wiki/Linear_discriminant_analysis#LDA_
 
 
 #dataset = data.frame(Hit = LDA_VARS_HIT[,"Hit"],
-#                     pca = pca_prcomp$x, lda = plda$x)
+#                     pca = pca_prcomp$x, lda = pred_class_QDA$x)
 
 # # p1 <- ggplot(dataset) + geom_point(aes(lda.LD1, lda.LD2, colour = Hit, shape = Hit), size = 2.5) + 
 # #   labs(x = paste("LD1 (", percent(prop.lda[1]), ")", sep=""),
@@ -1061,7 +1132,7 @@ cat(paste(" from https://en.wikipedia.org/wiki/Linear_discriminant_analysis#LDA_
 
 
 ##ACCURACY OF CLASSIFICATION #NOT TOO RELEVANT
-# accuracy  <- xtabs(~LDA_VARS_HIT$Hit+plda$class)
+# accuracy  <- xtabs(~LDA_VARS_HIT$Hit+pred_class_QDA$class)
 #sum(accuracy[row(accuracy) == col(accuracy)]) / sum(accuracy)
 
 

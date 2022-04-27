@@ -130,8 +130,10 @@ library(randomForest)
 library(sparseKOS) # sparseKOS, unlikely used for issues reported in the TASKs SHEET
 #devtools::install_github("dongyuanwu/RSBID")
 library(RSBID) # Resampling Strategies for Binary Imbalanced Datasets
+library(smotefamily) # to perform borderline_SMOTE oversampling
 library(caret) #to tune RandomForest Hyperparameters
 library(sirus) # Stable and Interpretable RUle Set for RandomForests
+
 
 ###############################################################################
 ###### GLOSSARY ###############################################################
@@ -778,21 +780,6 @@ if (file.exists(paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Gro
   write.csv(Grooming_LDA_output,paste0("/home/cf19810/Documents/Ants_behaviour_analysis/Data/Grooming_LDA_output_",format(Sys.time(), "%Y-%m-%d"),".csv"), row.names = FALSE)
 }
 
-#notes
-cat(paste0("**LOOP COMPLETED**" ,
-           "\n\nNotes: \n -Activate outer loop with all varying vars
-                       \n -Save all the plots per loop in a dedicated folder named as the Loop_ID
-                       \n -Save in Loop_ID the output for all the main components for further tests (Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)
-                       \n -Should cleaning of all leftover data be performed before restarting loop?
-                       \n -Weird SIRUS scores, seem very low!
-                       \n -QUICK analysis (3.1 min) with TUNE_SIRUS=FALSE, with TRUE IT TAKES 16.5 min
-                       \n - #CAREFUL: SMOTE and ROS performance is 100% 
-# RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
-# #SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
-"
-))
-time.taken.loop
-
 
 
 
@@ -844,6 +831,22 @@ if (TEST_OUTPUT) {
   
   ###QDA predict
 }
+
+#notes
+cat(paste0("**LOOP COMPLETED**" ,
+           "\n\nNotes: \n -Activate outer loop with all varying vars
+                       \n -Save all the plots per loop in a dedicated folder named as the Loop_ID
+                       \n -Save in Loop_ID the output for all the main components for further tests (Logistic Regression,Random Forests,Support Vector Machines,Neural Networks)
+                       \n -Should cleaning of all leftover data be performed before restarting loop?
+                       \n - tCSI not saved causes error in output!
+                       \n -Weird SIRUS scores, seem very low!
+                       \n -QUICK analysis (3.1 min) with TUNE_SIRUS=FALSE, with TRUE IT TAKES 16.5 min
+                       \n - #CAREFUL: SMOTE and ROS performance is 100% 
+# RandForestPred ##MAYBE ROS AND SMOTE ALWAYS GIVE 1 BECAUSE ARE THE OVERSAMPLING TECHNIQUES AND HAVE ALREADY SEEN THE FLL DATASET?
+# #SMOTE is likely very poweful with such data structure but its quality is hard to evaluate on the training data itself
+"
+))
+time.taken.loop
 
 #######################################
 #How to save the QDA prediction?????????????????? SAME?
