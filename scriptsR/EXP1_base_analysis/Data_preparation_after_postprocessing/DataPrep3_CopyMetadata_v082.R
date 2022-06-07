@@ -5,6 +5,7 @@ gc()
 ############# ASSIGN METADATA FROM METADATA-RICH FILES #################
 # this script should be executed after the orientation of the files
 # AntsCreated_AutoOriented files can inherit Metadata info  from unoriented files ("AntsCreated_DeathRecord_NoOrient.myrmidon") or from manually oriented files ("ManOriented.myrmidon")
+# This loop takes approx 1 minute per file
 
 #"https://formicidae-tracker.github.io/myrmidon/latest/index.html"
 
@@ -57,6 +58,8 @@ for (REP.n in 1:length(files_list)) {
 
 #Select auto-oriented files
 AntsCreated_list <- EXP_list[which(grepl(EXP_list$path_name,pattern = "AutoOriented")),]
+AntsCreated_list <- AntsCreated_list[which(!grepl(AntsCreated_list$path_name,pattern = "_withMetaData")),]
+
 
 # Select the metadata-rich files
 Metadata_list <- EXP_list[which(grepl(EXP_list$path_name,pattern = "DeathRecord_NoOrient|ManOriented")),]
@@ -105,7 +108,6 @@ AntsCreated$save(paste0(sub("\\..*", "", AntsCreated_myr_file),"_withMetaData.my
 # }
 
 
-warning("ASSIGN IDENTIFICATION not working! Currently turned off")
 # # ############# ASSIGN IDENTIFICATION ########################
 # for (ant in Metadata_ants){
 #   individual  <- ant$ID
@@ -185,7 +187,6 @@ for (ant in AntsCreated_ants){
           AntsCreated$ants[[individual]]$deleteValue(METADATA_KEY,time=fmTimeCreate(offset = 0))
         }}}}}
 
-print("NOTE: \nAs it is not possible to assign a metadata value change without time info (NA), value for \"Is queen\" results as a timed change starting on epoch start (1st Jan 1970)")
 
 ############# ASSIGN ZONES #########################
 #assign zones
@@ -216,9 +217,11 @@ print(paste("Saving",creat_exp_name, "as _withMetaData.myrmidon",sep =" "))
   rm(list=(c("Metadata_exp","AntsCreated"))) #remove experiments
 } # IF EXISTS, SKIP PROCESSING
 
+warning("ASSIGN IDENTIFICATION not working! Currently turned off")
+
+print("NOTE: \nAs it is not possible to assign a metadata value change without time info (NA), value for \"Is queen\" results as a timed change starting on epoch start (1st Jan 1970)")
 
 cat("LOOP ENDED!! \n Go to fort-studio to check things look all right
 \n AND OVERWRITE INFO FOR QUEEN!!! (tag size, manual orientation, manual capsules)
 \n \n Do check identifications to make sure there is a exact correspondance between ants in both Ants Created files and metadata provided files
-  
-")
+  ")
