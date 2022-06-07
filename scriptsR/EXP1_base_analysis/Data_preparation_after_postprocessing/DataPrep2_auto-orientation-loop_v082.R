@@ -2,13 +2,9 @@ rm(list=ls())
 gc()
 
 ########################################################################
-#AUTO ORIENTATION LOOP (stage 5)
-# 1. Orient 1 large colony per tracking system used (5 total for Adriano) by hand. 
-# 2. pick 1 out of this 5 and, in FortStudio, create a capsule definition for a medium sized ant and replicate the shape for all of the ants of the colony. 
-# 3. Copy this capsule for the remaining 4 colonies using Clone_capsule_manual_to_manual.R (THIS SCRIPT). The originals of these files have been stored as *.myrmidon.old
-# 4. Once script is ran, check in fort-studio that capsules are present and normal and that Queen infos are overwritten (tag size, manual orientation, manual capsules).
-# 5. In auto_orientation_loop.R, load these 5 oriented and capsule provided files and orient all of the other files by Tracking System
-
+################# ORIENT ALL FILES (AntsCreated) #######################
+# Once DataPrep1_Clone-capsule-manual-to-manual_v082.R is run, check in fort-studio that capsules are present and normal and that Queen infos are overwritten (tag size, manual orientation, manual capsules).
+# In auto_orientation_loop.R, load these 5 oriented and capsule provided files and orient all of the other files
 
 #"https://formicidae-tracker.github.io/myrmidon/latest/index.html"
 
@@ -93,7 +89,8 @@ ToOrient_file <- EXP_list[which(grepl(EXP_list$path_name,pattern = "AntsCreated.
 ### Loop through all the directories in the dir_folder
 
 # loop through the unique Tracking systems
-TS <- "westerby" #for (TS in unique(ref_orient_caps_file$TrackSys_name)){
+#TS <- "westerby" #
+for (TS in unique(ref_orient_caps_file$TrackSys_name)){
     print(paste("START: Auto-orient + capsule for",TS, sep =" "))
    
   #################################################################################################################################################################################################################
@@ -181,12 +178,18 @@ TS <- "westerby" #for (TS in unique(ref_orient_caps_file$TrackSys_name)){
     capsule_list[[caps]] <- colMeans(capsule_list[[caps]][,which(grepl("ratio",names(capsule_list[[caps]])))])
   }
   
-  
-  # open the experiment files to ORIENT 
+  ###################################################################################
+  ############### open the experiment files to ORIENT ###############################
   ToOrient_data_list         <- ToOrient_file[which(ToOrient_file$TrackSys_name==TS),"path_name"]
  
-# for (ToOrient_myr_file in ToOrient_data_list){
-    ToOrient_myr_file <- ToOrient_data_list[1] #temp
+for (ToOrient_myr_file in ToOrient_data_list){
+    #ToOrient_myr_file <- ToOrient_data_list[1] #temp
+  
+  # if the _AutoOriented file file doesn't exist, then continue
+  if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))) {
+    
+  
+  
     ToOrient_exp_name <- unlist(strsplit(ToOrient_myr_file,split="/"))[length(unlist(strsplit(ToOrient_myr_file,split="/")))]
     print(paste("Assign Orientation and Capsule to",ToOrient_exp_name, sep =" "))
     tracking_data <- fmExperimentOpen(ToOrient_myr_file) 
@@ -202,12 +205,12 @@ TS <- "westerby" #for (TS in unique(ref_orient_caps_file$TrackSys_name)){
     ToOrient_capsule_names <- tracking_data$antShapeTypeNames
     
 
-    # delete individuals' capsule data
+    # delete individuals' capsule data IF PRESENT
     for (ant in ToOrient_ants){
       ToOrient_ants[[ant$ID]]$clearCapsules()
     }
     
-    # delete the capsule shapes
+    # delete the capsule shapes IF PRESENT
 if (length(ToOrient_capsule_names)>0) {
     for (caps in 1:length(ToOrient_capsule_names)){
       tracking_data$deleteAntShapeType(caps)
@@ -265,7 +268,7 @@ if (length(ToOrient_capsule_names)>0) {
   ###option 3: if dataset is too large - too time consuming, use only 24 hours (for example)
     ## IT Crashes with times longer than 6 hours.....
   from <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start) ###experiment start time
-  to   <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start + 4*3600  ) ###experiment start time
+  to   <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start + 12*3600  ) ###experiment start time
   
   ###option 4:..... whateever makes most sense 
   
@@ -278,7 +281,7 @@ if (length(ToOrient_capsule_names)>0) {
   names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
   
   ##define a max temporal gap for which you are happy to calculate a movement angle; e.g. 0.5 s
-  max_time_gap <- 0.2 #0.5
+  max_time_gap <- 0.2 #0.5 ##LOWER THAN 0.2 BREAKS THE CODE
   
   ##define a minimum distance moved, as you don't want to use noise or small shifts in position in this calculation; e.g. 30 pix (to think about)
   min_dist_moved <- 15 #30
@@ -342,10 +345,10 @@ if (length(ToOrient_capsule_names)>0) {
   tracking_data$save(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))
   print(paste("Saving",ToOrient_exp_name, "as AutoOriented.myrmidon",sep =" "))
   rm(list=(c("tracking_data"))) #remove experiment
- # }# ToOrient FILES LOOP #closes: for (ToOrient_myr_file in ToOrient_data_list){
-  rm(list=ls("oriented_data")) #remove experiment
-  
-# } # TS ID LOOP # closes: for (TS in unique(EXP_list$TrackSys_name))
+ }else{print(paste0(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon")," already exists! Skip!"))} # ToOrient FILES LOOP #closes: for (ToOrient_myr_file in ToOrient_data_list){
+  rm(list=(c("oriented_data"))) #remove experiment
+} # IF EXISTS, SKIP PROCESSING
+} # TS ID LOOP # closes: for (TS in unique(EXP_list$TrackSys_name))
 
 cat("LOOP ENDED!! \n Go to fort-studio to check things look all right
 \n AND OVERWRITE INFO FOR QUEEN!!! (tag size, manual orientation, manual capsules)
