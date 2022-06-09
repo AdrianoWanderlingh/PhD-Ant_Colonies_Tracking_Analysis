@@ -108,21 +108,20 @@ AntsCreated$save(paste0(sub("\\..*", "", AntsCreated_myr_file),"_withMetaData.my
 # }
 
 
-# # ############# ASSIGN IDENTIFICATION ########################
-# for (ant in Metadata_ants){
-#   individual  <- ant$ID
-#   #print(ant$identifications)
-#   #if AntID matches
-#   if (AntsCreated_ants[[individual]]$identifications[[1]]$targetAntID==Metadata_ants[[individual]]$identifications[[1]]$targetAntID){
-#     #remove identification
-#     AntsCreated$deleteIdentification(AntsCreated_ants[[individual]]$identifications[[1]])
-#     #add identification
-#     AntsCreated$addIdentification(antID= Metadata_ants[[individual]]$identifications[[1]]$targetAntID,
-#                                 tagID= Metadata_ants[[individual]]$identifications[[1]]$tagValue,
-#                                 start= Metadata_ants[[individual]]$identifications[[1]]$start,
-#                                 end=   Metadata_ants[[individual]]$identifications[[1]]$end)
-#   }
-# }
+# ############# ASSIGN IDENTIFICATION ########################
+for (ant in Metadata_ants){
+  individual  <- ant$ID
+  #print(ant$identifications)
+  #if AntID matches
+  if (AntsCreated_ants[[individual]]$identifications[[1]]$targetAntID==Metadata_ants[[individual]]$identifications[[1]]$targetAntID){
+    #remove identification
+    #add identification
+    AntsCreated$addIdentification(antID= Metadata_ants[[individual]]$identifications[[1]]$targetAntID,
+                                tagID= Metadata_ants[[individual]]$identifications[[1]]$tagValue,
+                                start= Metadata_ants[[individual]]$identifications[[1]]$start,
+                                end=   Metadata_ants[[individual]]$identifications[[1]]$end)
+  }
+}
 
 
 #CHECK copy

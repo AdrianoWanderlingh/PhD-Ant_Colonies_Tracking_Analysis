@@ -124,7 +124,7 @@ for (caps in 1:length(capsule_list)){
 
 
 for (i in 1:length(ants)){
-  
+  #use mean size of each manually oriented file that needs the capsule
   ant_length_px <- mean(fmQueryComputeMeasurementFor(tracking_data,antID=ants[[i]]$ID)$length_px)
   
   ants[[i]]$clearCapsules()

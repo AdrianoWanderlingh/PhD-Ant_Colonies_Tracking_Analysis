@@ -28,12 +28,12 @@ list.dirs.depth.n <- function(p, n) {
 }
 
 ###source C++ movement direction program
-#sourceCpp("/home/cf19810/Documents/scriptsR/Automated_Ant_Orientation_Nathalie/Get_Movement_Angle.cpp")
-sourceCpp("/media/eg15396/DISK4/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
+sourceCpp("/media/cf19810/DISK4/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
+#sourceCpp("/media/eg15396/DISK4/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
 
 ### directory of data and myrmidon files
-#dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA'
-dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
+dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA'
+#dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
 
 
 
@@ -188,158 +188,132 @@ for (ToOrient_myr_file in ToOrient_data_list){
   # if the _AutoOriented file file doesn't exist, then continue
   if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))) {
     
-  
-  
     ToOrient_exp_name <- unlist(strsplit(ToOrient_myr_file,split="/"))[length(unlist(strsplit(ToOrient_myr_file,split="/")))]
     print(paste("Assign Orientation and Capsule to",ToOrient_exp_name, sep =" "))
-    tracking_data <- fmExperimentOpen(ToOrient_myr_file) 
-    
-
-    ###check space (TS)
-    #s <- tracking_data$spaces
-  
-    ### DELETE ALL POSSIBLE BASE INFO NOT REQUIRED FROM THE FILES TO ORIENT
-    #some files could already have assigned measurements, make sure to remove them before assigning new ones
-    # delete pose and capsules
+    tracking_data <- fmExperimentOpen(ToOrient_myr_file)
+   
+    ## The AntsCreated files 
     ToOrient_ants <- tracking_data$ants
     ToOrient_capsule_names <- tracking_data$antShapeTypeNames
     
-
-    # delete individuals' capsule data IF PRESENT
-    for (ant in ToOrient_ants){
-      ToOrient_ants[[ant$ID]]$clearCapsules()
-    }
-    
-    # delete the capsule shapes IF PRESENT
-if (length(ToOrient_capsule_names)>0) {
-    for (caps in 1:length(ToOrient_capsule_names)){
-      tracking_data$deleteAntShapeType(caps)
-    }
-}
-    
-    
-    ###WARNING: Body-tail measure can't be deleted, so it will be needed to remove the measurements if present in fortStudio manually!
-    # #delete measurement type (body lenght)
-    # ToOrient_measure_names <- tracking_data$measurementTypeNames
-    # if (length(ToOrient_measure_names)>0) {
-    #   for (measure in 1:length(ToOrient_measure_names)){
-    #     tracking_data$deleteMeasurementType(measure)
-    #   }
+# ### DELETE ALL POSSIBLE BASE INFO NOT REQUIRED FROM THE FILES TO ORIENT
+#If ever processing files with already assigned measurements, make sure to remove the neasurements (capules, sposes, etc) before assigning new ones
+#     # delete individuals' capsule data IF PRESENT
+#     for (ant in ToOrient_ants){
+#       ToOrient_ants[[ant$ID]]$clearCapsules()
+#     }
+#     
+#     # delete the capsule shapes IF PRESENT
+# if (length(ToOrient_capsule_names)>0) {
+#     for (caps in 1:length(ToOrient_capsule_names)){
+#       tracking_data$deleteAntShapeType(caps)
+#     }
+# }
+#     
+# 
+#     #delete the ant pose (it doesn't seem to change the output of the script)
+#     for (i in 1:length(ToOrient_ants)){
+#       ##delete pose
+#       for (id in ToOrient_ants[[i]]$identifications){
+#         id$clearUserDefinedAntPose()
+#       }
+#     }
+#       
+#   
+#       
+    # # check print identifications
+    # for (a in ToOrient_ants) {
+    #  printf("Ant %s is identified by:\n", fmFormatAntID(a$ID))
+    #  for (i in a$identifications){
+    #    printf(" * %s\n", capture.output(i))
+    #  }
     # }
-  
-
-    #delete the ant pose (it doesn't seem to change the output of the script)
-    for (i in 1:length(ToOrient_ants)){
-      ##delete pose
-      for (id in ToOrient_ants[[i]]$identifications){
-        id$clearUserDefinedAntPose()
-      }
-    }
     
-
-    
-  # # check print identifications
-  # for (a in ToOrient_ants) {
-  #  printf("Ant %s is identified by:\n", fmFormatAntID(a$ID))
-  #  for (i in a$identifications){
-  #    printf(" * %s\n", capture.output(i))
-  #  }
-  # }
-  
-  ###create capsule list
-  ###CAUTION the relationship between shape name and id may be different from your manually oriented files.
-  ###Hence for post-processing analyses it will be important to use the capsule names rather than IDs
-  ###Also, it would be safer not to use manually annotated files in the analysis anyway for consistency 
-  ### (it would not do to anaylse some colonies with precise manually annotated data and other with approximate automated data)
-  ###So you need to create new automatically oriented myrmidon files for all your colonies including the manually-oriented ones
-  for (caps in 1:length(capsule_list)){
-    tracking_data$createAntShapeType(names(capsule_list)[caps])
-  }
-  
-  ###get trajectory data to extract ant orientation (if tracking is too long perhaps only use 24 hours?)
-  ###option 1: using all data - using start and end time from the experiment metadata
-  #from <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start) ###experiment start time
-  #to   <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$end  ) ###experiment end time
-  
-  ###option 2: using all data - using since Ever and Forwever functions
-  # from <- fmTimeSinceEver()
-  # to   <- fmTimeForever()
-  
-  ###option 3: if dataset is too large - too time consuming, use only 24 hours (for example)
-    ## IT Crashes with times longer than 6 hours.....
-  from <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start) ###experiment start time
-  to   <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start + 12*3600  ) ###experiment start time
-  
-  ###option 4:..... whateever makes most sense 
-  
-  ###Then compute trajectories
-  max_gap <- fmHour(24*365)  ###this parameter is very important to - use a super large value to make sure you get only one trajectory per ant!!!
-  positions <- fmQueryComputeAntTrajectories(tracking_data,start = from,end = to,maximumGap = max_gap,computeZones = TRUE)
-  
-  #hard-wire ant correspondence between trajectories_summary and trajectories
-  positions$trajectories_summary$antID_str <- paste("ant_",positions$trajectories_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
-  names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
-  
-  ##define a max temporal gap for which you are happy to calculate a movement angle; e.g. 0.5 s
-  max_time_gap <- 0.2 #0.5 ##LOWER THAN 0.2 BREAKS THE CODE
-  
-  ##define a minimum distance moved, as you don't want to use noise or small shifts in position in this calculation; e.g. 30 pix (to think about)
-  min_dist_moved <- 15 #30
-  
-  for (i in 1:length(ToOrient_ants)){
-    #check that the ant trajectory exists
-    aux <- positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID
-    if (sum(aux)==0) {
-      print(paste('ANT',i,"HAS NO TRAJECTORY. SHE MAY BE DEAD OR UNTAGGED",sep=" "))
-      next}
-      print(paste0("ANT ", ToOrient_ants[[i]]$ID))
-    ####to be fool proof, and be sure you extract the trajectory corresponding the correct ant, make sure you make use of the antID_str column!
-    traj <- positions$trajectories [[   positions$trajectories_summary[which(aux),"antID_str"]    ]]
-    
-    # ##### cut traj until metadata IsAlive is FALSE
-    # IsAlive <-  ToOrient_ants[[i]]$getValues("IsAlive")
-    # #check if there is a death time (IsAlive=FALSE)
-    #   if(any(grepl(FALSE,IsAlive$values))){
-    #     print(paste0("Ant's ",i," traj cut until death time"))
-    #     death_time <-   IsAlive$times[!is.na(IsAlive$times)]
-    #     #subtract timeStart from death time
-    #     MAX_traj <- as.numeric(as.POSIXlt(death_time) - fmQueryGetDataInformations(tracking_data)$start, units="secs")
-    #     #CUT TRAJ WHEN TIME > OF DEATH TIME
-    #     traj <- traj[which(traj$time < MAX_traj),]
-    # }else{
-    #   #print("good little ant that didn't die")
-    # }
-
-    
-    ###feed traj to c++ program
-    traj <- cbind(traj,add_angles(traj,max_time_gap,min_dist_moved))
-    
-    
-    ## get mean deviation angle between body and tag - the ant angle is equal to minus the Tag minus Movement angle output by C++ program
-    AntAngle <- as.numeric(- mean(circular(na.omit(traj$Tag_minus_Movement_Angle),units="radians",zero=0)))
-    ##now use trigonometry to calculate the pose, using AntAngle
-    x_tag_coord <- mean_x_ant_coord*cos(AntAngle) - mean_y_ant_coord*sin(AntAngle)
-    y_tag_coord <- mean_x_ant_coord*sin(AntAngle) + mean_y_ant_coord*cos(AntAngle)
-    
-    ##write this into ant metadata
-    for (id in ToOrient_ants[[i]]$identifications){
-      id$setUserDefinedAntPose(c(x_tag_coord,y_tag_coord), AntAngle)
-    }
-    
-    ##also add this to trajectories_summary
-    positions$trajectories_summary[which(positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID),"ant_angle"] <- AntAngle
-    positions$trajectories_summary[which(positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID),"x_tag_coord"] <- x_tag_coord
-    positions$trajectories_summary[which(positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID),"y_tag_coord"] <- y_tag_coord
-    
-    ###finally, for each ant, add capsules using mean_ant_length and capsule_list
+    ###create capsule list
+    ###CAUTION the relationship between shape name and id may be different from your manually oriented files.
+    ###Hence for post-processing analyses it will be important to use the capsule names rather than IDs
+    ###Also, it would be safer not to use manually annotated files in the analysis anyway for consistency 
+    ### (it would not do to anaylse some colonies with precise manually annotated data and other with approximate automated data)
+    ###So you need to create new automatically oriented myrmidon files for all your colonies including the manually-oriented ones
     for (caps in 1:length(capsule_list)){
-      capsule_ratios <- capsule_list[[caps]]; names(capsule_ratios) <- gsub("_ratio","",names(capsule_ratios))
-      capsule_coords <- mean_worker_length_px*capsule_ratios
+      tracking_data$createAntShapeType(names(capsule_list)[caps])
+    }
+    
+    ###get trajectory data to extract ant orientation (if tracking is too long perhaps only use 24 hours?)
+    ## IT Crashes with times longer than 6 hours.....
+    from <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start) ###experiment start time
+    to   <- fmTimeCreate(offset=fmQueryGetDataInformations(tracking_data)$start + 12*3600  ) ###experiment start time
+    
+    ###Then compute trajectories
+    max_gap <- fmHour(24*365)  ###this parameter is very important to - use a super large value to make sure you get only one trajectory per ant!!!
+    positions <- fmQueryComputeAntTrajectories(tracking_data,start = from,end = to,maximumGap = max_gap,computeZones = TRUE)
+    
+    #hard-wire ant correspondence between trajectories_summary and trajectories
+    positions$trajectories_summary$antID_str <- paste("ant_",positions$trajectories_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
+    names(positions$trajectories)       <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
+    
+    ##define a max temporal gap for which you are happy to calculate a movement angle; e.g. 0.5 s
+    max_time_gap <- 0.2 #0.5 ##LOWER THAN 0.2 BREAKS THE CODE
+    
+    ##define a minimum distance moved, as you don't want to use noise or small shifts in position in this calculation; e.g. 30 pix (to think about)
+    min_dist_moved <- 15 #30
+    
+    for (i in 1:length(ToOrient_ants)){
+      #check that the ant trajectory exists
+      aux <- positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID
+      if (sum(aux)==0) {
+        print(paste('ANT',i,"HAS NO TRAJECTORY. SHE MAY BE DEAD OR UNTAGGED",sep=" "))
+        next}
+        #print(paste0("ANT ", ToOrient_ants[[i]]$ID))
+      ####to be fool proof, and be sure you extract the trajectory corresponding the correct ant, make sure you make use of the antID_str column!
+      traj <- positions$trajectories [[   positions$trajectories_summary[which(aux),"antID_str"]    ]]
       
       
-      ToOrient_ants[[i]]$addCapsule(caps, fmCapsuleCreate(c1 = c(capsule_coords["c1_x"],capsule_coords["c1_y"]), c2 = c(capsule_coords["c2_x"],capsule_coords["c2_y"]), r1 = capsule_coords["r1"], r2 = capsule_coords["r2"] ) )
+      ###### THIS MESSES UP WITH THE ORIENTATION................
+      # ##### cut traj until metadata IsAlive is FALSE
+      # IsAlive <-  ToOrient_ants[[i]]$getValues("IsAlive")
+      # #check if there is a death time (IsAlive=FALSE)
+      #   if(any(grepl(FALSE,IsAlive$values))){
+      #     print(paste0("Ant's ",i," traj cut until death time"))
+      #     death_time <-   IsAlive$times[!is.na(IsAlive$times)]
+      #     #subtract timeStart from death time
+      #     MAX_traj <- as.numeric(as.POSIXlt(death_time) - fmQueryGetDataInformations(tracking_data)$start, units="secs")
+      #     #CUT TRAJ WHEN TIME > OF DEATH TIME
+      #     traj <- traj[which(traj$time < MAX_traj),]
+      # }else{
+      #   #print("good little ant that didn't die")
+      # }
+  
       
-    }#ADD CAPSULES
+      ###feed traj to c++ program
+      traj <- cbind(traj,add_angles(traj,max_time_gap,min_dist_moved))
+      
+      
+      ## get mean deviation angle between body and tag - the ant angle is equal to minus the Tag minus Movement angle output by C++ program
+      AntAngle <- as.numeric(- mean(circular(na.omit(traj$Tag_minus_Movement_Angle),units="radians",zero=0)))
+      ##now use trigonometry to calculate the pose, using AntAngle
+      x_tag_coord <- mean_x_ant_coord*cos(AntAngle) - mean_y_ant_coord*sin(AntAngle)
+      y_tag_coord <- mean_x_ant_coord*sin(AntAngle) + mean_y_ant_coord*cos(AntAngle)
+      
+      ##write this into ant metadata
+      for (id in ToOrient_ants[[i]]$identifications){
+        id$setUserDefinedAntPose(c(x_tag_coord,y_tag_coord), AntAngle)
+      }
+      
+      ##also add this to trajectories_summary
+      positions$trajectories_summary[which(positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID),"ant_angle"] <- AntAngle
+      positions$trajectories_summary[which(positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID),"x_tag_coord"] <- x_tag_coord
+      positions$trajectories_summary[which(positions$trajectories_summary$antID==ToOrient_ants[[i]]$ID),"y_tag_coord"] <- y_tag_coord
+      
+      ###finally, for each ant, add capsules using mean_ant_length and capsule_list
+      for (caps in 1:length(capsule_list)){
+        capsule_ratios <- capsule_list[[caps]]; names(capsule_ratios) <- gsub("_ratio","",names(capsule_ratios))
+        capsule_coords <- mean_worker_length_px*capsule_ratios
+        
+        
+        ToOrient_ants[[i]]$addCapsule(caps, fmCapsuleCreate(c1 = c(capsule_coords["c1_x"],capsule_coords["c1_y"]), c2 = c(capsule_coords["c2_x"],capsule_coords["c2_y"]), r1 = capsule_coords["r1"], r2 = capsule_coords["r2"] ) )
+        
+      }#ADD CAPSULES
     
   }# LOOP ANTS
   tracking_data$save(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))
