@@ -208,7 +208,6 @@ for (ZONE.1 in   1:length(AntsCreated$spaces[[1]]$zones)) {
   AntsCreated$spaces[[1]]$zones[[ZONE.1]]$addDefinition(shapes=zone_definition[[1]][["shapes"]],start= fmTimeSinceEver(),end=fmTimeForever())
   }#ZONE.1
 
-
 #save
 AntsCreated$save(paste0(sub("\\..*", "", AntsCreated_myr_file),"_withMetaData.myrmidon"))
 print(paste("Saving",creat_exp_name, "as _withMetaData.myrmidon",sep =" "))

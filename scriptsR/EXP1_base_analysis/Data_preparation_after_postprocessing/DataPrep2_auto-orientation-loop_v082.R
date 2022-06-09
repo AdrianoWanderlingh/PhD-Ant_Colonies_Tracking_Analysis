@@ -316,6 +316,7 @@ for (ToOrient_myr_file in ToOrient_data_list){
       }#ADD CAPSULES
     
   }# LOOP ANTS
+    
   tracking_data$save(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))
   print(paste("Saving",ToOrient_exp_name, "as AutoOriented.myrmidon",sep =" "))
   rm(list=(c("tracking_data"))) #remove experiment
