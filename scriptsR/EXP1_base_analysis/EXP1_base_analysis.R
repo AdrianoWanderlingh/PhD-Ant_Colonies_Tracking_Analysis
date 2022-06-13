@@ -4,15 +4,21 @@ rm(list=ls())
 ############################# FUNCTIONS ##########################################################
 # MOVE THEM TO ANOTHER SCRIPT OT AVOID CONFUSION AND SOURCE THEM
 
-
 ################## GET ANT TASK ###################################
-getAntTasks <- function(exp){
+getAntTasks <- function(exp,window_shift){
+  #Get complete list of Ants
+  AntID_list <- NULL
+  for (ant in   1: length(exp$ants)) {
+    AntID_list <- c(AntID_list,exp$ants[[ant]]$ID)}
   
   ## get 2 12Hours window for the Task calculation
-  start <- fmQueryGetDataInformations(exp)$start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
+  ## calcualte the task BEFORE the EXPOSURE
+  start <- fmQueryGetDataInformations(exp)$end - 48*3600 - window_shift
+  #start <- fmQueryGetDataInformations(exp)$start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
   time_start <- fmTimeCreate(offset=start)
   #time_start <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end - 24*3600)####last time in tracking minus 24 hours
-  stop  <- fmQueryGetDataInformations(exp)$start + 45*3600 ####pre-tracking period 
+  stop <- fmQueryGetDataInformations(exp)$end - 36*3600 - window_shift
+  #stop  <- fmQueryGetDataInformations(exp)$start + 45*3600 ####pre-tracking period 
   time_stop   <- fmTimeCreate(offset=stop)
   #time_stop  <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end) ####last time in tracking
   ###QUERY 3: fmQueryComputeAntTrajectories()
@@ -53,16 +59,18 @@ getAntTasks <- function(exp){
   
   #export nurse list: hexadecimal tagIDs corresponding to nurses in your data frame. 
   
-  rm(list=ls()[which(!ls()%in%c("positions_summaries1","exp","foraging_zone"))]) #close experiment
+  rm(list=ls()[which(!ls()%in%c("positions_summaries1","exp","foraging_zone","window_shift","AntID_list"))]) #close experiment
   gc()
   
   #exp <- fmExperimentOpen(myrmidon_file) #if it says it's locked, click Session>Restart R and clear objects from workspace including hidden ones
   
   ####define time period to use for defining nurses/foragers
-  start <- fmQueryGetDataInformations(exp)$start + 45*3600#### second block, make sure not to overlap with first time block or with exposure time
+  start <- fmQueryGetDataInformations(exp)$end - 36*3600 - window_shift
+  #start <- fmQueryGetDataInformations(exp)$start + 45*3600#### second block, make sure not to overlap with first time block or with exposure time
   time_start <- fmTimeCreate(offset=start)
   #time_start <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end - 24*3600)####last time in tracking minus 24 hours
-  stop  <- fmQueryGetDataInformations(exp)$start + 57*3600 ####pre-tracking period 
+  stop <- fmQueryGetDataInformations(exp)$end - 24*3600 - window_shift
+  #stop  <- fmQueryGetDataInformations(exp)$start + 57*3600 ####pre-tracking period 
   time_stop   <- fmTimeCreate(offset=stop)
   
   ###QUERY 3: fmQueryComputeAntTrajectories()
@@ -110,17 +118,30 @@ getAntTasks <- function(exp){
   positions_summaries[which(positions_summaries$prop_time_outside<=0.01),"AntTask"] <- "nurse"
   positions_summaries[which(positions_summaries$prop_time_outside>0.01),"AntTask"] <- "forager"
   
-  positions_summaries$AntTask_num <- NA
-  positions_summaries[which(positions_summaries$AntTask=="nurse"),"AntTask_num"] <- 1
-  positions_summaries[which(positions_summaries$AntTask=="forager"),"AntTask_num"] <- 2
+  AntTasks <- data.frame(antID=positions_summaries[,"antID"],AntTask= positions_summaries[,"AntTask"])
   
-  AntTasks <- data.frame(antID=positions_summaries[,"antID"],AntTask= positions_summaries[,"AntTask"],AntTask_num= positions_summaries[,"AntTask_num"])
+  # #add missing ants as NURSE by DEFAULT
+  # missing_ants <- subset(AntID_list, !(AntID_list %in% AntTasks$antID))
+  # AntTasks <- rbind(AntTasks, data.frame(antID=missing_ants,AntTask=NA))
+  # AntTasks[which(is.na(AntTasks$AntTask)),"AntTask"] <- "nurse"
+
+  AntTasks$AntTask_num <- NA
+  AntTasks[which(AntTasks$AntTask=="nurse"),"AntTask_num"] <- 1
+  AntTasks[which(AntTasks$AntTask=="forager"),"AntTask_num"] <- 2
+
+  # warning("Ants that died before the considered time window (pre treatment) will not be assigned a Task by the function. Currently, no task will default to Nurse")
+  return(AntTasks[order(AntTasks$antID),] )
+}
+
+Zones_usage <- function(exp,window_shift){
   
-  warning("check that the N of returned ants is equal to length(exp$ants)! \nMaybe that's caused by a dead ant or something that has no coords in the time-span? \nit could be fixed by checking the $ants list and assignign to any missing ant an NA? ")
-  return(AntTasks)
+  # using operations similar to what performed in getAntTasks, 
+  #to reduce computation time, use positions_summaries2 from it and compute a positions_summaries3 for the period POST!
+  
 }
 
 ################## COMPUTE NETWORK ###############################
+# it require a "gap" to be defined, should be required by the function
 compute_G <- function(exp, start, end){ # min_cum_duration , link_type, nest_focus, frm_rate
   # convert timestamp of frame into corresponding frame number starting from 1 (with frame#1 at 'start' time)
   # CollideFrames <- fmQueryCollideFrames(exp,start=start,end=end)
@@ -168,17 +189,35 @@ compute_G <- function(exp, start, end){ # min_cum_duration , link_type, nest_foc
   #adj_mat[adj_mat <  min_cum_duration] = 0
   
   # network build
-  G <-  graph_from_adjacency_matrix(adj_matrix)
-  
+  G <-  graph_from_adjacency_matrix(adj_matrix,mode = "undirected")
+  actors <- V(G)
   # # store inverse of weights
   #ADRIANO: look for the function in igraph that works as set_edge_attributes in networkx of python
   # nx.set_edge_attributes(G, 
   #                        {(i,j): 1/adj_mat[j,i] if adj_mat[j,i]>0 else 0 for i in range(len(adj_mat)) for j in range(i)},
   #                        'inv_weight')
   
+  #### add a column contaning interaction duration in min
+  Interactions["duration_min"] <- as.numeric(difftime(Interactions$end, Interactions$start, units = "mins") + 0.125) ###duration in minutes (one frame = 0.125 second)
+  ### add edge weights
+  E(G)$weight <- Interactions[,"duration_min"]
+  ###simplify graph (merge all edges involving the same pair of ants into a single one whose weight = sum of these weights)
+  G <- simplify(G,remove.multiple=TRUE,remove.loop=TRUE,edge.attr.comb="sum")
+  ##################remove unconnected nodes
+  unconnected <-  actors[degree(G)==0]
+  G <- G - as.character(unconnected)
+  ##################update actor list
+  actors <- get.vertex.attribute(G,"name")
+  
   return(G)
-} # compute_G
+} # compute_G 
 
+
+
+
+#calculate the distance between successive fixes
+#From Tom's script.  FIX, look at Nathalie version
+DISTANCE     <- function(x)  { c(sqrt((x[-nrow(x), "x"] - x[-1, "x"])^2 + (x[-nrow(x), "y"] - x[-1, "y"])^2), NA)}
 
 ##############################################################################
 
@@ -193,8 +232,12 @@ library(igraph)
 
 #### PARAMETERS
 TimeWind        <- 3600 ## in seconds (3600 is an hour)
-gap             <- fmSecond(2)
+gap             <- fmSecond(10)
+## TIME WINDOW SHIFT. WARNING: THIS IS AN APPROXIMATION. IN THE FUTURE, THE TIME OF EXP ANTS RETURN PER TRACKING SYSTEM SHOULD BE USED! 
+window_shift <- 60*10 #approx N of minutes that where given at the end as leeway, can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
 
+## some initialization
+summary_collective <- NULL #final OUTPUT dataframe
 
 #### FUNCTIONS
 #list files recursive up to a certain level (level defined by "n" parameter)
@@ -208,9 +251,6 @@ list.dirs.depth.n <- function(p, n) {
   }
 }
 
-#calculate the distance between successive fixes
-# FIX, look at Nathalie version
-DISTANCE     <- function(x)  { c(sqrt((x[-nrow(x), "x"] - x[-1, "x"])^2 + (x[-nrow(x), "y"] - x[-1, "y"])^2), NA)}
 
 #### ACCESS FILES
 #list subdirectories in parent folder EXPERIMENT_DATA
@@ -234,6 +274,7 @@ for (REP.n in 1:length(files_list)) {
     exp <- fmExperimentOpen(REP.FILES)
     print("RENAME THE EXP TO \"e\", NOT \"exp\" (FUNCTIONS' VARIABLE NAME) ")
     # exp.Ants <- exp$ants
+    exp_end <- fmQueryGetDataInformations(exp)$end - window_shift
     
     ## get in R the spaceID / name correspondance
     ##PROBABLY NOT NEEDED. ANYWAY, IT WORKS DIFFERNTLY THAN IN FLORA-bee
@@ -248,21 +289,45 @@ for (REP.n in 1:length(files_list)) {
     print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
 
     ########### COMPUTE THE ANT TASKS 
-    AntTasks <- getAntTasks(exp)
+    AntTasks <- getAntTasks(exp=exp,window_shift=window_shift)
     
-    
+    #base file info
+    #TREATMENT
+    COLONY <- sub("\\_.*", "", basename(REP.FILES))
+    TREATMENT <- substr(COLONY,(nchar(COLONY)+1)-2,nchar(COLONY))
+    #
+    COLONY_SIZE <- nrow(AntTasks)
+
+
     # ### HOURLY LOOP; loading 24 hours of data requires >32 GB RAM & causes R to crash, so we must load the contacts in 3h blocks, stacking vertically
     # RawContacts_ALL <- NULL; AntMinuteMeans_ALL <- NULL
     # 
-    # for (HOUR in seq(from=0, to=45, by=3))  ## increments by 3 hours for 48 hours 
-    # {
+    Period_dataframe <- NULL
+    for (HOUR in seq(from=0, to=45, by=3)){  ## increments by 3 hours for 48 hours
     #   ## increment the window start & end times by 1 hour
-    HOUR <- 0 #TEMP!!! REACTIVAT HOUR LOOP
-      From  <- fmQueryGetDataInformations(exp)$end - 48*3600 + (HOUR * TimeWind)
-      To    <- fmQueryGetDataInformations(exp)$end - 45*3600 + (HOUR * TimeWind)
+    #HOUR <- 0 #TEMP!!! REACTIVAT HOUR LOOP
+      From  <- fmQueryGetDataInformations(exp)$end - 48*3600 + (HOUR * TimeWind) - window_shift
+      To    <- fmQueryGetDataInformations(exp)$end - 45*3600 + (HOUR * TimeWind) - window_shift
+      print(HOUR)
       print(paste("Time window, from", From, "to", To))
       start <- fmTimeCreate(offset=From) #end minus 48 hours plus incremental time
       end   <- fmTimeCreate(offset=To) #end minus 45 hours plus incremental time
+      
+      #base file information
+      #PERIOD
+      TimeDiff <- difftime(exp_end, To, units = "hours")
+      if(TimeDiff < 24){ PERIOD <- "POST"
+      }else if ( TimeDiff >= 24 & TimeDiff < 48) { PERIOD <- "PRE"  } else{ PERIOD <- "ERROR"}
+
+      
+      
+      Period_dt<- data.frame(From, To, PERIOD)
+      Period_dataframe <- rbind(Period_dataframe, Period_dt)
+      
+
+    }       
+    table(Period_dataframe$PERIOD) # shall be equal!
+    
 
     #   ## extract 3 hours of contacts
     #   ## WARNING - THIS WILL CRASH IF YOU READ IN TOO MANY HOURS AT ONCE
@@ -388,139 +453,83 @@ for (REP.n in 1:length(files_list)) {
     # }## HOUR
 
   #COMPUTE NETWORK
-  compute_Graph <- compute_G(exp = exp, start = start, end=end)
+  Graph <- compute_G(exp = exp, start = start, end=end)
+    
+    # Assign vertex types: "AntTask"
+    # include in function eventually
+    if (exists("AntTasks")) {
+      #create matching of vertices with ants (there could be less ants in a 3-hours window than in the full exp)
+      #keep only antTasks corresponding to vertices
+      V_AntTasks <- AntTasks[which(AntTasks$antID %in% V(Graph)$name),]
+      Graph <- set_vertex_attr(Graph, name="AntTask", index = V(Graph), value = V_AntTasks$AntTask_num)
+    }
+    
+        #INSERT NETWORK PROPERTIES FUNCTION CALL
+    ########################################
+    
+    
+
+
     
   ######################################################################################################
   #####################################################################################################
-  ##### NETWORK PROPERTIES ######################################
-      
-      ##### ALL TO BE FIXED!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ##### COLLECTIVE NETWORK PROPERTIES ######################################
   
+    #### inherited from Stroeymeyt et al. 2018
+  
+  ## Assortativity - Task
+  #degree of preferential association between workers of the same task group, calculated using Newman’s method
+  task_assortativity  <- assortativity_nominal(Graph, types= V(Graph)$AntTask, directed=F)
+  ##Clustering
+  clustering <- mean(transitivity(Graph,type="barrat",weights=E(Graph)$weight,isolates = c("NaN")),na.rm=T)
+  ##Degree mean and max
+  # Degree centrality:   degree of a vertex is its the number of its adjacent edges.
+  degrees         <- degree(Graph,mode="all")
+  degree_mean     <- mean(degrees,na.rm=T)
+  degree_maximum  <- max(degrees,na.rm=T)
+  ##Density
   #Density: The proportion of present edges from all possible edges in the network.
-  Density <- edge_density(compute_Graph, loops=F)
-  
-  ### to fill in!!!! #check Enrico or nath code
-  Clustering_coeff  <- transitivity(compute_Graph,type ="barrat", isolates = c("NaN", "zero") )
-    
+  density  <- igraph::edge_density(Graph)
+  ##Diameter
   #Diameter: the longest geodesic distance (length of the shortest path between two nodes) in the network. In igraph, diameter() returns the distance, while get_diameter() returns the nodes along the first found path of that distance.
-  #Note that edge weights are used by default, unless set to NA.
-  # check enrico code, weights have to be 1/contact duration
-  Diameter  <- diameter(compute_Graph, directed=F, weights=NA)
-  
-  #Network efficiency
-  #unclear on what it is in igraph. 
+  diameter <- igraph::diameter(Graph,directed=F,unconnected=TRUE,weights=(1/E(Graph)$weight)) ###here use the inverse of the weights, because the algorithm considers weights as distances rather than strengths of connexion
+  ##Efficiency
   #Network efficiency: average connection efficiency of all pairs of nodes, where connection efficiency is the reciprocal of the shortest path length between the two nodes
-  Net_eff  <- 1/shorteest-path-length-between-nodes
+  net_dist                    <- shortest.paths(Graph, weights=1/E(Graph)$weight, mode="all") ##again use the inverse of the weights, because the algorithm considers weights as distances rather than strengths of connexion
+  net_dist[net_dist==0]       <- NA ##remove distances to self
+  efficiency                  <- 1/net_dist ##transform each distance into an efficiency
+  efficiency <- (1/((vcount(Graph)*(vcount(Graph)-1))))*(sum(efficiency,na.rm=TRUE))
+  ## Modularity
+  communities             <- cluster_louvain(Graph, weights = E(Graph)$weight)
+  community_membership    <- communities$membership
+  modularity              <- modularity(Graph,community_membership,weights=E(Graph)$weight)
+  
+  
+  
+  #FINAL OUTPUT #DATAFRAME with the network properties per each 3 hours timeslot
+  
+  summary_collective <- rbind(summary_collective, data.frame(PERIOD,HOUR, From, To, PROPERTIES_LIST))
+  
+  
+  
+  ###Add to data
+  summary_collective <- rbind(summary_collective,data.frame(randy=REP.FILES,colony=COLONY,colony_size=COLONY_SIZE,treatment=TREATMENT,period=PERIOD,time_hours=HOUR, From, To,#time_of_day=time_of_day,
+                                                            task_assortativity=task_assortativity,
+                                                            clustering=clustering,
+                                                            degree_mean=degree_mean,
+                                                            degree_maximum=degree_maximum,
+                                                            density=density,
+                                                            diameter=diameter,
+                                                            efficiency=efficiency,
+                                                            modularity=modularity,stringsAsFactors = F))
+  
+  
+  ########### EXPANSION ##########################
+  ####Part 2: individual network properties ####
+  # look at line 218 on from /13_network_analysis.R
+  # (path length to queen, etc...)
  
-  #  Degree centrality:   degree of a vertex is its the number of its adjacent edges.
-  Deg_centrality  <- degree(compute_Graph, mode="in") #CHECK for MODE!
   
-  
-  ### TO FIX AND ACTIVATE ONCE ANT TASKS ARE ASSIGNED!
-  Assortativity  <- assortativity_nominal(compute_Graph, types=AntTasks$AntTask_num, directed=F)
-  
-  ## USE   Louvain (igraph::cluster_louvain) method  for  modularity optimization of weighted networks (see enrico script) 
-  ###THIS IS NOT HOW MEMBERSHIP WORKS! (Numeric vector)
-  Modularity <- modularity_matrix(compute_Graph, membership=AntTasks$AntTask_num ,weights = NULL, resolution = 1, directed = FALSE)
-  
-  
-  
-  ##############################################################################################
-  ################### STEAL IDEAS AND STRUCTURE FROM ENRICO!!! BUT NO NEED TO TRANSLATE HIS CODE!######
-  
-  
-  # function to compute netowrk properties
-  def G_prop(compute_Graph, exp, start, end, time_win, max_gap): #, name, var, nest_focus, PLOT_HM_check = False
-    
-    # compute connencted components
-    Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
-  
-  # Define Giant Component
-  GC = G.subgraph(Gcc[0])
-  res = 1
-  
-  # Best partition Louvian Method
-  best_partition = nxc.greedy_modularity_communities(G, weight='weight', resolution=res)
-  best_partition_CC = nxc.greedy_modularity_communities(GC, weight='weight', resolution=res)
-  best_partition_CC_res_09 = nxc.greedy_modularity_communities(GC, weight='weight', resolution=0.9)
-  if var != None:
-    best_partition_CC_3p = nxc.greedy_modularity_communities(GC, weight='weight', cutoff=3, best_n=3, resolution=res)
-  mode_p = mode_communities_dic[var['link_type']][name[11:14]][time_win]
-  else:
-    best_partition_CC_3p = nxc.greedy_modularity_communities(GC, weight='weight', cutoff=1, best_n=1, resolution=res)
-  mode_p = 1
-  
-  best_partition_CC_mode_p = nxc.greedy_modularity_communities(GC, weight='weight', cutoff=mode_p, best_n=mode_p, resolution=res)
-  
-  
-  # Heatmap partition plotting (optional)
-  if PLOT_HM_check:
-    
-    # Save HM_partition Louvain
-    directory = 'plots/HM_partition/unsup_mod/' + myrm_file[7:10]
-  if not os.path.exists(directory):
-    os.makedirs(directory)
-  
-  attributes = '_' + var['link_type'] + '_' + str(time_win / 3600) + 'h_' + str(var['h'])
-  PLOT_HM_partition(compute_HM_stack(exp, start, end), 
-                    best_partition_CC, 
-                    directory + '/', 
-                    name[7:15] + attributes)
-  
-  # Save HM_partition 3 partition
-  directory = 'plots/HM_partition/sup_mod3p/' + myrm_file[7:10]
-  if not os.path.exists(directory):
-    os.makedirs(directory)
-  
-  attributes = '_' + var['link_type'] + '_' + str(time_win / 3600) + 'h_' + str(var['h'])
-  PLOT_HM_partition(compute_HM_stack(exp, start, end), 
-                    best_partition_CC_3p, 
-                    directory + '/', 
-                    name[7:15] + attributes)
-  
-  # Save HM_partition mode parition
-  directory = 'plots/HM_partition/sup_modmp/' + myrm_file[7:10]
-  if not os.path.exists(directory):
-    os.makedirs(directory)
-  
-  attributes = '_' + var['link_type'] + '_' + str(time_win / 3600) + 'h_' + str(var['h'])
-  PLOT_HM_partition(compute_HM_stack(exp, start, end), 
-                    best_partition_CC_mode_p, 
-                    directory + '/', 
-                    name[7:15] + attributes)
-  
-  return {'rep': int(name[8:10]),
-    'exp': name[11:15],
-    'start': fm.Time.ToDateTime(start), 
-    'time_win': time_win, 
-    'nest_focus': nest_focus,
-    'max_gap': max_gap,
-    'GC': GC.number_of_nodes(),
-    'ants': G.number_of_nodes(),
-    'cMOD_communities': [len(best_partition_CC[i]) for i in range(len(best_partition_CC))],
-    'cmpMOD_communities': [len(best_partition_CC_mode_p[i]) for i in range(len(best_partition_CC_mode_p))],
-    'c3pMOD_communities': [len(best_partition_CC_3p[i]) for i in range(len(best_partition_CC_3p))],
-    'cMODres09_communities': [len(best_partition_CC_res_09[i]) for i in range(len(best_partition_CC_res_09))],
-    'MOD': nxc.modularity(G, best_partition),
-    'cMOD': nxc.modularity(GC, best_partition_CC),
-    'c3pMOD': nxc.modularity(GC, best_partition_CC_3p),
-    'cmpMOD': nxc.modularity(GC, best_partition_CC_mode_p),
-    'DEN': nx.density(G), 
-    'wDEN': nx.adjacency_matrix(G).sum() / (G.number_of_nodes() * (G.number_of_nodes() - 1) * time_win),  # weighted density = sum all weights /(|V|*(|V|-1)/2 * time_win)
-    'DIA': nx.diameter(GC),
-    'wDIA': nx.diameter(GC, e=nx.eccentricity(GC, sp=dict(nx.shortest_path_length(GC,weight='inv_weight')))),
-    'RAD': nx.radius(GC),
-    'wRAD': nx.radius(GC, e=nx.eccentricity(GC, sp=dict(nx.shortest_path_length(GC,weight='inv_weight')))),
-    'DEH': np.std([G.degree(n) for n in G.nodes()]),
-    'cDEH': np.std([GC.degree(n) for n in GC.nodes()]),
-    'wDEH': np.std(nx.adjacency_matrix(G).sum(axis=0)), # strength heterogeneity
-    'cwDEH': np.std(nx.adjacency_matrix(GC).sum(axis=0)), # strength heterogeneity
-    'CLS': np.mean([c for c in nx.clustering(G, weight='weight').values()]) 
-  }
-  
-  # initialise data-frame with properties
-  prop_df = pd.DataFrame(columns=G_prop(nx.star_graph(5),[],fm.Time.Now(),[],1,1,myrm_list[0],var=None, nest_focus=True).keys())
-    
   
   
   
