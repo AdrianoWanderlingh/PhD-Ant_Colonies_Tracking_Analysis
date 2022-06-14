@@ -22,7 +22,7 @@ max_time_gap <- 0.2 #0.5 ##LOWER THAN 0.2 BREAKS THE CODE
 ##define a minimum distance moved, as you don't want to use noise or small shifts in position in this calculation; e.g. 30 pix (to think about)
 min_dist_moved <- 15 #30
 
-trajectory_length_hours <- 24 ###duration of trajectory (in hours) on which to base automated orientation
+trajectory_length_hours <- 12 ###duration of trajectory (in hours) on which to base automated orientation
 
 #### FUNCTIONS
 #list files recursive up to a certain level (level defined by "n" parameter)
@@ -37,14 +37,16 @@ list.dirs.depth.n <- function(p, n) {
 }
 
 ###source C++ movement direction program
-sourceCpp("/media/cf19810/DISK4/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
+#sourceCpp("/media/cf19810/DISK4/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
+sourceCpp("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
 #sourceCpp("/media/eg15396/DISK4/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
 #sourceCpp("/home/bzniks/Downloads/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
 
 ### directory of data and myrmidon files
 #dir_data <- '/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA'
 #dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
-dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
+#dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
+dir_data  <- "/home/cf19810/Documents/TEMP/EXPERIMENT_DATA"
 
 
 #### ACCESS FILES
@@ -84,14 +86,15 @@ for (REP.n in 1:length(files_list)) {
 
 
 # Select the metadata-rich files
-Metadata_list <- EXP_list[which(grepl(EXP_list$path_name,pattern = "DeathRecord_NoOrient|ManOriented")),]
+Metadata_list <- EXP_list[which(grepl(EXP_list$path_name,pattern = "DeathRecord_NoOrient|ManOriented.myr")),]
 Metadata_list <- Metadata_list[which(!grepl(Metadata_list$path_name,pattern = "base")),]
 
 #exclude files already auto-oriented
 EXP_list <- EXP_list[which(!grepl(EXP_list$path_name,pattern = "AutoOrient")),]
 
 # flag which ones are the base oriented files
-EXP_list$OrientedCapsule = ifelse(grepl("-base.myrmidon",EXP_list$path_name),"true","false")
+#EXP_list$OrientedCapsule = ifelse(grepl("-base.myrmidon",EXP_list$path_name),"true","false")
+EXP_list$OrientedCapsule = ifelse(grepl("ManOriented_CapsuleDef3.myrmidon",EXP_list$path_name),"true","false") # To use as base the CapsuleDef3!
 
 ### manually oriented ref file name
 ref_orient_caps_file <- EXP_list[which(EXP_list$OrientedCapsule=="true"),]
@@ -200,7 +203,7 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
   
   to_keep_2 <- c(ls(),"to_keep_2","ToOrient_myr_file")
   for (ToOrient_myr_file in ToOrient_data_list){
-    #ToOrient_myr_file <- ToOrient_data_list[5] #temp
+    #ToOrient_myr_file <- ToOrient_data_list[1] #temp
     
     # if the _AutoOriented file file doesn't exist, then continue
     if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS.myrmidon"))) {
@@ -279,6 +282,12 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
       }
       ToOrient_capsule_names <- ToOrient_data$antShapeTypeNames
       
+      ###POSITIONS for all, cut trajs after
+      FROM <- fmTimeCreate(offset=fmQueryGetDataInformations(ToOrient_data)$start) ###experiment start time
+      TO   <- fmTimeCreate(offset=fmQueryGetDataInformations(ToOrient_data)$start + 12*3600  ) ###experiment start time
+      max_gap <- fmHour(24*365)  ###this parameter is very important to - use a super large value to make sure you get only one trajectory per ant!!!
+      positions <- fmQueryComputeAntTrajectories(ToOrient_data,start = FROM,end = TO,maximumGap = max_gap,computeZones = TRUE)
+      
       
       ###copy individual metadata, orient ant and add capsules
       to_keep_3 <- c(ls(),"to_keep_3","ant_INDEX")
@@ -321,9 +330,9 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
 
         }#METADATA_KEY
         
+ 
         ###orient ant and define capsule: loop over identifications
         ###SKIP FOR QUEEN SO THAT YOU CAN ORIENT THE QUEEN AND CREATE CAPSULES MANUALLY IN FORTSTUDIO
-        
         if (ToOrient_data$ants[[ant_INDEX]]$ID!=QueenID){
           to_keep_4 <- c(ls(),"to_keep_4","identif")
           for (identif in 1:length(ToOrient_data$ants[[ant_INDEX]]$identifications)){
@@ -376,9 +385,10 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
             
             
             ###Then compute trajectory
-            max_gap <- fmHour(24*365)  ###this parameter is very important to - use a super large value to make sure you get only one trajectory per ant!!!
-            positions <- fmQueryComputeAntTrajectories(ToOrient_data,start = from,end = to,maximumGap = max_gap,computeZones = TRUE, matcher = fmMatcherAntID(ToOrient_data$ants[[ant_INDEX]]$ID))
+            #positions <- fmQueryComputeAntTrajectories(ToOrient_data,start = from,end = to,maximumGap = max_gap,computeZones = TRUE, matcher = fmMatcherAntID(ToOrient_data$ants[[ant_INDEX]]$ID))
             ###this should return a single trajectory for the ant of interest and the identification of interest
+            
+            
             #check that the ant trajectory exists
             aux <- positions$trajectories_summary$antID==ToOrient_data$ants[[ant_INDEX]]$ID
             if (sum(aux)==0) {
@@ -391,6 +401,17 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
             #print(paste0("ANT ", ToOrient_data$ants[[i]]$ID))
             ####to be fool proof, and be sure you extract the trajectory corresponding the correct ant, make sure you make use of the antID_str column!
             traj <- positions$trajectories [[   positions$trajectories_summary[which(aux),"antID_str"]    ]]
+            
+            #create time column with time since positions + start_time
+            positions$trajectories[[ToOrient_data$ants[[ant_INDEX]]$ID]]$time_UNIX <- positions$trajectories[[ToOrient_data$ants[[ant_INDEX]]$ID]]$time + fmQueryGetDataInformations(ToOrient_data)$start
+            #use this time to isolate relevant time-span
+            #Reconvert convert Zulu time to GMT... (TEMP FIX)
+            from_UNIX  <- as.POSIXct(capture.output(print(from)), format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+            to_UNIX  <- as.POSIXct(capture.output(print(to)), format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+            
+            traj <- traj [ which(positions$trajectories[[ToOrient_data$ants[[ant_INDEX]]$ID]]$time_UNIX >= from_UNIX &
+                                 positions$trajectories[[ToOrient_data$ants[[ant_INDEX]]$ID]]$time_UNIX <= to_UNIX),]
+            
             
             ###feed traj to c++ program
             traj <- cbind(traj,add_angles(traj,max_time_gap,min_dist_moved))
