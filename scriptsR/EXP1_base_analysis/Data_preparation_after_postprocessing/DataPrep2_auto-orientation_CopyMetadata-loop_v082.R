@@ -104,7 +104,7 @@ ToOrient_file <- EXP_list[which(grepl(EXP_list$path_name,pattern = "AntsCreated.
 ### Loop through all the directories in the dir_folder
 
 # loop through the unique Tracking systems
-#TS <- "westerby" #
+#TS <- "karla" #
 to_keep_1 <- c(ls(),"to_keep_1","TS")
 for (TS in unique(ref_orient_caps_file$TrackSys_name)){
   print(paste("START: Auto-orient + capsule for",TS, sep =" "))
@@ -200,7 +200,7 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
   
   to_keep_2 <- c(ls(),"to_keep_2","ToOrient_myr_file")
   for (ToOrient_myr_file in ToOrient_data_list){
-    #ToOrient_myr_file <- ToOrient_data_list[1] #temp
+    #ToOrient_myr_file <- ToOrient_data_list[5] #temp
     
     # if the _AutoOriented file file doesn't exist, then continue
     if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS.myrmidon"))) {
@@ -225,6 +225,13 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
           if (IsQueen==TRUE) { QueenID <- ant$ID }
         }
       }
+
+      
+      
+      ############# MAKE SURE ISALIVE METADATA KEY IS PRESENT #########################
+      if (is.null(Metadata_exp$metaDataKeys$IsAlive)){
+      Metadata_exp$setMetaDataKey("IsAlive",TRUE) 
+        }
 
       ############# ASSIGN METADATA KEYS to tracking data #########################
       list_keys <- list()
