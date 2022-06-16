@@ -246,7 +246,7 @@ compute_G <- function(exp, start, end){ # min_cum_duration , link_type, nest_foc
   # convert timestamp of frame into corresponding frame number starting from 1 (with frame#1 at 'start' time)
   # CollideFrames <- fmQueryCollideFrames(exp,start=start,end=end)
   # TimeToFrame <- seq_along(CollideFrames$frames$time)
-  Interactions <- fmQueryComputeAntInteractions(exp, start, end, maximumGap=gap, showProgress = TRUE, singleThreaded=FALSE, reportFullTrajectories = F)
+  Interactions <- fmQueryComputeAntInteractions(exp, start, end, maximumGap=gap, singleThreaded=FALSE, reportFullTrajectories = F)
   # Interactions$ant_ID1 <- paste("ant_",Interactions$ant1,sep="") ##creates a ID string for each ant: ant1, ant2,...
   # Interactions$ant_ID2 <- paste("ant_",Interactions$ant2,sep="")
   exp.Ants <- exp$ants
@@ -393,10 +393,12 @@ library(igraph)
 TimeWind        <- 3600 ## in seconds (3600 is an hour)
 gap             <- fmSecond(10)
 ## TIME WINDOW SHIFT. WARNING: THIS IS AN APPROXIMATION. IN THE FUTURE, THE TIME OF EXP ANTS RETURN PER TRACKING SYSTEM SHOULD BE USED! 
-window_shift <- 60*10 #approx N of minutes that where given at the end as leeway, can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
+window_shift <- 60*15 #approx N of minutes that where given at the end as leeway, minutes can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
 
 ## some initialization
 Period_dataframe <- NULL #checking time correspondances
+#start fresh
+Network_properties            <- data.frame()
 
 #### FUNCTIONS
 #list files recursive up to a certain level (level defined by "n" parameter)
@@ -420,8 +422,6 @@ files_list <- list.dirs.depth.n(DATADIR, n = 1)
 #select REP folders
 files_list <- files_list[grep("REP",files_list)]
 
-#start fresh
-Network_properties            <- data.frame()
 
 ###initialise general output folder
 ###remove folder if already exists to make sure we don't mix things up
@@ -431,8 +431,8 @@ if (file.exists(file.path(DATADIR, "NetworkAnalysis_outcomes"))){
 ###create folder
 dir.create(file.path(DATADIR, "NetworkAnalysis_outcomes"),recursive = T)
 ###define name of general output table containing Network_properties
-output_name <- file.path(DATADIR, "NetworkAnalysis_outcomes","Network_properties.txt")
-AntTasks_SpaceUse <- file.path(DATADIR, "NetworkAnalysis_outcomes","AntTasks_SpaceUse.txt")
+output_name <- file.path(DATADIR, "NetworkAnalysis_outcomes","Network_properties.txt") # (saved INSIDE the Network_analysis folder)
+AntTasks_SpaceUse <- file.path(DATADIR,"AntTasks_SpaceUse.txt") # (saved OUTSIDE the Network_analysis folder)
 
 ##### RUNNING TIME
 loop_start_time <- Sys.time()
@@ -453,11 +453,12 @@ for (REP.n in 1:length(files_list)) {
   
   #replicate file
   for (REP.FILES in REP.filefolder) {
-    # REP.FILES <-  REP.filefolder[2]   #temp
+    # REP.FILES <-  REP.filefolder[1]   #temp
     print(REP.FILES) ##}}
     #open experiment
     exp <- fmExperimentOpen(REP.FILES)
     # exp.Ants <- exp$ants
+    print(paste0("Processing ",basename(REP.FILES)))
     exp_end <- fmQueryGetDataInformations(exp)$end - window_shift
     
     ## get in R the spaceID / name correspondance
@@ -473,16 +474,24 @@ for (REP.n in 1:length(files_list)) {
     print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
 
     ########### COMPUTE THE ANT TASKS (24h before exposure)  and the zone use (pre-post exposure)
+    print(paste0("Computing Ant Tasks and Zone Uses"))
     AntTasks <- AntTasks.ZoneUse(exp=exp,window_shift=window_shift)
     
     ########## GET EXPOSED ANTS 
     exp.Ants <- exp$ants
     AntTasks$Exposed <- "no"
-    # check who's the queen
     for (ant in exp.Ants){
       individual  <- ant$ID
       #print(ant)
         if (TRUE %in% ant$getValues("Exposed")[,"values"]) { AntTasks[individual,"Exposed"] <- "exposed" }
+    }
+    
+    ########## GET QUEENS 
+    AntTasks$IsQueen <- "no"
+    for (ant in exp.Ants){
+      individual  <- ant$ID
+      #print(ant)
+      if (TRUE %in% ant$getValues("IsQueen")[,"values"]) { AntTasks[individual,"IsQueen"] <- "queen" }
     }
 
     #base file info
@@ -493,6 +502,7 @@ for (REP.n in 1:length(files_list)) {
     COLONY_SIZE <- nrow(AntTasks)
 
     # ### HOURLY LOOP; loading 24 hours of data requires >32 GB RAM & causes R to crash, so we must load the contacts in 3h blocks, stacking vertically
+    print(paste0("Compute 3-hours analysis"))
     for (HOUR in seq(from=0, to=48, by=3)){  ## increments by 3 hours for 48 hours
       
     #   ## increment the window start & end times by 1 hour
@@ -521,6 +531,7 @@ for (REP.n in 1:length(files_list)) {
     if (!Period_dt$PERIOD=="EXPOSURE_GAP") {
 
   #COMPUTE NETWORK
+  print(paste0("Computing networks and properties"))
   Graph <- compute_G(exp = exp, start = start, end=end)
 
   # COMPUTE NETWORK PROPERTIES
@@ -530,8 +541,7 @@ for (REP.n in 1:length(files_list)) {
   
   } }#REP LOOP
     
-    
-    
+
     #keep relevant exp info
     AntTasks <- data.frame(randy=REP.FILES,colony=COLONY,colony_size=COLONY_SIZE,treatment=TREATMENT, AntTasks)
     
@@ -544,18 +554,18 @@ for (REP.n in 1:length(files_list)) {
     ########################################
     ##### SAVE FILES IN FOLDER #############
 
-    ## Network properties save
+    ## Network properties save (saved INSIDE the Network_analysis folder)
     if (file.exists(output_name)){
-      write.table(Network_properties,file=output_name,append=T,col.names=F,row.names=F,quote=T)
+      write.table(Network_properties,file=output_name,append=T,col.names=F,row.names=F,quote=T,sep=",")
     }else{
-      write.table(Network_properties,file=output_name,append=F,col.names=T,row.names=F,quote=T)
+      write.table(Network_properties,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
     }
     
-    ## AntTasks save
+    ## AntTasks save (saved OUTSIDE the Network_analysis folder)
     if (file.exists(AntTasks_SpaceUse)){
-      write.table(AntTasks,file=AntTasks_SpaceUse,append=T,col.names=F,row.names=F,quote=T)
+      write.table(AntTasks,file=AntTasks_SpaceUse,append=T,col.names=F,row.names=F,quote=T,sep=",")
     }else{
-      write.table(AntTasks,file=AntTasks_SpaceUse,append=F,col.names=T,row.names=F,quote=T)
+      write.table(AntTasks,file=AntTasks_SpaceUse,append=F,col.names=T,row.names=F,quote=T,sep=",")
     }
     
     
@@ -568,51 +578,12 @@ for (REP.n in 1:length(files_list)) {
     ### PLOTTING (1 col..., should be all)
     #plot(AntTasks$delta_time_inside, col=as.factor(AntTasks$Exposed))
     
-    
     ####################################################################################
     ### plot MEAN DELTA PER ANT SEPARATED BETWEEN NON EXPOSED AND EXPOSED, WITH COL. SIZE COMPARISON
     ###################################################################################
     
-    
-    ### SEE NATHALIE WORK FOR PLOTTING INSPIRATION
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    ############## RANDOM PLOTTING COPIED FROM BEE_FLORA
-    
-    # ## threshold edges - just for plotting
-    # G2 <- delete.edges(graph=G, edges=E(G) [E(G)$weight < quantile(E(G)$weight,0.5)] )  ## remove 50% of the weakest edges, for plotting only
-    # ## spring-embedded graph layout
-    # Layout <- layout_with_fr(graph=G2, weights= log10(E(G2)$weight) ) ##
-    # 
-    # 
-    # 
-    # ## PLOTTING
-    # par(mfrow=c(2,2), mai=c(0.4,0.4,0.1,0.1), tcl=-0.2, mgp=c(1.3,0.3,0))
-    # ## time-series
-    # plot  (N_contacts ~ HOUR, AggContactsByHour[AggContactsByHour$box=="Foraging",], type="b", pch=21, bg=1, ylab="N contacts / hour", ylim=range(AggContactsByHour$N_contacts))
-    # points(N_contacts ~ HOUR, AggContactsByHour[AggContactsByHour$box=="Nest",],     type="b", pch=21, bg=2)
-    # ## distribution of proportion contacts in the foraging box
-    # hist(Box_Time_Allocation$space_binary, breaks=25, main="", xlab="Proportion of time in foraging arena", ylab="N bees", col=1)
-    # ## degree ~ prop time in forage arena
-    # plot(V(G)$weighted_degree ~ V(G)$space_binary, xlab="Proportion of time in foraging arena", ylab="N contacts")
-    # ## plot the contact network
-    # plot(G, Layout, 
-    #      vertex.size= 5 + (8 * V(G)$weighted_degree/max(V(G)$weighted_degree)), 
-    #      vertex.color=parula(11)[10 * round(V(G)$space_binary,1)],
-    #      vertex.label=NA, 
-    #      edge.color=rgb(0.5,0.5,0.5,0.75,maxColorValue =1),
-    #      edge.width=2*E(G)$weight/mean(E(G)$weight),
-    #      edge.curved=0.2)
-    # ## mean of c(0,0,1,1,0,0)=1/3
-    
+
+     
   }
 }
 
