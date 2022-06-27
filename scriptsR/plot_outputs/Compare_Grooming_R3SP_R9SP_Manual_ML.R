@@ -1,14 +1,15 @@
 rm()
 
-library(lubridate)
-
 
 ### Check inferred grooming output
 
 WORKDIR <- "/home/tracking_users/Documents/Adriano/Ants_behaviour_analysis"
 DATADIR <-  "/home/tracking_users/Documents/Adriano/Ants_behaviour_analysis/Data"
 
-inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings.csv",sep=""),header=T,stringsAsFactors = F)
+chosen <- read.table(paste(WORKDIR,"/Data/MachineLearning_outcomes/quality_scores_CHOSEN.txt",sep=""),header=T,stringsAsFactors = F)
+
+
+inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_TEST.csv",sep=""),header=T,stringsAsFactors = F)
 
 
 inferred$T_start_UNIX <- as.POSIXct(inferred$T_start_UNIX,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
@@ -60,7 +61,7 @@ exp_R9SP_time <-  as.POSIXct( "2021-04-26 11:26:00 GMT"  ,format = "%Y-%m-%d %H:
 ##############
 # Load manual annotations
 
-annotations <- read.csv(paste(DATADIR,"/annotations_TRAINING_DATASET.csv",sep = ""), sep = ",")
+annotations <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
 #transform zulu time in GMT
 annotations$T_start_UNIX <- as.POSIXct(annotations$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
 annotations$T_stop_UNIX  <- as.POSIXct(annotations$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
@@ -98,12 +99,12 @@ Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + perio
 
 ## show the mean counts for each behav | stage
 pdf(file=paste(DATADIR,"Grooming_Auto_Man__pre-post.pdf", sep = ""), width=5, height=8)
-par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.5,0.1), mgp=c(1.3,0.3,0), tcl=-0.2,oma=c(0,0,2,0))
+par(mfrow=c(1,2), family="serif", mai=c(0.4,0.5,0.5,0.1), mgp=c(1.3,0.3,0), tcl=-0.2,oma=c(2,0,4,0))
 
 ## COUNTS
 Counts_by_Behaviour_MEAN$period <- factor(Counts_by_Behaviour_MEAN$period , levels = c("pre","post"))
 
-Xpos <- barplot( Count ~ period , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour count" , ylim=c(0,30)
+Xpos <- barplot( Count ~ period , Counts_by_Behaviour_MEAN, beside=T, xlab="", ylab="Behaviour count" , ylim=c(0,50)
                  ,main="Manual annotation")
 ##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
 segments(x0 = Xpos[1,], 
@@ -192,7 +193,7 @@ Counts_AUTO_SE    <- aggregate(Count ~ period,                 FUN=std.error, na
 Counts_AUTO_MEAN$period  = factor(Counts_AUTO_MEAN$period, levels=c("pre", "post"))
 
 ## COUNTS
-Xpos <- barplot( Count ~ period , Counts_AUTO_MEAN, beside=T, xlab="", ylab=" ", ylim=c(0,30)
+Xpos <- barplot( Count ~ period , Counts_AUTO_MEAN, beside=T, xlab="", ylab=" ", ylim=c(0,50)
                  ,main="Auto classified")
 
 ##  add SE bars for the left bar in each behaviour - only add the upper SE limit to avoid the possibility of getting negative counts in the error
@@ -211,7 +212,11 @@ segments(x0 = Xpos[2,],
 # text(x = ((Xpos[1,]+Xpos[2,])/2),
 #      y = Counts_AUTO_MEAN$Count [Counts_AUTO_MEAN$period=="post"] + Counts_AUTO_SE$Count [Counts_AUTO_SE$period=="post"]+15,
 #      stars.pval(posthoc_FREQ_summary$p.value))
-mtext("comparison of detected grooming", line=0, side=3, outer=TRUE, cex=1.5)
+
+
+
+mtext("comparison of detected grooming \nreceived by exposed ants", line=1, side=3, outer=TRUE, cex=1.3)
+mtext(paste("Fbeta",chosen$Fbeta_test, "; precision", chosen$precision_test,"; sensitivity",chosen$sensitivity_test,sep=" "), line=-35, side=3, outer=TRUE, cex=1)
 
 
 dev.off()
