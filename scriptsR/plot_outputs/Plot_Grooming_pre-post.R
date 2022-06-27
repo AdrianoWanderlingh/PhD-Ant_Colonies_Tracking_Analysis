@@ -212,16 +212,26 @@ Counts_by_Behaviour_AllCombos1$Count[which(is.na(Counts_by_Behaviour_AllCombos1$
 infer_1h_Count_MEAN  <- aggregate(Count_byAnt ~ PERIOD + hour + TREATMENT,                 FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1)
 infer_1h_Count_SE    <- aggregate(Count_byAnt ~ PERIOD + hour + TREATMENT,                 FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1)
 
+#add break
+GAP <- data.frame(PERIOD= "pre", hour=c(-2,-1), TREATMENT="SP",Count_byAnt=NA)
+GAP <- rbind(GAP,data.frame(PERIOD= "pre", hour=c(-2,-1), TREATMENT="SS",Count_byAnt=NA))
 
+infer_1h_Count_MEAN <- rbind(infer_1h_Count_MEAN,GAP)
 
 ggplot(infer_1h_Count_MEAN) + 
   aes(x = hour, y = Count_byAnt, group = TREATMENT,color = TREATMENT) + 
-  geom_line()+
+  geom_path()+
   geom_ribbon(aes(y = infer_1h_Count_MEAN$Count_byAnt, ymin = infer_1h_Count_MEAN$Count_byAnt - infer_1h_Count_SE$Count_byAnt, ymax = infer_1h_Count_MEAN$Count_byAnt + infer_1h_Count_SE$Count_byAnt, fill = TREATMENT), alpha = .2, colour=NA) +
   theme_bw() +  
-  theme(legend.key = element_blank())
+  # theme(legend.key = element_blank()) +
+  geom_vline(xintercept = 0,color = "red")+
+  labs(title = "Frequency of Grooming in Sham and Pathogen treated colonies",
+       x = "time from treatment", y = "Freq by Hour by Ant") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+ 
 
-
+#P1 + scale_colour_viridis_d()
 
 ###### start plottings
 # 
