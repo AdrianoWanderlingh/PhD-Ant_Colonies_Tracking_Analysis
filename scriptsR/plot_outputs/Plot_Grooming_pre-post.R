@@ -1,3 +1,9 @@
+####################################################################################
+#### THIS SCRIPT CONTAINS:
+#### DATA MANIPULATION TO PLOT INFERRED GROOMING
+#### SOME BASE PLOTS USED IN THE IUSSI SAN DIEGO 2022 PRESENTATION (MOVE THEM?)
+####################################################################################
+
 library(FortMyrmidon)
 library("ggplot2")
 library(lubridate)
@@ -8,9 +14,7 @@ library(lme4)
 library(Hmisc)
 library("viridis")
 library(stringr)
-
 library(dplyr)
-
 
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
 DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data"
@@ -370,12 +374,24 @@ ggplot(infer_10min_Dur_SUM) +
        x = "time from treatment", y = "Total duration (sec) by 10 min bin")
 
 
-
+### N of exposed ants in the colony
 Reps_N_exposed$treat <- str_sub(Reps_N_exposed$REP_treat,-2,-1)
 Mean_ants_exp <- aggregate(N_received ~ treat, FUN=mean, na.action=na.omit, Reps_N_exposed)
 SD_ants_exp <- aggregate(N_received ~ treat, FUN=sd, na.action=na.omit, Reps_N_exposed); colnames(SD_ants_exp) [match("N_received",colnames(SD_ants_exp))] <- "SD_received"
 N.ants.exposed    <-  plyr::join(x=Mean_ants_exp, y=SD_ants_exp, type = "full", match = "all")
 data.frame(treat=N.ants.exposed$treat, N_exposed=sprintf("%.2f \U00B1 %.2f",N.ants.exposed$N_received,N.ants.exposed$SD_received))
+
+### Where grooming happens
+Groom_location <- aggregate(REP_treat ~ TREATMENT + ant1.zones , FUN=length, na.action=na.omit, inferred);  colnames(Groom_location) [match("REP_treat",colnames(Groom_location))] <- "count"
+Groom_location$ant1.zones <- str_replace(Groom_location$ant1.zones,"1","Nest Area")
+Groom_location$ant1.zones <- str_replace(Groom_location$ant1.zones,"2","Foraging Area")
+
+### Grooming Location
+ggplot(Groom_location, aes(x=TREATMENT, y=count))+
+  geom_bar(stat='identity')+
+  facet_wrap(~ant1.zones) +
+  labs(title= "Grooming Location")
+
 
 
 
