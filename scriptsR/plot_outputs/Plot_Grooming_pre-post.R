@@ -350,7 +350,7 @@ ggplot(infer_10min_Count_MEAN) +
 
 #MEAN DURATION
 ggplot(infer_10min_Count_MEAN) + 
-  aes(x = timespan, y = duration, group = TREATMENT,color = TREATMENT) + 
+  aes(x = timespan, y = duration, group = TREATMENT,fill=TREATMENT,color = TREATMENT) + 
   geom_col(size=0.5)+
   STYLE +
   # theme(legend.key = element_blank()) +
@@ -370,6 +370,12 @@ ggplot(infer_10min_Dur_SUM) +
        x = "time from treatment", y = "Total duration (sec) by 10 min bin")
 
 
+
+Reps_N_exposed$treat <- str_sub(Reps_N_exposed$REP_treat,-2,-1)
+Mean_ants_exp <- aggregate(N_received ~ treat, FUN=mean, na.action=na.omit, Reps_N_exposed)
+SD_ants_exp <- aggregate(N_received ~ treat, FUN=sd, na.action=na.omit, Reps_N_exposed); colnames(SD_ants_exp) [match("N_received",colnames(SD_ants_exp))] <- "SD_received"
+N.ants.exposed    <-  plyr::join(x=Mean_ants_exp, y=SD_ants_exp, type = "full", match = "all")
+data.frame(treat=N.ants.exposed$treat, N_exposed=sprintf("%.2f \U00B1 %.2f",N.ants.exposed$N_received,N.ants.exposed$SD_received))
 
 
 
