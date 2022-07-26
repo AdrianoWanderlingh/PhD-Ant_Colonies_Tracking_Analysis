@@ -682,10 +682,14 @@ for (ROW in 1:nrow(AntTasks)) {
 #   prop_time_outside
 # Remaing cols
 
+# OPTIONAL:
+# proportion_time_active    
+# average_bout_speed_pixpersec    
+# total_distance_travelled_pix
 
 
 
-
+## time_dictionary
 # time_hours time_of_day period
 # 1              0          12  after
 # 69             3          15  after
