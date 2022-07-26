@@ -155,7 +155,10 @@ interaction_detection <- function (e
     #################################################################################################
     ###collpase collisions into single dataframe (necessary for next filtering step) ################
     #################################################################################################
+    print("Collapsing collisions...")
     collisions <- collapse_collisions(collisions)
+    print("Collisions collapsed.")
+    
     if (!is.null(all_collisions)){
       collisions <- collisions[which(as.numeric(collisions$time)>max(as.numeric(all_collisions$time),na.rm=T)),]
     }
@@ -164,7 +167,7 @@ interaction_detection <- function (e
     
     ###update start and end
     if (!extraction_complete){
-      start <- fmTimeCreate(offset=IF_frames[which(IF_frames$frame_num==frame_end-1) ,"time"   ])          ### new start time = end time of last query - a few frames to ensure some overlap to avoid losing data (problems with rounding leading to mismatches between timestamps!)
+      start <- fmTimeCreate(offset=IF_frames[which(IF_frames$frame_num==frame_end-5) ,"time"   ])          ### new start time = end time of last query - a few frames to ensure some overlap to avoid losing data (problems with rounding leading to mismatches between timestamps!)
       end   <- absolute_end ### new end time = absolute_end
     }
     
@@ -205,6 +208,7 @@ interaction_detection <- function (e
   collisions$pair <- match(collisions$pair,sort(unique(collisions$pair)))-1 ###necessary for c++
   pair_list <- sort(unique(collisions$pair))
   
+  print("About to start mergeing collisions into interaction list...")
   if (length(pair_list)>chunk_size_for_merge){ ###if too many pairs, merge interactions by chunks
     interactions <- NULL; 
     n_chunks <- ceiling(length(pair_list)/chunk_size_for_merge)

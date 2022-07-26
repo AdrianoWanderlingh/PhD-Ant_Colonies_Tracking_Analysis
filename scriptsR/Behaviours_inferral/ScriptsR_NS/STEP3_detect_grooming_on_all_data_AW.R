@@ -16,7 +16,7 @@ gc()
 mallinfo::malloc.trim(0L)
 
 ###parameter to set at start
-USER <- "Adriano"
+USER <- "Supercomputer1"
 ###To set by user
 BEH <- "G"
 FRAME_RATE <- 8
@@ -41,6 +41,13 @@ if (BEH =="G"){
 ###############################################################################
 
 ####### navigate to folder containing myrmidon file
+if (USER=="Supercomputer1") {
+  WORKDIR <- "/media/bzniks/DISK4/Ants_behaviour_analysis"
+  DATADIR <- paste(WORKDIR,"Data",sep="/")
+  SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
+  EXPDATADIR <- "/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
+}
+
 if (USER=="Adriano") {
   WORKDIR <- "/media/tracking_users/DISK4/Ants_behaviour_analysis" #  "/home/cf19810/Documents/Ants_behaviour_analysis" #
   DATADIR <- paste(WORKDIR,"Data",sep="/")
@@ -61,9 +68,16 @@ if (USER=="Nathalie"){
   EXPDATADIR <- "/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA"
 }
 
+if (USER=="Simon") {
+  WORKDIR <- "/home/tracking_users/Documents/Adriano/Ants_behaviour_analysis" #  "/home/cf19810/Documents/Ants_behaviour_analysis" #
+  DATADIR <- paste(WORKDIR,"Data",sep="/")
+  SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
+  EXPDATADIR <- "/media/tracking_users/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
+}
+
 #################################################################
 ############ OUTPUT FILE #####################################
-output_name <- file.path(EXPDATADIR,"inferred_groomings_REP1to7_LargePathOnly.txt")
+
 
 
 ###source function scripts
@@ -133,188 +147,201 @@ names(classifier) <- chosen[,"classifier"]
 ###### LIST MYRMIDON FILES ON WHICH TO PERFORM GROOMING DETECTION ##################################
 ###############################################################################
 setwd(EXPDATADIR)
+print("Finding myrmidon files...")
 myrmidon_files <- list.files(pattern="CapDef3.myrmidon",recursive = T) #should be the CapsuleDef3 files
 CAPSULE_FILE <- "CapDef3"
 myrmidon_files <- myrmidon_files[which(grepl(CAPSULE_FILE,myrmidon_files))]
 
-######### SELECT SUBSET TO PARALLELIZE ANALYSIS
-myrmidon_files <-  myrmidon_files[grepl(myrmidon_files,pattern="REP1/|REP2/|REP3/|REP4/|REP5/|REP6/|REP7/")]
-#SELECT SMALL ONES ONLY
-myrmidon_files <-  myrmidon_files[grepl(myrmidon_files,pattern="BP")]
+# ######### SELECT SUBSET IF NEEDED
+# myrmidon_files <-  myrmidon_files[grepl(myrmidon_files,pattern="REP1/|REP2/|REP3/|REP4/|REP5/|REP6/|REP7/")]
+myrmidon_files <-  myrmidon_files[grepl(myrmidon_files,pattern="BP|BS")]
 
 # myrmidon_file <- "REP10/R10BP_14-05-21_AntsCreated_AutoOriented_withMetaData_CapDef3.myrmidon"
 
 to_keep <- c(ls(),"to_keep","myrmidon_file")
+print(myrmidon_files)
 for (myrmidon_file in myrmidon_files){
   print(myrmidon_file)
   rm(list=ls()[which(!ls()%in%to_keep)])
+  Sys.sleep(5)
   gc()
+  Sys.sleep(5)
   mallinfo::malloc.trim(0L)
+  Sys.sleep(5)  
+  # clearCache()  ###this doesn't work
   
   REPLICATE <- unlist(strsplit(myrmidon_file,split="_"))[grepl("SP|SS|BP|BS",unlist(strsplit(myrmidon_file,split="_")))] #AW
-  
-  e <- fmExperimentOpen(myrmidon_file)
-  
   PERIOD    <- "whole_experiment" ###to gain time you might want to loop over pre/post 24 hour periods and thus use different time_start and time_stop and different values for PERIOD
-  time_start <- fmTimeCreate(offset=(fmQueryGetDataInformations(e)$end - 51*3600)) 
-  time_stop  <-  fmTimeCreate(offset=fmQueryGetDataInformations(e)$end)
-  # time_start <- fmTimeCreate(offset=fmQueryGetDataInformations(e)$start) 
-  # time_stop  <- fmTimeCreate(offset=fmQueryGetDataInformations(e)$end)
-
-  IdentifyFrames      <- fmQueryIdentifyFrames(e,start=time_start, end=time_stop,showProgress = FALSE)
-  IF_frames           <- IdentifyFrames$frames
-  rm(list=c("IdentifyFrames"))
-  gc()
-  #install.packages("mallinfo", repos = "http://www.rforge.net/")
-  mallinfo::malloc.trim(0L)
-  # Assign a frame to each time since start and use it as baseline for all matching and computation
-  IF_frames$frame_num <- as.numeric(seq.int(nrow(IF_frames)))
+  output_name <- file.path(EXPDATADIR,paste("inferred_groomings_",unlist(strsplit(REPLICATE,split="\\/"))[which(grepl("BS|BP|SS|SP",unlist(strsplit(REPLICATE,split="\\/"))))],"_",PERIOD,".txt",sep=""))
   
-  # assign a time in sec to match annotation time (UNIX hard to use for class mismatch)
-  IF_frames$time_sec <- round(as.numeric(IF_frames$time),N_DECIMALS)
-  IF_frames$cum_diff <- c(0, with(IF_frames, diff(time)))
-  IF_frames$cum_diff <- cumsum(IF_frames$cum_diff)
-  
-  # start <- time_start; end <- time_stop; maximumGap <- max_gap; computeZones <- T;showProgress <- F
-  ###get trajectories using self-written function which automatically performs the extraction on successive chunks of 12 hours to avoid crashes, and merge all trajectories for a single ant into a single trajectory
-  positions <- extract_trajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = T,showProgress = F,IF_frames=IF_frames) #set true to obtain the zone of the ant
-
-  ## immediately code hard link between  positions$trajectories_summary and  positions$trajectories
-  positions$trajectories_summary$antID_str <- paste("ant_",positions$trajectories_summary$antID,sep="") ##creates a ID string for each ant: ant1, ant2,...
-  names(positions$trajectories)            <- positions$trajectories_summary$antID_str ###and use the content of that column to rename the objects within trajectory list
-  
-  ###add frame number information to trajectories
-  positions$trajectories_summary$frame_num <- NA
-  #assign starting frame number
-  positions$trajectories_summary["frame_num"] <- lapply(positions$trajectories_summary["start"], function(x) IF_frames$frame_num[match(x, IF_frames$time)])
-  
-  ## Add ant_x names and times to the positions to convert from "FRAME since the start of the experiment", to FRAMES
-  for (traj_idx in 1:nrow(positions$trajectories_summary))
-  {
-    AntID                         <- paste("ant_",positions$trajectories_summary[traj_idx,"antID"],sep="") ###NATH_FLAG: why not loop directly on antID_str which you just created?
-    First_Obs_Frame               <- positions$trajectories_summary[traj_idx,"frame_num"] 
-    IF_frames$new_zero_diff  <- IF_frames$cum_diff - IF_frames[IF_frames$frame_num==First_Obs_Frame,"cum_diff"] #subtracting the $frames zeroed-time  corresponding to the $start time from the zeroed-time column itself (New-Zeroed-time)
-    # print(paste("Adding first obs FRAME", First_Obs_Frame, "to the time-zeroed trajectory of ant", AntID))
-    #assign corresponding frame N when the New-Zeroed-time and $time correspond, closest.match 0.05 (well inside the 0.125 frame length in sec)
-    positions$trajectories[[traj_idx]]$frame <- match.closest(x = positions$trajectories[[traj_idx]]$time, table = IF_frames$new_zero_diff, tolerance = 0.05)
-    IF_frames$new_zero_diff <- NA
-  }
-  
-  capsules  <- e$antShapeTypeNames
-  names(capsules) <- as.character( 1:length(capsules))
-  
-  ALL_CAPS_MATCHERS <- list()
-  for (interaction_of_interest in interactions_of_interest){
-    caps_matcher <- c()
-    for (caps in interaction_of_interest[c(1:2)]){
-      caps_matcher <- c(caps_matcher,as.numeric(names(capsules)[[which(capsules==caps)]]) )
-    }
-    ALL_CAPS_MATCHERS <- c(ALL_CAPS_MATCHERS,list(caps_matcher))
-  }
-  # head_id <- as.numeric(names(capsules)[[which(capsules=="head")]])
-  # body_id <- as.numeric(names(capsules)[[which(capsules=="body")]])
-  gc()
-  mallinfo::malloc.trim(0L)
-  
-  ########## GET EXPOSED ANTS # AW 17June2022
-  e.Ants <- e$ants
-  Exposed_list <- vector() 
-  for (ant in e.Ants){
-    if (TRUE %in% ant$getValues("Exposed")[,"values"]) {
-      exposed <-ant$ID           
-      Exposed_list <- c(Exposed_list, exposed) }
-  }
-  
-  
-  
-  interac_start <- Sys.time()
-  interacts_AUTO_REP_PER <- interaction_detection (e=e
-                                                   ,start=time_start
-                                                   ,end=time_stop
-                                                   ,max_time_gap = MAX_INTERACTION_GAP
-                                                   ,max_distance_moved = 2*ANT_LENGHT_PX
-                                                   ,capsule_matcher=ALL_CAPS_MATCHERS
-                                                   ,IF_frames=IF_frames
-                                                   ,desired_ants_OR = Exposed_list #  AW 17June2022
-  )
-  interac_stop <- Sys.time()
-
-  ## Add ant_x names and times to the interacts_AUTO_REP_PER to convert from FRAME since the start of the experiment, to FRAMES
-  ##creates a ID string for each ant in $interactions
-  interacts_AUTO_REP_PER$ant1ID_str            <- paste("ant_",interacts_AUTO_REP_PER$ant1,sep="")
-  interacts_AUTO_REP_PER$ant2ID_str            <- paste("ant_",interacts_AUTO_REP_PER$ant2,sep="")
-  # Assign interaction pair
-  interacts_AUTO_REP_PER$pair <- paste(interacts_AUTO_REP_PER$ant1, interacts_AUTO_REP_PER$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
-  
-  ##convert times to different formats
-  interacts_AUTO_REP_PER$T_start_UNIX <- as.POSIXct(interacts_AUTO_REP_PER$start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-  interacts_AUTO_REP_PER$T_stop_UNIX  <- as.POSIXct(interacts_AUTO_REP_PER$end,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-  #assign time in sec to avoid issues on time management and matching
-  interacts_AUTO_REP_PER$T_start_sec <- round(as.numeric(interacts_AUTO_REP_PER$T_start_UNIX),N_DECIMALS)
-  interacts_AUTO_REP_PER$T_stop_sec <- round(as.numeric(interacts_AUTO_REP_PER$T_stop_UNIX),N_DECIMALS)
-  
-  #assign start and end frame number
-  interacts_AUTO_REP_PER$frame_start <- match.closest(x = interacts_AUTO_REP_PER$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
-  interacts_AUTO_REP_PER$frame_stop  <- match.closest(x = interacts_AUTO_REP_PER$T_stop_sec,  table = IF_frames$time_sec, tolerance = 0.05)
-  
-  #calc duration (including start frame)
-  interacts_AUTO_REP_PER$duration <- interacts_AUTO_REP_PER$T_stop_sec - interacts_AUTO_REP_PER$T_start_sec + 1/FRAME_RATE
-  #hist(interacts_AUTO_REP_PER$interactions$Duration,breaks = 30)
-  interacts_AUTO_REP_PER$unique_interaction_id <- 1:nrow(interacts_AUTO_REP_PER)
-  
-  
-  #~~~~~EXTRACT MOVEMERNT VARIABLES FROM DETECTED INTERACTIONS
-  print("Extracting movement variables...")
-  extraction_start <- Sys.time()
-  candidate_groomings <- extract_from_object(interacts_AUTO_REP_PER
-                                                  ,IF_frames
-                                                  ,positions
-                                                  ,BEH
-                                                  ,REPLICATE
-                                                  ,PERIOD
-                                                  ,selected_variables = unlist(lapply(names(BN_list),function(x)unlist(strsplit(x,split="\\."))[1]))
-  )[["summary_variables"]]
-  extraction_stop <- Sys.time()
-  
-  #~~~~~PREDICT GROONING USING CLASSIFIED
-  print("Predicting grooming...")
-  prediction_start <- Sys.time()
-  candidate_groomings["predicted_Hit"] <- predict_class  (summary_AUTO =    candidate_groomings
-                                                         ,BN_list      =  BN_list
-                                                         ,classifier   = classifier
-  )
-  prediction_stop <- Sys.time()
-  
-  #~~~~~COPY USEFUL INFO FROM CANDIDATE GROOMINGS TO INTERACTS
-  interacts_AUTO_REP_PER <- cbind(interacts_AUTO_REP_PER,candidate_groomings[match(interacts_AUTO_REP_PER$unique_interaction_id,candidate_groomings$unique_interaction_id),c("Act_Name","Rec_Name","predicted_Hit")])                   
-  
-  ### ADD EXP INFO AW
-  interacts_AUTO_REP_PER$PERIOD <- PERIOD
-  interacts_AUTO_REP_PER$REPLICATE <- REPLICATE
-  
-  
-  ###FINAL GROOMING TABLE, TO SAVE
-  inferred_groomings     <- interacts_AUTO_REP_PER[which(interacts_AUTO_REP_PER$predicted_Hit==1),]
-
-
-  ###############################################################################
-  ######        SAVING FINAL GROOMING TABLE        ##############################
-  ###############################################################################
-  ### AW
   if (file.exists(output_name)){
-    write.table(inferred_groomings,file=output_name,append=T,col.names=F,row.names=F,quote=T,sep=",")
+    print("Grooming inferrence already done.")
   }else{
+    print("Opening experiment...")
+    e <- fmExperimentOpen(myrmidon_file)
+    
+    
+    time_start <- fmTimeCreate(offset=(fmQueryGetDataInformations(e)$end - 51*3600)) 
+    time_stop  <-  fmTimeCreate(offset=fmQueryGetDataInformations(e)$end)
+    # time_start <- fmTimeCreate(offset=fmQueryGetDataInformations(e)$start) 
+    # time_stop  <- fmTimeCreate(offset=fmQueryGetDataInformations(e)$end)
+    
+    print("Querying frames...")
+    IdentifyFrames      <- fmQueryIdentifyFrames(e,start=time_start, end=time_stop,showProgress = FALSE)
+    IF_frames           <- IdentifyFrames$frames
+    rm(list=c("IdentifyFrames"))
+    gc()
+    #install.packages("mallinfo", repos = "http://www.rforge.net/")
+    mallinfo::malloc.trim(0L)
+    # Assign a frame to each time since start and use it as baseline for all matching and computation
+    IF_frames$frame_num <- as.numeric(seq.int(nrow(IF_frames)))
+    
+    # assign a time in sec to match annotation time (UNIX hard to use for class mismatch)
+    IF_frames$time_sec <- round(as.numeric(IF_frames$time),N_DECIMALS)
+    IF_frames$cum_diff <- c(0, with(IF_frames, diff(time)))
+    IF_frames$cum_diff <- cumsum(IF_frames$cum_diff)
+    
+    ###get trajectories using self-written function which automatically performs the extraction on successive chunks of 12 hours to avoid crashes, and merge all trajectories for a single ant into a single trajectory
+    to_keep2 <- c(ls(),"positions","to_keep2")
+    positions <- extract_trajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = T,showProgress = F,IF_frames=IF_frames) #set true to obtain the zone of the ant
+    print("Output from extract_trajectories received.")
+    
+    print("Clearing memory.")
+    rm(list=ls()[which(!ls()%in%to_keep2)])
+    Sys.sleep(5)
+    gc()
+    Sys.sleep(5)
+    mallinfo::malloc.trim(0L)
+    Sys.sleep(5)  
+    
+    ###NO NEED NOW TO ADD antID_str, frame_num or frame to the positions sub-objects as this is done within extract_trajectories function
+    
+    capsules  <- e$antShapeTypeNames
+    names(capsules) <- as.character( 1:length(capsules))
+    
+    ALL_CAPS_MATCHERS <- list()
+    for (interaction_of_interest in interactions_of_interest){
+      caps_matcher <- c()
+      for (caps in interaction_of_interest[c(1:2)]){
+        caps_matcher <- c(caps_matcher,as.numeric(names(capsules)[[which(capsules==caps)]]) )
+      }
+      ALL_CAPS_MATCHERS <- c(ALL_CAPS_MATCHERS,list(caps_matcher))
+    }
+    # head_id <- as.numeric(names(capsules)[[which(capsules=="head")]])
+    # body_id <- as.numeric(names(capsules)[[which(capsules=="body")]])
+    gc()
+    
+    ########## GET EXPOSED ANTS # AW 17June2022
+    e.Ants <- e$ants
+    Exposed_list <- vector() 
+    for (ant in e.Ants){
+      if (TRUE %in% ant$getValues("Exposed")[,"values"]) {
+        exposed <-ant$ID           
+        Exposed_list <- c(Exposed_list, exposed) }
+    }
+    
+    
+    print("About to detect interactions...")
+    interac_start <- Sys.time()
+    interacts_AUTO_REP_PER <- interaction_detection (e=e
+                                                     ,start=time_start
+                                                     ,end=time_stop
+                                                     ,max_time_gap = MAX_INTERACTION_GAP
+                                                     ,max_distance_moved = 2*ANT_LENGHT_PX
+                                                     ,capsule_matcher=ALL_CAPS_MATCHERS
+                                                     ,IF_frames=IF_frames
+                                                     ,desired_ants_OR = Exposed_list #  AW 17June2022
+    )
+    print("Output from interaction_detection received.")
+    
+    interac_stop <- Sys.time()
+    rm(list=c("e"))
+    gc()
+    mallinfo::malloc.trim(0L)
+    
+    ## Add ant_x names and times to the interacts_AUTO_REP_PER to convert from FRAME since the start of the experiment, to FRAMES
+    ##creates a ID string for each ant in $interactions
+    interacts_AUTO_REP_PER$ant1ID_str            <- paste("ant_",interacts_AUTO_REP_PER$ant1,sep="")
+    interacts_AUTO_REP_PER$ant2ID_str            <- paste("ant_",interacts_AUTO_REP_PER$ant2,sep="")
+    # Assign interaction pair
+    interacts_AUTO_REP_PER$pair <- paste(interacts_AUTO_REP_PER$ant1, interacts_AUTO_REP_PER$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
+    
+    ##convert times to different formats
+    interacts_AUTO_REP_PER$T_start_UNIX <- as.POSIXct(interacts_AUTO_REP_PER$start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+    interacts_AUTO_REP_PER$T_stop_UNIX  <- as.POSIXct(interacts_AUTO_REP_PER$end,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+    #assign time in sec to avoid issues on time management and matching
+    interacts_AUTO_REP_PER$T_start_sec <- round(as.numeric(interacts_AUTO_REP_PER$T_start_UNIX),N_DECIMALS)
+    interacts_AUTO_REP_PER$T_stop_sec <- round(as.numeric(interacts_AUTO_REP_PER$T_stop_UNIX),N_DECIMALS)
+    
+    #assign start and end frame number
+    interacts_AUTO_REP_PER$frame_start <- match.closest(x = interacts_AUTO_REP_PER$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
+    interacts_AUTO_REP_PER$frame_stop  <- match.closest(x = interacts_AUTO_REP_PER$T_stop_sec,  table = IF_frames$time_sec, tolerance = 0.05)
+    
+    #calc duration (including start frame)
+    interacts_AUTO_REP_PER$duration <- interacts_AUTO_REP_PER$T_stop_sec - interacts_AUTO_REP_PER$T_start_sec + 1/FRAME_RATE
+    #hist(interacts_AUTO_REP_PER$interactions$Duration,breaks = 30)
+    interacts_AUTO_REP_PER$unique_interaction_id <- 1:nrow(interacts_AUTO_REP_PER)
+    
+    
+    #~~~~~EXTRACT MOVEMERNT VARIABLES FROM DETECTED INTERACTIONS
+    print("Extracting movement variables...")
+    extraction_start <- Sys.time()
+    candidate_groomings <- extract_from_object(interacts_AUTO_REP_PER
+                                               ,IF_frames
+                                               ,positions
+                                               ,BEH
+                                               ,REPLICATE
+                                               ,PERIOD
+                                               ,selected_variables = unlist(lapply(names(BN_list),function(x)unlist(strsplit(x,split="\\."))[1]))
+    )[["summary_variables"]]
+    extraction_stop <- Sys.time()
+    print("Movement variables extracted.")
+    
+    #~~~~~PREDICT GROONING USING CLASSIFIED
+    print("Predicting grooming...")
+    prediction_start <- Sys.time()
+    candidate_groomings["predicted_Hit"] <- predict_class  (summary_AUTO =    candidate_groomings
+                                                            ,BN_list      =  BN_list
+                                                            ,classifier   = classifier
+    )
+    print("Grooming predicted.")
+    
+    
+    prediction_stop <- Sys.time()
+    
+    #~~~~~COPY USEFUL INFO FROM CANDIDATE GROOMINGS TO INTERACTS
+    interacts_AUTO_REP_PER <- cbind(interacts_AUTO_REP_PER,candidate_groomings[match(interacts_AUTO_REP_PER$unique_interaction_id,candidate_groomings$unique_interaction_id),c("Act_Name","Rec_Name","predicted_Hit")])                   
+    
+    ### ADD EXP INFO AW
+    interacts_AUTO_REP_PER$PERIOD <- PERIOD
+    interacts_AUTO_REP_PER$REPLICATE <- REPLICATE
+    
+    
+    ###FINAL GROOMING TABLE, TO SAVE
+    inferred_groomings     <- interacts_AUTO_REP_PER[which(interacts_AUTO_REP_PER$predicted_Hit==1),]
+    
+    
+    ###############################################################################
+    ######        SAVING FINAL GROOMING TABLE        ##############################
+    ###############################################################################
+    # ### AW
+    # if (file.exists(output_name)){
+    #   write.table(inferred_groomings,file=output_name,append=T,col.names=F,row.names=F,quote=T,sep=",")
+    # }else{
+    #   write.table(inferred_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
+    # }
     write.table(inferred_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
+    # SAVE WITH IT A FILE WITH THE CHOSEN CLASSIFIER?
+    # ANY OTHER RELEVANT INFO?
+    
+    
+    
+    print(paste("Interaction detection took",round((as.numeric(interac_stop)-as.numeric(interac_start))/60,digits=2),"minutes."))
+    print(paste("Extraction of movement variables took",round((as.numeric(extraction_stop)-as.numeric(extraction_start))/3600,digits=2),"hours."))
+    print(paste("Prediction took",round((as.numeric(prediction_stop)-as.numeric(prediction_start)),digits=2),"seconds."))
+    
   }
-  
-  # SAVE WITH IT A FILE WITH THE CHOSEN CLASSIFIER
-  # ANY OTHER RELEVANT INFO?
-  
-  
-  
-  print(paste("Interaction detection took",round((as.numeric(interac_stop)-as.numeric(interac_start))/60,digits=2),"minutes."))
-  print(paste("Extraction of movement variables took",round((as.numeric(extraction_stop)-as.numeric(extraction_start))/3600,digits=2),"hours."))
-  print(paste("Prediction took",round((as.numeric(prediction_stop)-as.numeric(prediction_start)),digits=2),"seconds."))
   
 }
+
 
