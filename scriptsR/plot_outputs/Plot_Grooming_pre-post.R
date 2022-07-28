@@ -36,6 +36,11 @@ list.dirs.depth.n <- function(p, n) {
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
 DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data"
 
+### TEMP
+# this should be included in EXP1_base_analysis.R
+individual_behavioural_data <- read.table("/home/cf19810/Documents/TEMP/individual_behavioural_data.txt",header=T,stringsAsFactors = F)
+Time_dictionary <- unique(individual_behavioural_data[c("time_hours","time_of_day","period")])
+
 ### EXTRAS
 Presentation_plots             <- FALSE #script for single interactions heatmaps
 
@@ -184,6 +189,10 @@ for (TIME in time.break) {
   }
   inferred$timespan <- round(inferred$timespan,0)
   
+  ## TEMP: assign a time of the day!
+  Time_dictionary <- data.frame(timespan= -36:35, time_of_day= rep(0:23,3))
+  inferred <- left_join(inferred, Time_dictionary, by = "timespan")
+  
   # #REMOVE EXP_GAP data
   #THERE IS NO EXP DATA
   inferred[which(inferred$PERIOD=="EXPOSURE_GAP"),]
@@ -195,16 +204,16 @@ for (TIME in time.break) {
   #########################################################################################
   
   ## calculate MEAN durations for timespan bin
-  inferred_dur_bin_summary    <- aggregate(duration ~ PERIOD + TREATMENT + timespan + REP_treat, FUN=mean, na.rm=T, na.action=na.pass, inferred) #; colnames(Count_byAnts_by_Behaviour_CLEAN) [match("Actor",colnames(Count_by_Behaviour_CLEAN))] <- "Count_byAnt"
+  inferred_dur_bin_summary    <- aggregate(duration ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat, FUN=mean, na.rm=T, na.action=na.pass, inferred) #; colnames(Count_byAnts_by_Behaviour_CLEAN) [match("Actor",colnames(Count_by_Behaviour_CLEAN))] <- "Count_byAnt"
   ## calculate SUM durations for timespan bin
   ##IT IS POSSIBLE THAT BEH DETECTION OUTPUT IS FRAGMENTED, SO THE TOTAL SUM COULD BE A MORE RELIABLE MEASURE
-  inferred_SUMdur_bin_summary    <- aggregate(duration ~ PERIOD + TREATMENT + timespan + REP_treat + Rec_Name, FUN=sum, na.action=na.pass, inferred) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
-  inferred_SUMdur_bin_summary    <- aggregate(duration ~ PERIOD + TREATMENT + timespan + REP_treat, FUN=mean, na.rm=T, na.action=na.pass, inferred) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+  inferred_SUMdur_bin_summary    <- aggregate(duration ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat + Rec_Name, FUN=sum, na.action=na.pass, inferred) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+  inferred_SUMdur_bin_summary    <- aggregate(duration ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat, FUN=mean, na.rm=T, na.action=na.pass, inferred) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
   names(inferred_SUMdur_bin_summary)[names(inferred_SUMdur_bin_summary) == 'duration'] <- 'SUM.duration'
   
   #calculate mean by group
-  inferred_bin_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + timespan + REP_treat + Rec_Name, FUN=length, na.action=na.pass, inferred) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
-  inferred_bin_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + timespan + REP_treat, FUN=mean, na.rm=T, na.action=na.pass, inferred_bin_summary) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+  inferred_bin_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat + Rec_Name, FUN=length, na.action=na.pass, inferred) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+  inferred_bin_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat, FUN=mean, na.rm=T, na.action=na.pass, inferred_bin_summary) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
   
   ## merge counts & durations carefully
   inferred_bin_summary    <-  plyr::join(x=inferred_bin_summary, y=inferred_dur_bin_summary, type = "full", match = "all")
@@ -236,12 +245,12 @@ for (TIME in time.break) {
   ## replace the NAs with 0 counts
   Counts_by_Behaviour_AllCombos1$Count_byAnt[which(is.na(Counts_by_Behaviour_AllCombos1$Count_byAnt))] <- 0
   ## finally, get the mean & S.E. for each behav before/after  for barplots
-  infer_bin_Count_MEAN  <- aggregate(cbind(Count_byAnt,duration)  ~ PERIOD + timespan + TREATMENT,    FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) ; colnames(infer_bin_Count_MEAN) [match("Count_byAnt",colnames(infer_bin_Count_MEAN))] <- "Mean_Count_byAnt" ; colnames(infer_bin_Count_MEAN) [match("duration",colnames(infer_bin_Count_MEAN))] <- "Mean_duration"
-  infer_bin_Count_SE    <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD + timespan + TREATMENT,     FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) ; colnames(infer_bin_Count_SE) [match("Count_byAnt",colnames(infer_bin_Count_SE))] <- "SE_Count_byAnt"   ; colnames(infer_bin_Count_SE) [match("duration",colnames(infer_bin_Count_SE))] <- "SE_duration"
+  infer_bin_Count_MEAN  <- aggregate(cbind(Count_byAnt,duration)  ~ PERIOD + time_of_day + timespan + TREATMENT,    FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) ; colnames(infer_bin_Count_MEAN) [match("Count_byAnt",colnames(infer_bin_Count_MEAN))] <- "Mean_Count_byAnt" ; colnames(infer_bin_Count_MEAN) [match("duration",colnames(infer_bin_Count_MEAN))] <- "Mean_duration"
+  infer_bin_Count_SE    <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD + time_of_day + timespan + TREATMENT,     FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) ; colnames(infer_bin_Count_SE) [match("Count_byAnt",colnames(infer_bin_Count_SE))] <- "SE_Count_byAnt"   ; colnames(infer_bin_Count_SE) [match("duration",colnames(infer_bin_Count_SE))] <- "SE_duration"
   
   #get also the SUM of Durations
   ##### THIS MAY BE WRONG, CHECK IF IT SHOULD NOT BE CALCULATED DIFFERNTLY (SUM AND THEN MEAN)
-  infer_bin_Dur_SUM  <- aggregate(SUM.duration  ~ PERIOD + timespan + TREATMENT ,                     FUN=sum,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) ; colnames(infer_bin_Dur_SUM) [match("Count_byAnt",colnames(infer_bin_Dur_SUM))] <- "SE_Count_byAnt"   
+  infer_bin_Dur_SUM  <- aggregate(SUM.duration  ~ PERIOD + time_of_day + timespan + TREATMENT ,                     FUN=sum,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) ; colnames(infer_bin_Dur_SUM) [match("Count_byAnt",colnames(infer_bin_Dur_SUM))] <- "SE_Count_byAnt"   
 
   #MERGE everything
   infer_bin <- list(infer_bin_Count_MEAN,infer_bin_Count_SE,infer_bin_Dur_SUM)
@@ -251,7 +260,7 @@ for (TIME in time.break) {
   
   if (TIME=="hour") {
     #add breakfor line plots
-    GAP <- expand.grid(PERIOD= "pre", timespan=c(-2,-1), TREATMENT=c("SP","SS","BP","BS"),Mean_Count_byAnt=NA, Mean_duration=NA, SE_Count_byAnt=NA, SE_duration=NA, SUM.duration=NA )
+    GAP <- expand.grid(PERIOD= "pre", timespan=c(-2,-1),time_of_day=c(10,11), TREATMENT=c("SP","SS","BP","BS"),Mean_Count_byAnt=NA, Mean_duration=NA, SE_Count_byAnt=NA, SE_duration=NA, SUM.duration=NA )
     infer_bin_1h <- rbind(infer_bin,GAP)
     
     tokeep <- c("tokeep","infer_bin_1h")
@@ -260,7 +269,7 @@ for (TIME in time.break) {
     #add break  for line plots
     #redo proper breaks, it should be a repeat between -12 and -6 I guess
     #likely not needed anyway as it will be a barplot
-    GAP <- expand.grid(PERIOD= "pre", timespan=c(-2*6,-1*6), TREATMENT=c("SP","SS","BP","BS"),Mean_Count_byAnt=NA, Mean_duration=NA, SE_Count_byAnt=NA, SE_duration=NA, SUM.duration=NA)
+    GAP <- expand.grid(PERIOD= "pre", timespan=c(-2*6,-1*6),time_of_day=NA, TREATMENT=c("SP","SS","BP","BS"),Mean_Count_byAnt=NA, Mean_duration=NA, SE_Count_byAnt=NA, SE_duration=NA, SUM.duration=NA)
     infer_bin_10min<- rbind(infer_bin,GAP)
     
     tokeep <- c("tokeep","infer_bin_10min")
@@ -268,16 +277,64 @@ for (TIME in time.break) {
 } #TIME
 
 
-############# PLOTS ################
-##### LINE PLOTS FOR 1H BINS ##
 
+#TRIMMED DATA
+infer_bin_1h_trim <- infer_bin_1h[which(infer_bin_1h$time_of_day>=12 & infer_bin_1h$time_of_day <=16),]
+#remove anything after timespan = 4 to exclude next day!
+infer_bin_1h_trim <- infer_bin_1h_trim[which(infer_bin_1h_trim$timespan <=4),]
+
+
+
+############# PLOTS ################
 #style
 STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
               theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
               theme_bw())
 
+
+#####  BARPLOTS FOR 1H BINS ##
+
+## MEAN FREQUENCY
+#make clear that those are hours
+text.add <-":00"
+infer_bin_1h_trim$time_of_day <- paste0(infer_bin_1h_trim$time_of_day,text.add)
+
+ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
+  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate per HOUR")), y = "Mean Freq by ant")
+
+
+
+## MEAN DURATION
+ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=Mean_duration, fill= TREATMENT))+
+  geom_errorbar( aes(x=PERIOD,ymin=Mean_duration-SE_duration, ymax=Mean_duration+SE_duration),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate per HOUR")), y = "Mean duration (s) by ant")
+
+
+
+## TOTAL DURATION
+ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=SUM.duration, fill= TREATMENT))+
+  #geom_errorbar( aes(x=PERIOD,ymin=Mean_duration-SE_duration, ymax=Mean_duration+SE_duration),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  #geom_text("",line= 5) +
+  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "SD by individual per HOUR")), y = "Total duration (s) by ant") +
+cat("MODIFY DATASET TO ADD SD OF THE MEASURE")
+
+  
+
+
+
+##### LINE PLOTS FOR 1H BINS ##
+
 #FREQUENCY
-## CHANGE
 ggplot(infer_bin_1h) + 
   aes(x = timespan, y = Mean_Count_byAnt, group = TREATMENT,color = TREATMENT) + 
   geom_line(size=1)+
@@ -289,27 +346,6 @@ ggplot(infer_bin_1h) +
        subtitle = "with mean by ant and mean by rep instead of count by rep and divide by n ants",
        x = "time from treatment", y = "Freq by Hour by Ant") +
   theme(plot.subtitle=element_text(color="red"))
-
-
-####### ELIMINATE ###############
-
-#FREQUENCY FOR TRIMMED DATA
-infer_bin_1h_trim <- infer_bin_1h[which(infer_bin_1h$timespan>=0 & infer_bin_1h$timespan <4),]
-infer_bin_1h_trim <- infer_bin_1h[which(infer_bin_1h$timespan>=0 & infer_bin_1h$timespan <4),]
-ggplot(infer_bin_1h_trim) + 
-  aes(x = timespan, y = Mean_Count_byAnt, group = TREATMENT,color = TREATMENT) + 
-  geom_line(size=1)+
-  STYLE +
-  geom_ribbon(aes(y = Mean_Count_byAnt, ymin = Mean_Count_byAnt - SE_Count_byAnt, ymax = Mean_Count_byAnt + SE_Count_byAnt, fill = TREATMENT), alpha = .2, colour=NA) +
-  # theme(legend.key = element_blank()) +
-  geom_vline(xintercept = 0,color = "red")+
-  labs(title = "Frequency of Grooming in Sham and Pathogen treated colonies",
-       subtitle = "with mean by ant and mean by rep \ninstead of count by rep and divide by n ants
-       \n detail of first 4h after treat",
-       x = "time from treatment", y = "Freq by Hour by Ant") +
-  theme(plot.subtitle=element_text(color="red"))
-
-
 
 
 
