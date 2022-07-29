@@ -191,7 +191,7 @@ write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",se
 #######################################################
 #start from here
 
-###### AGGREGATE ALL VALUES FOR A PRE.POST  #####
+###### AGGREGATE ALL VALUES FOR PRE.POST  #####
 inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 Reps_N_exposed <- read.table(paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 #Remove non-exposed reveivers and dead ants
@@ -246,8 +246,8 @@ inferred_SD_SUM  <- aggregate(duration ~ PERIOD + TREATMENT,                 FUN
 #MERGE everything
 infer_full <- list(inferred_MEAN,inferred_SE,inferred_SUM,inferred_SD_SUM)
 infer_full <- Reduce(function(x, y) merge(x, y, all=TRUE), infer_full)
-
-
+#reorder levels 9strange behaviour in plotting
+infer_full$TREATMENT <- factor(infer_full$TREATMENT, levels = c("BS","BP","SS","SP"))
 
 ###### AGGREGATE TIME BINS VALUES  #####
 
@@ -351,16 +351,18 @@ for (TIME in time.break) {
   }
 } #TIME
 
-
-#############################################
-######## END OF SECTION TO REWORK ###########
-#############################################
-
+#reorder levels
+infer_bin_1h$PERIOD <- factor(infer_bin_1h$PERIOD, levels = c("pre","post"))
 
 #TRIMMED DATA
 infer_bin_1h_trim <- infer_bin_1h[which(infer_bin_1h$time_of_day>=12 & infer_bin_1h$time_of_day <=16),]
 #remove anything after timespan = 4 to exclude next day!
 infer_bin_1h_trim <- infer_bin_1h_trim[which(infer_bin_1h_trim$timespan <=4),]
+
+#############################################
+######## END OF SECTION TO REWORK ###########
+#############################################
+
 
 
 
