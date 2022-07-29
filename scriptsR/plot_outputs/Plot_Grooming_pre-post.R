@@ -55,6 +55,12 @@ if (!file.exists(paste0(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.tx
 window_shift <- 60*20 #approx N of minutes that where given at the end as leeway, minutes can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
 #window_shift_UNIX <- as.POSIXct(window_shift,origin = "1970-01-01",tz = "GMT")
 
+# HAND-COLLECTED RETURN TIMES (MIN) - MORE PRECISE THAN THE SHIFT
+ReturnTime_mins <- read.table(paste(WORKDIR,"/Data/ReturnTime_mins.csv",sep=""),header=T,stringsAsFactors = F, sep=",")
+ReturnTime_mins$Return.hour <- paste0(ReturnTime_mins$Return.hour,":00")
+ReturnTime_mins$REP_treat <- paste0("R",ReturnTime_mins$REP_treat )
+ReturnTime_mins <- ReturnTime_mins[,c("REP_treat","Return.hour")]
+
 ### DIRECTORIES
 REP1to7_SmallOnly <- read.table(paste(WORKDIR,"/Data/inferred_groomings_REP1to7_SmallOnly.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 REP8to14_SmallOnly <- read.table(paste(WORKDIR,"/Data/inferred_groomings_REP8to14_SmallOnly.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
@@ -80,6 +86,8 @@ inferred$REP_treat <- sub(".*\\/", "", inferred$REPLICATE)
 
 #inferred$return_time <- NA
 inferred$end_time <- NA
+inferred$exposed <- "no"
+inferred$dead <- "no"
 #inferred$time_since_start <- NA
 
 ### GET EXP END TIME FOR EACH REP AND ASSIGN PRE-POST TIME!
@@ -100,6 +108,7 @@ for (REP.n in 1:length(files_list)) {
   #replicate file
   for (REP.FILES in REP.filefolder) {
     #get substring in variable until R9BS_
+    # REP.FILES <- REP.filefolder[1]
     REP_treat <- sub("\\_.*", "", basename(REP.FILES))
     #treat_name = substr(REP_treat_name,(nchar(REP_treat_name)+1)-2,nchar(REP_treat_name))
 
@@ -115,9 +124,18 @@ for (REP.n in 1:length(files_list)) {
     Exposed_list <- vector()
     if (REP_treat %in% Reps_N_exposed$REP_treat) {
     for (ant in e.Ants){
+      #exclude dead ants
+      if (FALSE %in% ant$getValues("IsAlive")[,"values"] ) { #if FALSE doesn't appear
+        # assign DEAD flag in inferred
+        inferred[which(inferred$REP_treat==REP_treat & inferred$Rec_Name==paste0("ant_",ant$ID)),"dead"] <- "dead"
+      }#exclude dead
+        
       if (TRUE %in% ant$getValues("Exposed")[,"values"]) {
         exposed <-ant$ID
-        Exposed_list <- c(Exposed_list, exposed) }
+        Exposed_list <- c(Exposed_list, exposed) 
+        # assign EXPOSED flag in inferred
+        inferred[which(inferred$REP_treat==REP_treat & inferred$Rec_Name==paste0("ant_",ant$ID)),"exposed"] <- "exposed"
+      } # list exposed
     }
     explist<- data.frame(Exposed_list,stringsAsFactors = F)
     #Collapse
@@ -144,6 +162,19 @@ inferred$end_time <- inferred$end_time - window_shift
 inferred$end_time <- as.POSIXct(inferred$end_time,  origin="1970-01-01", tz="GMT" )
 inferred$return_time <- inferred$end_time - 24*3600
 
+## WINDOW SHIFT GETS US THE APPROX TIME, ASSIGN THE FINAL RETURN TIME
+##substitute time with hand-collected return time for increased precision
+#paste the day of inferred$return_time with the time of ReturnTime_mins
+inferred$Date_only <- as.character(as.Date(inferred$return_time, format = "%Y-%m-%d"))
+inferred <- left_join(inferred, ReturnTime_mins, by = "REP_treat")
+
+
+
+inferred$return_time  <- paste(inferred$Date_only,inferred$Return.hour,"GMT")
+inferred$return_time  <- as.POSIXct(inferred$return_time,  origin="1970-01-01", tz="GMT" )
+#the hand-collected return time is the time at which the return operation is complete. As sometimes it could have taken a few minutes, subtract 5 mins to avoid loosing grooming events
+inferred$return_time  <- inferred$return_time - (60*10) #mins
+
 ## add a common time to all rows
 # Negative before exposure, positive after
 inferred$time_stop_since_treat <- as.numeric(difftime(inferred$T_stop_UNIX,inferred$return_time, units = "secs"))
@@ -165,6 +196,75 @@ write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",se
 #######################################################
 #start from here
 
+###### AGGREGATE ALL VALUES FOR A PRE.POST  #####
+inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+#Remove non-exposed reveivers and dead ants
+inferred <- inferred[which(inferred$exposed=="exposed"),]
+inferred <- inferred[which(inferred$dead=="no"),]
+# #REMOVE EXP_GAP data
+inferred <- inferred[which(inferred$PERIOD!="EXPOSURE_GAP"),]
+
+###CHECK IF ANTS IN EXP ARE IN INFERRED LIST as RECEIVERS
+Reps_N_exposed$N_received <- NA
+for (REP.TREAT in unique(Reps_N_exposed$REP_treat) ) {
+  AntList <- as.numeric(unlist(strsplit(Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_ants"],",")))
+  GroomingRec <- inferred[which(inferred$REP_treat==REP.TREAT),"Rec_Name"]
+  GroomingRec <- unique(gsub("ant_", "", GroomingRec))
+  # How many exposed ants received grooming
+  Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_received"] <- length(intersect(unique(GroomingRec),AntList))
+}
+
+#add count column
+inferred$Count_byAnt <- 1
+#mean by ant
+inferred_full_summary  <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD + TREATMENT + REP_treat, FUN=mean, na.rm=T, na.action=na.pass, inferred) # ; colnames(inferred_CLEAN) [match("Actor",colnames(inferred_CLEAN))] <- "Count"
+# ## create a data frame with all combinations of the conditioning variables
+all_combos <- expand.grid ( PERIOD=unique(inferred$PERIOD), TREATMENT=unique(inferred$TREATMENT), REP_treat=unique(inferred$REP_treat))
+# ## add the missing cases
+inferred_AllCombos <- plyr::join (x = inferred_full_summary , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+## replace the NAs with 0 counts            
+inferred_AllCombos$Count_byAnt[which(is.na(inferred_AllCombos$Count_byAnt))] <- 0
+inferred_AllCombos$duration[which(is.na(inferred_AllCombos$duration))] <- 0
+## get the mean & S.E. for each behav before/after  for barplots
+inferred_MEAN  <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD + TREATMENT,                 FUN=mean,      na.rm=T, na.action=na.pass, inferred_AllCombos); colnames(inferred_MEAN) [match("Count_byAnt",colnames(inferred_MEAN))] <- "Mean_Count_byAnt" ; colnames(inferred_MEAN) [match("duration",colnames(inferred_MEAN))] <- "Mean_duration"
+inferred_SE    <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD + TREATMENT,                 FUN=std.error, na.rm=T, na.action=na.pass, inferred_AllCombos); colnames(inferred_SE) [match("Count_byAnt",colnames(inferred_SE))] <- "SE_Count_byAnt"       ; colnames(inferred_SE) [match("duration",colnames(inferred_SE))] <- "SE_duration"
+
+##############
+#total Duration by ant
+#mean by ant
+inferred_full_SUM  <- aggregate(duration ~ PERIOD + TREATMENT + REP_treat + Rec_Name, FUN=sum, na.rm=T, na.action=na.pass, inferred) # ; colnames(inferred_CLEAN) [match("Actor",colnames(inferred_CLEAN))] <- "Count"
+# ## add the missing cases
+inferred_AllCombos_SUM <- plyr::join (x = inferred_full_SUM , y=all_combos, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+## replace the NAs with 0 counts            
+inferred_AllCombos_SUM$duration[which(is.na(inferred_AllCombos_SUM$duration))] <- 0
+## get the mean & SD for each behav before/after  for barplots
+#mean by ants of same rep and by rep
+inferred_SUM  <- aggregate(duration ~ PERIOD + TREATMENT + REP_treat,                 FUN=mean,      na.rm=T, na.action=na.pass, inferred_AllCombos_SUM)
+inferred_SUM  <- aggregate(duration ~ PERIOD + TREATMENT,                 FUN=mean,      na.rm=T, na.action=na.pass, inferred_SUM) ; colnames(inferred_SUM) [match("duration",colnames(inferred_SUM))] <- "SUM_duration"
+
+#std.err by rep
+inferred_SD_SUM  <- aggregate(duration ~ PERIOD + TREATMENT + REP_treat,                 FUN=mean,      na.rm=T, na.action=na.pass, inferred_AllCombos_SUM)
+inferred_SD_SUM  <- aggregate(duration ~ PERIOD + TREATMENT,                 FUN=std.error,      na.rm=T, na.action=na.pass, inferred_SD_SUM) ; colnames(inferred_SD_SUM) [match("duration",colnames(inferred_SD_SUM))] <- "SE_SUM_duration"
+
+##############
+
+
+#MERGE everything
+infer_full <- list(inferred_MEAN,inferred_SE,inferred_SUM,inferred_SD_SUM)
+infer_full <- Reduce(function(x, y) merge(x, y, all=TRUE), infer_full)
+
+#####################################
+####################################
+# USE THIS AS A TEMPLATE TO FIX THE HOURS SCRIPT 
+#####################################
+####################################
+#CAREFUL WITH THE SUM, COPY THE SCTRUCTURE FROM BELOW!
+
+
+
+
+
+
 #time bins for plotting
 time.break <- c("hour","10min")
 tokeep <- NA
@@ -174,7 +274,20 @@ for (TIME in time.break) {
   rm(list=setdiff(ls(),c("WORKDIR","DATADIR","TIME","time.break",tokeep)))
   #load
   inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+  inferred <- inferred[which(inferred$exposed=="exposed"),]
+  inferred <- inferred[which(inferred$dead=="no"),]
   Reps_N_exposed <- read.table(paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+  
+  ###CHECK IF ANTS IN EXP ARE IN INFERRED LIST
+  ## PROBABLY USELESS
+  Reps_N_exposed$N_received <- NA
+  for (REP.TREAT in unique(Reps_N_exposed$REP_treat) ) {
+    AntList <- as.numeric(unlist(strsplit(Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_ants"],",")))
+    GroomingRec <- inferred[which(inferred$REP_treat==REP.TREAT),"Rec_Name"]
+    GroomingRec <- unique(gsub("ant_", "", GroomingRec))
+    # How many exposed ants received grooming
+    Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_received"] <- length(intersect(unique(GroomingRec),AntList))
+  }
   
   
   #N of occurences!
@@ -194,9 +307,7 @@ for (TIME in time.break) {
   inferred <- left_join(inferred, Time_dictionary, by = "timespan")
   
   # #REMOVE EXP_GAP data
-  #THERE IS NO EXP DATA
-  inferred[which(inferred$PERIOD=="EXPOSURE_GAP"),]
-  #inferred <- inferred[which(inferred$PERIOD!="EXPOSURE_GAP"),]
+  inferred <- inferred[which(inferred$PERIOD!="EXPOSURE_GAP"),]
   
   #########################################################################################
   ##### CHECK THE ALL STRUCTURE WELL, COMPARING SIDE BY SIDEWITH THE WORK DONE WITH TOM FOR BEHAVIOUR_ANALYSIS
@@ -218,18 +329,6 @@ for (TIME in time.break) {
   ## merge counts & durations carefully
   inferred_bin_summary    <-  plyr::join(x=inferred_bin_summary, y=inferred_dur_bin_summary, type = "full", match = "all")
   inferred_bin_summary    <-  plyr::join(x=inferred_bin_summary, y=inferred_SUMdur_bin_summary, type = "full", match = "all")
-  
-  ##################
-  ###CHECK IF ANTS IN EXP ARE IN INFERRED LIST
-  Reps_N_exposed$N_received <- NA
-  for (REP.TREAT in unique(Reps_N_exposed$REP_treat) ) {
-    AntList <- as.numeric(unlist(strsplit(Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_ants"],",")))
-    GroomingRec <- inferred[which(inferred$REP_treat==REP.TREAT),"Rec_Name"]
-    GroomingRec <- unique(gsub("ant_", "", GroomingRec))
-    # How many exposed ants received grooming
-    Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_received"] <- length(intersect(unique(GroomingRec),AntList))
-  }
-  
   
   
   ## create a data frame with all combinations of the conditioning variables
@@ -290,9 +389,74 @@ infer_bin_1h_trim <- infer_bin_1h_trim[which(infer_bin_1h_trim$timespan <=4),]
 STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
               theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
               theme_bw())
+STYLE_NOVIR <- list(theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+              theme_bw())
 
 
+### GROOMING LOCATION
+#mean by ant
+Groom_location <- aggregate(REP_treat ~ TREATMENT + PERIOD + ant1.zones + Rec_Name , FUN=length, na.action=na.pass, inferred);  colnames(Groom_location) [match("REP_treat",colnames(Groom_location))] <- "Count_byAnt"
+Groom_location$ant1.zones <- str_replace(Groom_location$ant1.zones,"1","Nest Area")
+Groom_location$ant1.zones <- str_replace(Groom_location$ant1.zones,"2","Foraging Area")
+#mean by nest
+Groom_location_MEAN    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + ant1.zones , FUN=mean, na.rm=T, na.action=na.pass, Groom_location) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+Groom_location_SE    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + ant1.zones , FUN=std.error, na.rm=T, na.action=na.pass, Groom_location) ; colnames(Groom_location_SE) [match("Count_byAnt",colnames(Groom_location_SE))] <- "SD_Count"
+##JOIN CHANGING THE SD VAR NAME!!!!!!!!!!!!!!!!!!!!!!
+Groom_location    <-  plyr::join(x=Groom_location_MEAN, y=Groom_location_SE, type = "full", match = "all")
+### Grooming Location
+ggplot(Groom_location, aes(x=TREATMENT, y=Count_byAnt, fill= PERIOD))+
+  #geom_bar(stat='identity',position = position_dodge())+
+  geom_errorbar( aes(x=TREATMENT,ymin=Count_byAnt-SD_Count, ymax=Count_byAnt+SD_Count),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  facet_wrap(~ant1.zones) +
+  labs(title= "Grooming Location",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
+  STYLE_NOVIR
+
+
+
+
+############################################################
+############################################################
+############################################################
+#####  BARPLOTS FOR PRE-POST ##
+
+## MEAN FREQUENCY
+ggplot(infer_full, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
+  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  #facet_wrap(~ PERIOD) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate (full period) ")), y = "Mean Freq by ant")
+
+## MEAN DURATION
+ggplot(infer_full, aes(x=PERIOD, y=Mean_duration, fill= TREATMENT))+
+  geom_errorbar( aes(x=PERIOD,ymin=Mean_duration-SE_duration, ymax=Mean_duration+SE_duration),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate (full period)")), y = "Mean duration (s) by ant")
+
+## TOTAL DURATION
+ggplot(infer_full, aes(x=PERIOD, y=SUM_duration, fill= TREATMENT))+
+  geom_errorbar( aes(x=PERIOD,ymin=SUM_duration-SE_SUM_duration, ymax=SUM_duration+SE_SUM_duration),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "SE by replicate (full period)")), y = "Total duration (s) by ant") +
+
+############################################################
+############################################################
+############################################################
+
+
+
+
+############################################################
 #####  BARPLOTS FOR 1H BINS ##
+
+#########################################################################
+########## CORRECT INVERTED PRE-POST LABELS TO MATCH FULL ANALYSIS!
+#########################################################################
 
 ## MEAN FREQUENCY
 #make clear that those are hours
@@ -329,7 +493,7 @@ ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=SUM.duration, fill= TREATMENT))+
 cat("MODIFY DATASET TO ADD SD OF THE MEASURE")
 
   
-
+############################################################
 
 
 ##### LINE PLOTS FOR 1H BINS ##
@@ -415,42 +579,14 @@ SD_ants_exp <- aggregate(N_received ~ treat, FUN=sd, na.rm=T, na.action=na.pass,
 N.ants.exposed    <-  plyr::join(x=Mean_ants_exp, y=SD_ants_exp, type = "full", match = "all")
 data.frame(treat=N.ants.exposed$treat, N_exposed=sprintf("%.2f \U00B1 %.2f",N.ants.exposed$N_received,N.ants.exposed$SD_received))
 
-### Where grooming happens
-
-#mean by ant
-Groom_location <- aggregate(REP_treat ~ TREATMENT + PERIOD + ant1.zones + Rec_Name , FUN=length, na.action=na.pass, inferred);  colnames(Groom_location) [match("REP_treat",colnames(Groom_location))] <- "Count_byAnt"
-
-Groom_location$ant1.zones <- str_replace(Groom_location$ant1.zones,"1","Nest Area")
-Groom_location$ant1.zones <- str_replace(Groom_location$ant1.zones,"2","Foraging Area")
-
-
-#mean by nest
-Groom_location_MEAN    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + ant1.zones , FUN=mean, na.rm=T, na.action=na.pass, Groom_location) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
-Groom_location_SE    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + ant1.zones , FUN=std.error, na.rm=T, na.action=na.pass, Groom_location) ; colnames(Groom_location_SE) [match("Count_byAnt",colnames(Groom_location_SE))] <- "SD_Count"
-
-##JOIN CHANGING THE SD VAR NAME!!!!!!!!!!!!!!!!!!!!!!
-Groom_location    <-  plyr::join(x=Groom_location_MEAN, y=Groom_location_SE, type = "full", match = "all")
-
-
-### Grooming Location
-ggplot(Groom_location, aes(x=TREATMENT, y=Count_byAnt, fill= PERIOD))+
-  #geom_bar(stat='identity',position = position_dodge())+
-  geom_errorbar( aes(x=TREATMENT,ymin=Count_byAnt-SD_Count, ymax=Count_byAnt+SD_Count),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  facet_wrap(~ant1.zones) +
-  labs(title= "Grooming Location",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")
 
 
 
 
 
 ### AS FIRST THING:
-### 1. USE ACTUAL RETURN TIME (NO WINDOW_SHIFT) TO ASSIGN THE PRE/POST LABELS FOR BETTER ALIGNEMENT
-### 2. MAKE THE FIRST 4 HOURS **BARPLOTS** WITH SE per NEST
 ### 3. CHECK THAT IT IS ALWAYS MEAN BY ANT AND THEN BY NEST FOR STD.ERR
 
-### ALSO: IF ANT IS DEAD, EXCLUDE HER (SHE MAY BIAS THE COUNT!!!!!!!!!)
-### CHECK THAT ON ALL FILES AND REPORT IT IN A COLUMN TO FILTER THEM OUT (USE FIRST CHUNK OF SCRIPT)
 
 
 
@@ -460,7 +596,123 @@ ggplot(Groom_location, aes(x=TREATMENT, y=Count_byAnt, fill= PERIOD))+
 
 
 
-########## TO DELETE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+##########################################################################################
+### EXTRA UNRELATED PLOTS FOR PRESENTATIONS ##############################################
+
+if (Presentation_plots) {
+
+#######################################################################
+###### PLOTTING A SINGLE GROOMING INTERACTION #########################
+
+# Load the relevant libraries - do this every time
+library(plyr)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(data.table)
+library("scales")
+library("viridis")
+library(RSBID) #samp;ing
+
+Grooming_int <- read.table("/home/cf19810/Documents/presentation_plot_data/Act28_Rec29_frames12357-12586-ROW15_uniqueID115_Grooming",header=T,stringsAsFactors = F, sep=",")
+Grooming_int <- Grooming_int %>% dplyr::select(-contains(c(".x",".y",".angle",".zone",".time_sec","tim-interval","dt_FRAME","time_interval")))
+
+for (variable in names(Grooming_int)){
+  if (variable!="frame") {
+    Grooming_int[variable]<- as.numeric(rescale(Grooming_int[,variable]))
+  }
+}
+
+Grooming_int <- Grooming_int[180:229,]
+Grooming_int$frame <- 1:length(Grooming_int$frame)
+
+#long format
+Grooming_int_long <- melt(setDT(Grooming_int), id.vars = c("frame"), variable.name = "Vars")
+
+## heatmap
+ggplot(Grooming_int_long, aes(frame, Vars)) + geom_tile(aes(fill = value),colour = "white", na.rm = T) +
+  scale_fill_viridis(option = "B") +  
+  #guides(fill=guide_legend(title="Total Incidents")) +
+  theme_bw() + theme_minimal() + 
+  labs(title = "",
+       x = "frame", y = "variable") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),legend.position = "none",plot.title.position = "plot")
+
+#################################################
+#### PLOTTING ALL HIT MISS DATA FOR A SUBSET ####
+
+Train_HitMiss <- read.table("/home/cf19810/Documents/presentation_plot_data/Training_R9SP_HitMiss_Auto_Grooming.txt",header=T,stringsAsFactors = F, sep=",")
+Train_HitMiss <- Train_HitMiss %>% select(-contains(c("REPLICATE","PERIOD","BEH","ROW","Name","unique_interaction_id","ant","frame","duration_sec","pair","disagreement")))
+
+### get labels of Relief selected var
+RELIEF_selected <- c("prop_time_undetected_REC","sum_moved_distance_px_ACT","prop_time_undetected_ACT","transfmean_speed_pxpersec_REC","transfmean_abs_Body_Rotation_REC","transfSD_abs_jerk_PxPerSec3_REC" ,"stDev_turnAngle_REC","transfmean_abs_accel_pxpersec2_REC","transfmean_abs_jerk_PxPerSec3_REC" ,"stDev_Body_Rotation_REC","transfmean_abs_ang_Velocity_Body_REC","stDev_ang_Velocity_Body_ACT","transfmean_abs_ang_Velocity_Body_ACT","transfmean_abs_Body_Rotation_ACT","transfSD_abs_Body_Rotation_REC","stDev_Body_Rotation_ACT","transfSD_abs_ang_Velocity_Body_ACT","chull_area_REC","sum_moved_distance_px_REC","transfSD_abs_Body_Rotation_ACT","transfmean_speed_pxpersec_ACT","chull_area_ACT","transfSD_abs_ang_Velocity_Movement_REC","transfmean_abs_accel_pxpersec2_ACT", "stDev_turnAngle_ACT","root_mean_square_deviation_px_ACT","root_mean_square_deviation_px_REC" )
+
+#scaling for plotting
+for (variable in names(Train_HitMiss)){
+  if (variable!="Hit") {
+    Train_HitMiss[variable]<- as.numeric(rescale(Train_HitMiss[,variable]))
+  }
+}
+
+Train_HitMiss <- Train_HitMiss[complete.cases(Train_HitMiss), ]
+Train_HitMiss$Hit <- as.factor(Train_HitMiss$Hit)
+Train_HitMiss_sampled   <- SBC(Train_HitMiss,   "Hit") #Under-Sampling Based on Clustering (SBC)
+
+#add colour highlight
+a <- ifelse(names(Train_HitMiss) %in% RELIEF_selected, "black", "gray")
+Alpha <- ifelse(names(Train_HitMiss) %in% RELIEF_selected, "1", "0")
+
+#Train_HitMiss_sampled$unique_interaction_id <- 1:length(Train_HitMiss_sampled$unique_interaction_id)
+
+#assign numeration by hit
+Train_HitMiss_sampled <- Train_HitMiss_sampled %>% group_by(Hit) %>% dplyr::mutate(id = row_number())
+
+#long format
+Train_HitMiss_long <- melt(setDT(Train_HitMiss_sampled), id.vars = c("id","Hit"), variable.name = "Vars")
+
+Alpha <- ifelse(Train_HitMiss_long$Vars %in% RELIEF_selected, "1", "0")
+levels(Train_HitMiss_long$Hit) <- list("Non Grooming"="0","Grooming"="1")
+
+## heatmap
+ggplot(Train_HitMiss_long, aes(id, Vars)) + geom_tile(aes(fill = value),colour = "white", na.rm = T) +
+  scale_fill_viridis() +  
+  facet_wrap(~Hit) +
+  #guides(fill=guide_legend(title="Total Incidents")) +
+  theme_bw() + theme_minimal() + 
+  labs(title = "Heatmap of movement variables during a Grooming interaction",
+       x = "interaction N", y = "") +
+  theme(strip.text.x = element_text(size = 18),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.title.position = "plot")
+
+## heatmap2
+ggplot(Train_HitMiss_long, aes(id, Vars)) + geom_tile(aes(fill = value,alpha=Alpha),colour = "white", na.rm = T) +
+  scale_fill_viridis() +  
+  facet_wrap(~Hit) +
+  #guides(fill=guide_legend(title="Total Incidents")) +
+  theme_bw() + theme_minimal() + 
+  labs(title = "Heatmap of movement variables during a Grooming interaction",
+       x = "interaction N", y = "") +
+  theme(strip.text.x = element_text(size = 18),
+        axis.text.y = element_text(colour = a),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        plot.title.position = "plot")
+
++
+  scale_x_discrete(labels=c("0" = "Non Grooming", "1" = "Grooming"))
+
+}
+
+
+
+####################################################################################
+################ SCRAPS ############################################################
+
 
 
 
@@ -642,118 +894,3 @@ ggplot(Groom_location, aes(x=TREATMENT, y=Count_byAnt, fill= PERIOD))+
 # 
 # 
 # ######### 
-
-
-
-
-
-##########################################################################################
-### EXTRA UNRELATED PLOTS FOR PRESENTATIONS ##############################################
-
-if (Presentation_plots) {
-
-#######################################################################
-###### PLOTTING A SINGLE GROOMING INTERACTION #########################
-
-# Load the relevant libraries - do this every time
-library(plyr)
-library(lubridate)
-library(ggplot2)
-library(dplyr)
-library(data.table)
-library("scales")
-library("viridis")
-library(RSBID) #samp;ing
-
-Grooming_int <- read.table("/home/cf19810/Documents/presentation_plot_data/Act28_Rec29_frames12357-12586-ROW15_uniqueID115_Grooming",header=T,stringsAsFactors = F, sep=",")
-Grooming_int <- Grooming_int %>% dplyr::select(-contains(c(".x",".y",".angle",".zone",".time_sec","tim-interval","dt_FRAME","time_interval")))
-
-for (variable in names(Grooming_int)){
-  if (variable!="frame") {
-    Grooming_int[variable]<- as.numeric(rescale(Grooming_int[,variable]))
-  }
-}
-
-Grooming_int <- Grooming_int[180:229,]
-Grooming_int$frame <- 1:length(Grooming_int$frame)
-
-#long format
-Grooming_int_long <- melt(setDT(Grooming_int), id.vars = c("frame"), variable.name = "Vars")
-
-## heatmap
-ggplot(Grooming_int_long, aes(frame, Vars)) + geom_tile(aes(fill = value),colour = "white", na.rm = T) +
-  scale_fill_viridis(option = "B") +  
-  #guides(fill=guide_legend(title="Total Incidents")) +
-  theme_bw() + theme_minimal() + 
-  labs(title = "",
-       x = "frame", y = "variable") +
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),legend.position = "none",plot.title.position = "plot")
-
-#################################################
-#### PLOTTING ALL HIT MISS DATA FOR A SUBSET ####
-
-Train_HitMiss <- read.table("/home/cf19810/Documents/presentation_plot_data/Training_R9SP_HitMiss_Auto_Grooming.txt",header=T,stringsAsFactors = F, sep=",")
-Train_HitMiss <- Train_HitMiss %>% select(-contains(c("REPLICATE","PERIOD","BEH","ROW","Name","unique_interaction_id","ant","frame","duration_sec","pair","disagreement")))
-
-### get labels of Relief selected var
-RELIEF_selected <- c("prop_time_undetected_REC","sum_moved_distance_px_ACT","prop_time_undetected_ACT","transfmean_speed_pxpersec_REC","transfmean_abs_Body_Rotation_REC","transfSD_abs_jerk_PxPerSec3_REC" ,"stDev_turnAngle_REC","transfmean_abs_accel_pxpersec2_REC","transfmean_abs_jerk_PxPerSec3_REC" ,"stDev_Body_Rotation_REC","transfmean_abs_ang_Velocity_Body_REC","stDev_ang_Velocity_Body_ACT","transfmean_abs_ang_Velocity_Body_ACT","transfmean_abs_Body_Rotation_ACT","transfSD_abs_Body_Rotation_REC","stDev_Body_Rotation_ACT","transfSD_abs_ang_Velocity_Body_ACT","chull_area_REC","sum_moved_distance_px_REC","transfSD_abs_Body_Rotation_ACT","transfmean_speed_pxpersec_ACT","chull_area_ACT","transfSD_abs_ang_Velocity_Movement_REC","transfmean_abs_accel_pxpersec2_ACT", "stDev_turnAngle_ACT","root_mean_square_deviation_px_ACT","root_mean_square_deviation_px_REC" )
-
-#scaling for plotting
-for (variable in names(Train_HitMiss)){
-  if (variable!="Hit") {
-    Train_HitMiss[variable]<- as.numeric(rescale(Train_HitMiss[,variable]))
-  }
-}
-
-Train_HitMiss <- Train_HitMiss[complete.cases(Train_HitMiss), ]
-Train_HitMiss$Hit <- as.factor(Train_HitMiss$Hit)
-Train_HitMiss_sampled   <- SBC(Train_HitMiss,   "Hit") #Under-Sampling Based on Clustering (SBC)
-
-#add colour highlight
-a <- ifelse(names(Train_HitMiss) %in% RELIEF_selected, "black", "gray")
-Alpha <- ifelse(names(Train_HitMiss) %in% RELIEF_selected, "1", "0")
-
-#Train_HitMiss_sampled$unique_interaction_id <- 1:length(Train_HitMiss_sampled$unique_interaction_id)
-
-#assign numeration by hit
-Train_HitMiss_sampled <- Train_HitMiss_sampled %>% group_by(Hit) %>% dplyr::mutate(id = row_number())
-
-#long format
-Train_HitMiss_long <- melt(setDT(Train_HitMiss_sampled), id.vars = c("id","Hit"), variable.name = "Vars")
-
-Alpha <- ifelse(Train_HitMiss_long$Vars %in% RELIEF_selected, "1", "0")
-levels(Train_HitMiss_long$Hit) <- list("Non Grooming"="0","Grooming"="1")
-
-## heatmap
-ggplot(Train_HitMiss_long, aes(id, Vars)) + geom_tile(aes(fill = value),colour = "white", na.rm = T) +
-  scale_fill_viridis() +  
-  facet_wrap(~Hit) +
-  #guides(fill=guide_legend(title="Total Incidents")) +
-  theme_bw() + theme_minimal() + 
-  labs(title = "Heatmap of movement variables during a Grooming interaction",
-       x = "interaction N", y = "") +
-  theme(strip.text.x = element_text(size = 18),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        legend.position = "none",
-        plot.title.position = "plot")
-
-## heatmap2
-ggplot(Train_HitMiss_long, aes(id, Vars)) + geom_tile(aes(fill = value,alpha=Alpha),colour = "white", na.rm = T) +
-  scale_fill_viridis() +  
-  facet_wrap(~Hit) +
-  #guides(fill=guide_legend(title="Total Incidents")) +
-  theme_bw() + theme_minimal() + 
-  labs(title = "Heatmap of movement variables during a Grooming interaction",
-       x = "interaction N", y = "") +
-  theme(strip.text.x = element_text(size = 18),
-        axis.text.y = element_text(colour = a),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        legend.position = "none",
-        plot.title.position = "plot")
-
-+
-  scale_x_discrete(labels=c("0" = "Non Grooming", "1" = "Grooming"))
-
-}
