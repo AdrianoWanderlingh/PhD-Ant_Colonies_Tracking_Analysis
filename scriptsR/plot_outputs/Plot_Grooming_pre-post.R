@@ -200,17 +200,6 @@ inferred <- inferred[which(inferred$dead=="no"),]
 # #REMOVE EXP_GAP data
 inferred <- inferred[which(inferred$PERIOD!="EXPOSURE_GAP"),]
 
-###CHECK IF ANTS IN EXP ARE IN INFERRED LIST as RECEIVERS
-# non useful
-Reps_N_exposed$N_received <- NA
-for (REP.TREAT in unique(Reps_N_exposed$REP_treat) ) {
-  AntList <- as.numeric(unlist(strsplit(Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_ants"],",")))
-  GroomingRec <- inferred[which(inferred$REP_treat==REP.TREAT),"Rec_Name"]
-  GroomingRec <- unique(gsub("ant_", "", GroomingRec))
-  # How many exposed ants received grooming
-  Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_received"] <- length(intersect(unique(GroomingRec),AntList))
-}
-
 #add count column
 inferred$Count_byAnt <- 1
 #mean by ant
@@ -478,48 +467,57 @@ cat("MODIFY DATASET TO ADD SD OF THE MEASURE")
 
 ##### LINE PLOTS FOR 1H BINS ##
 
-#### CONVERT INTO REGRESSION! 
-#USE : geom_smooth(method='lm', formula= y~x) +
-
 #FREQUENCY
-ggplot(infer_bin_1h) + 
-  aes(x = timespan, y = Mean_Count_byAnt, group = TREATMENT,color = TREATMENT) + 
-  geom_line(size=1)+
-  STYLE +
-  geom_ribbon(aes(y = Mean_Count_byAnt, ymin = Mean_Count_byAnt - SE_Count_byAnt, ymax = Mean_Count_byAnt + SE_Count_byAnt, fill = TREATMENT), alpha = .2, colour=NA) +
-  # theme(legend.key = element_blank()) +
+ggplot(infer_bin_1h,
+       aes(x = timespan, y = Mean_Count_byAnt,group = TREATMENT,color = TREATMENT)) +
   geom_vline(xintercept = 0,color = "red")+
+  geom_point(size=1) +
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="pre"), method = "lm") + #, formula = y ~ x + I(x^2)
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="post"), method = "lm") + #, formula = y ~ x + I(x^2)
+  STYLE +
   labs(title = "Frequency of Grooming in Sham and Pathogen treated colonies",
-       subtitle = "with mean by ant and mean by rep instead of count by rep and divide by n ants",
-       x = "time from treatment", y = "Freq by Hour by Ant") +
-  theme(plot.subtitle=element_text(color="red"))
-
+       subtitle = "mean by ant and mean by rep",
+       x = "time from treatment", y = "Freq by Hour by Ant") #+
+  #facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
 
 #MEAN DURATION
-ggplot(infer_bin_1h) + 
-  aes(x = timespan, y = Mean_duration, group = TREATMENT,color = TREATMENT) + 
-  geom_line(size=1)+
-  STYLE +
-  geom_ribbon(aes(y = Mean_duration, ymin = Mean_duration - SE_duration, ymax = Mean_duration + SE_duration, fill = TREATMENT), alpha = .2, colour=NA) +
-  # theme(legend.key = element_blank()) +
+ggplot(infer_bin_1h,
+       aes(x = timespan, y = Mean_duration,group = TREATMENT,color = TREATMENT)) +
   geom_vline(xintercept = 0,color = "red")+
+  geom_point(size=1) +
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="pre"), method = "lm") + #, formula = y ~ x + I(x^2)
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="post"), method = "lm") + #, formula = y ~ x + I(x^2)
+  STYLE +
   labs(title = "Duration of Grooming in Sham and Pathogen treated colonies",
-       x = "time from treatment", y = "Mean duration by Hour")
+       subtitle = "mean by ant and mean by rep",
+       x = "time from treatment", y = "Mean duration by Hour") #+
+#facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
 
 #SUM DURATION
-ggplot(infer_bin_1h) + 
-  aes(x = timespan, y = SUM.duration, group = TREATMENT,color = TREATMENT) + 
-  geom_line(size=1)+
-  STYLE +
-  # theme(legend.key = element_blank()) +
+ggplot(infer_bin_1h,
+       aes(x = timespan, y = SUM.duration,group = TREATMENT,color = TREATMENT)) +
   geom_vline(xintercept = 0,color = "red")+
+  geom_point(size=1) +
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="pre"), method = "lm") + #, formula = y ~ x + I(x^2)
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="post"), method = "lm") + #, formula = y ~ x + I(x^2)
+  STYLE +
   labs(title = "Duration of Grooming in Sham and Pathogen treated colonies",
-       subtitle = "adjusted by N of reps",
-       x = "time from treatment", y = "Total duration (sec) by Hour")
+       subtitle = "sum by ant and mean by rep",
+       x = "time from treatment", y = "Total duration (sec) by Hour") #+
+#facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
 
 
 
-
+###CHECK IF ANTS IN EXP ARE IN INFERRED LIST as RECEIVERS
+# non useful
+Reps_N_exposed$N_received <- NA
+for (REP.TREAT in unique(Reps_N_exposed$REP_treat) ) {
+  AntList <- as.numeric(unlist(strsplit(Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_ants"],",")))
+  GroomingRec <- inferred[which(inferred$REP_treat==REP.TREAT),"Rec_Name"]
+  GroomingRec <- unique(gsub("ant_", "", GroomingRec))
+  # How many exposed ants received grooming
+  Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP.TREAT),"N_received"] <- length(intersect(unique(GroomingRec),AntList))
+}
 
 
 ### N of exposed ants in the colony
