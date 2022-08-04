@@ -42,12 +42,13 @@ library(CORElearn) # for RELIEF algorithm
 #install.packages("remotes"); remotes::install_github("insilico/STIR")
 library(stir) # calculation of statistical significance of features and adjustment for multiple testing of Relief-based scores
 library(heplots) #Hypotesis testing plots to check Equal Covariance Ellipses in LDA vars assumptions check
-library(devtools)
+#library(devtools)
+#alternative to Devtools -> Remotes
+#install.packages("remotes")
+#remotes::install_github("dongyuanwu/RSBID")
 #RandForOld <- "https://cran.r-project.org/src/contrib/Archive/randomForest/randomForest_4.6-14.tar.gz"
 #install.packages(RandForOld, repos=NULL, type="source") 
 library(randomForest)
-#devtools::install_github("aflapan/sparseKOS")
-library(sparseKOS) # sparseKOS, unlikely used for issues reported in the TASKs SHEET
 #devtools::install_github("dongyuanwu/RSBID")
 library(RSBID) # Resampling Strategies for Binary Imbalanced Datasets
 library(caret) #to tune RandomForest Hyperparameters
@@ -62,3 +63,5 @@ library(e1071)
 library(mallinfo)
 # install.packages("R.cache")
 library(R.cache)
+
+#devtools::install_github("aflapan/sparseKOS")library(sparseKOS) # sparseKOS, unlikely used for issues reported in the TASKs SHEET
