@@ -4,11 +4,12 @@
 
 #### THIS VERSION IS FORT 0.8.1 COMPATIBLE ####
 
+# Script created by Adriano Wanderlingh, Nathalie Stroeymeyt and Tom Richardson, with contributions by Enrico Gavagnign
+
 #this should be the version of the script maintained for long term use.
 #For previous versions of this script and the sourced one, explore: 
 # https://github.com/AdrianoWanderlingh/PhD-exp1-data-analysis/tree/main/scriptsR/Behaviours_inferral
 
-#NOTE: at the current time (24 March 2022), the computational part of the script works but the saving of the plots does not (needs to be fixed, possibly according to plots_structure.R)
 
 #clean start
 rm(list=ls())
@@ -42,20 +43,23 @@ if (BEH =="G"){
 
 ####### navigate to folder containing myrmidon file
 if (USER=="Adriano") {
-  WORKDIR <- "/home/cf19810/Documents/Ants_behaviour_analysis"
+  WORKDIR <- "/media/cf19810/DISK4/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
+  SAVEOUTPUT <- "/home/cf19810/Documents"
 }
 if (USER=="Tom")     {
   WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
+  SAVEOUTPUT <- "/home/bzniks/Documents"
 }
 if (USER=="Nathalie"){
   WORKDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/Behaviours_inferral_Nathalie_NEW"
-}
+  SAVEOUTPUT <- "/home/bzniks/Documents"
+  }
 
 ###source function scripts
 print("Loading functions and libraries...")
@@ -233,14 +237,14 @@ Grooming_LDA_eachRun            <- data.frame()
 
 ###initialise general output folder
 ###remove folder if already exists to amke sure we don't mix things up
-if (file.exists(file.path(DATADIR, "MachineLearning_outcomes"))){
-  unlink(file.path(DATADIR, "MachineLearning_outcomes"),recursive=T)
+if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes"))){
+  unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive=T)
 } 
 ###create folder
-dir.create(file.path(DATADIR, "MachineLearning_outcomes"),recursive = T)
+dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive = T)
 
 ###define name of general output table containing quality scores
-output_name <- file.path(DATADIR, "MachineLearning_outcomes","quality_scores.txt")
+output_name <- file.path(SAVEOUTPUT, "MachineLearning_outcomes","quality_scores.txt")
 
 
 ###############################################################################
@@ -272,7 +276,7 @@ Trunk_Loop_ID  <- 1
 for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
   #fmQueryComputeAntInteractions matcher for the max time interval in iteraction when the ant pair disengages the interaction. Specific for GROOMING
   #Sequentially vary the interaction gap-filling to check what effect this has on the agreement between the MANUAL & AUTOMATIC interactions
-  for (MAX_INTERACTION_GAP in c(20)) { #IN SECONDS
+  for (MAX_INTERACTION_GAP in c(15,20,25)) { #IN SECONDS (5,10, 15 never selected)
     trunk_loop_start_time <- Sys.time()
     print(paste("TRUNK LOOP ID:",Trunk_Loop_ID))
     ##################################################################################
@@ -287,10 +291,10 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
     loop_interaction_detection_TPTNFPFN <- auto_manual_agreement (all[["summary_AUTO"]] , all[["summary_MANUAL"]], all[["list_IF_Frames"]] )[["true_false_positive_negatives"]]
 
     ##THRESHOLD to exclude jitter in the individuals' movement (DISTANCE)
-    for (DT_dist_THRESHOLD in c(0)) { #NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
+    for (DT_dist_THRESHOLD in c(0,0.2,0.4)) { #NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
       # Assign Hit based on threshold
       # maybe can be put somewhere better as it involves a later stage of the analysis
-        for (DT_frame_THRESHOLD in c(32)){
+        for (DT_frame_THRESHOLD in c(32,40)){
           
           ###for these particular parameters, calculate variables of interest for manual annotations and automatic interactions for each of training and test dataset
           print("Extracting movement variables for manually-annotated data and automatic interactions:")
@@ -313,14 +317,14 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
           ####define to_keep variables to keep clearing memory between runs
           to_keep <- c(ls(),c("to_keep","trim_length_sec"))
           
-          for (trim_length_sec in c(2)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
+          for (trim_length_sec in c(2,3)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
             
             ###prepare output directories for Loop_ID
             subDir <- paste0("Loop_ID_",Loop_ID)
-            if (file.exists(file.path(DATADIR, "MachineLearning_outcomes",subDir))){
-              unlink(file.path(DATADIR, "MachineLearning_outcomes",subDir),recursive=T)
+            if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir))){
+              unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir),recursive=T)
             }
-            dir.create(file.path(DATADIR, "MachineLearning_outcomes",subDir,"fits"),recursive = T)
+            dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"fits"),recursive = T)
             
             ###fit classifiers
             print(paste("Perform Classification for Loop_ID ",Loop_ID,"...",sep=""))
@@ -337,10 +341,10 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
             ###### SAVING LOOP-RELEVANT OBJECTS        ####################################
             ###############################################################################
             #save the SIRUS rules object
-            dput(classifiers[["SirusRules"]], file.path(DATADIR, "MachineLearning_outcomes",subDir,"SirusRules.txt"))
+            dput(classifiers[["SirusRules"]], file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"SirusRules.txt"))
             
             #save the BN_list object containing all information regarding the variables selected by RELIEF and the method to calculate them for new values
-            dput(classifiers[["selected_variables_BNobject_list"]], file.path(DATADIR, "MachineLearning_outcomes",subDir,"BN_object_list.dat"))
+            dput(classifiers[["selected_variables_BNobject_list"]], file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"BN_object_list.dat"))
             
             ####################################################################################################################
             ###then for each classifier method, perform prediction on training and test data and get quality scores    #########
@@ -424,7 +428,7 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
               }
 
               ###2. save fit
-              saveRDS(classifier[[names(classifier)]], file.path(DATADIR, "MachineLearning_outcomes",subDir,"fits",paste(names(classifier),".rds",sep="")))
+              saveRDS(classifier[[names(classifier)]], file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"fits",paste(names(classifier),".rds",sep="")))
               
               
             }#class_idx
