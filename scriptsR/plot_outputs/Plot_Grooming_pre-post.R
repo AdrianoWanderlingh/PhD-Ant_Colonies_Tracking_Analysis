@@ -19,6 +19,7 @@ library(Hmisc)
 library("viridis")
 library(stringr)
 library(dplyr)
+library(tidyr)
 
 #### FUNCTIONS
 #list files recursive up to a certain level (level defined by "n" parameter)
@@ -214,24 +215,20 @@ write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",se
 
 
 
+
 ##############
 ###
 ## CHANGE RESIDUAL na.action=NULL WITH na.action=na.pass
-##EXPAND GRID TO BE DONE ON LIST OF EXPOSED NURSES PER TS THAT HAVE REVEIVED ZERO GROOMING (HAVE 1 LINE PER TREATED WORKER) 
+## MODIFY THE COMMON START FILE AS MOST OF INFO WILL BE IN THE METADATA_EXP1 FILE ALREADY
 ###############
 
 
 
 
 ###### AGGREGATE ALL VALUES FOR PRE.POST  #####
-inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-Reps_N_exposed <- read.table(paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-# Rename by name
-inferred$TREATMENT <- as.factor(inferred$TREATMENT)
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BS"] <- "Big Sham"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BP"] <- "Big Pathogen"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SS"] <- "Small Sham"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SP"] <- "Small Pathogen"
+inferred <- read.table(paste(DATADIR,"/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+Reps_N_exposed <- read.table(paste(DATADIR,"/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 
 #SELECT RELEVANT ROWS
 #Remove non-exposed reveivers and dead ants
@@ -245,9 +242,46 @@ inferred$Count_byAnt <- 1
 #N of reps (some missing!)
 table(str_sub( unique(inferred$REP_treat),-2,-1))
 
+##EXPAND GRID DONE ON LIST OF EXPOSED NURSES PER REP THAT HAVE RECEIVED ZERO GROOMING (HAVE 1 LINE PER TREATED WORKER) 
+#add non groomed but exposed ants
+# select only exposed
+metadata_sel <- metadata[which(metadata$Exposed==TRUE),]
+colnames(metadata_sel)[which(names(metadata_sel)=="antID")] <- "Rec_Name"
+
+### Get info from metadata
+Meta <- list(inferred,metadata_sel)
+Meta <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta)
+
+#expand grid of all possible combs of Rec_Name and period (pre-post) within group
+Meta_all_RecPer <- Meta %>%
+                  group_by(REP_treat) %>%
+                  tidyr::expand (Rec_Name,PERIOD)
+Meta_all_RecPer <- Meta_all_RecPer[which(!is.na(Meta_all_RecPer$PERIOD)),]
+
+### merge
+Meta_all_combs <- list(Meta,Meta_all_RecPer)
+Meta_all_combs <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta_all_combs)
+#clean
+Meta_all_combs <- Meta_all_combs[which(!is.na(Meta_all_combs$Rec_Name)),]
+Meta_all_combs <- Meta_all_combs[which(!is.na(Meta_all_combs$PERIOD)),]
+#add 0 counts and durations
+Meta_all_combs[is.na(Meta_all_combs$Act_Name),"Count_byAnt"] <- 0
+Meta_all_combs[is.na(Meta_all_combs$Act_Name),"duration"]    <- 0
+#Re-add missing treatments
+Meta_all_combs$TREATMENT <- substr(Meta_all_combs$REP_treat,(nchar(Meta_all_combs$REP_treat)+1)-2,nchar(Meta_all_combs$REP_treat))
+# OVERWRITE
+inferred <- Meta_all_combs
+
+# Rename by name
+inferred$TREATMENT <- as.factor(inferred$TREATMENT)
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BS"] <- "Big Sham"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BP"] <- "Big Pathogen"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SS"] <- "Small Sham"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SP"] <- "Small Pathogen"
+
 
 ## count the number of observations by ant and get mean
-inferred_count_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT  + REP_treat + Rec_Name, FUN=length, na.action=na.pass, inferred)
+inferred_count_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT  + REP_treat + Rec_Name, FUN=sum, na.action=na.pass, inferred)
 ## calculate mean durations for REP
 inferred_dur_summary      <- aggregate(duration ~ PERIOD + TREATMENT  + REP_treat + Rec_Name, FUN=mean, na.rm=T, na.action=na.pass, inferred)
 #sum by ant (SUM DUR MAY BE MORE INFORMATIVE AS THE GROOMING DETECTION MAY RESULT FAGMENTED)
@@ -276,8 +310,8 @@ Counts_by_Behaviour_AllCombos1$Count_byAnt[which(is.na(Counts_by_Behaviour_AllCo
 infer_Nevents  <- aggregate(Count_byAnt ~ PERIOD  + TREATMENT,                 FUN=length,      na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_Nevents) [match("Count_byAnt",colnames(infer_Nevents))] <- "N_Count_REP"
 infer_SD  <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD  + TREATMENT,                 FUN=sd,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_SD) [match("Count_byAnt",colnames(infer_SD))] <- "SD_Count_byAnt" ; colnames(infer_SD) [match("duration",colnames(infer_SD))] <- "SD_duration"
 ## finally, get the mean & S.E. for each behav before/after  for barplots
-infer_MEAN  <- aggregate(cbind(Count_byAnt,duration,SUM_duration)  ~ PERIOD  + TREATMENT,    FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) 
-infer_SE    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD  + TREATMENT,     FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) 
+infer_MEAN  <- aggregate(cbind(Count_byAnt,duration,SUM_duration)  ~ PERIOD  + TREATMENT,    FUN=mean,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1) 
+infer_SE    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD  + TREATMENT,     FUN=std.error, na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1) 
 #rename cols
 colnms <- c("Count_byAnt","duration","SUM_duration")
 colnames(infer_MEAN)[match(colnms, colnames(infer_MEAN))] <- paste0("Mean_",colnms)
@@ -289,6 +323,8 @@ infer_full <- Reduce(function(x, y) merge(x, y, all=TRUE), infer_full)
 infer_full[is.na(infer_full)] <- 0
 #reorder levels to fix strange behaviour in plotting
 infer_full$TREATMENT <- factor(infer_full$TREATMENT, levels = c("Big Pathogen","Big Sham","Small Pathogen","Small Sham"))
+#reorder levels of period
+infer_full$PERIOD <- factor(infer_full$PERIOD, levels = c("pre","post"))
 
 #----------------------------------
 #ONGOING
@@ -314,16 +350,16 @@ SE.diff <- function(var.pool, n1,n2){
 #se.dif <- SE.diff(var.pool,n1 = N[1],n2 = N[2]) 
 
 
-##### STD ERR SHOULD NOT BE TREATED LIKE THIS!!!!
-#use the functions above to calculate the pooled SD and the N samples! 
-infer_full_DELTA <- infer_full %>%
-  group_by(TREATMENT) %>%
-  dplyr::summarise(Mean_Count_PostPre = Mean_Count_byAnt[match("post", PERIOD)] - Mean_Count_byAnt[match("pre", PERIOD)],
-                   Mean_dur_PostPre = Mean_duration[match("post", PERIOD)] - Mean_duration[match("pre", PERIOD)],
-                   SE_Count_PostPre = SE_Count_byAnt[match("post", PERIOD)] - SE_Count_byAnt[match("pre", PERIOD)],
-                   SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
-                   SUM.dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
-  )
+# ##### STD ERR SHOULD NOT BE TREATED LIKE THIS!!!!
+# #use the functions above to calculate the pooled SD and the N samples! 
+# infer_full_DELTA <- infer_full %>%
+#   group_by(TREATMENT) %>%
+#   dplyr::summarise(Mean_Count_PostPre = Mean_Count_byAnt[match("post", PERIOD)] - Mean_Count_byAnt[match("pre", PERIOD)],
+#                    Mean_dur_PostPre = Mean_duration[match("post", PERIOD)] - Mean_duration[match("pre", PERIOD)],
+#                    SE_Count_PostPre = SE_Count_byAnt[match("post", PERIOD)] - SE_Count_byAnt[match("pre", PERIOD)],
+#                    SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
+#                    SUM.dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
+#   )
 #---------------------------------------
 
 
@@ -351,18 +387,53 @@ for (TIME in time.break) {
   
   inferred_bin$timespan <- round(inferred_bin$timespan,0)
   
+  
+  #######################################
+  #expand grid of all possible combs of Rec_Name and period (pre-post) within group
+  Meta_all_RecTime <- inferred_bin %>%
+    group_by(REP_treat) %>%
+    tidyr::expand (Rec_Name,timespan)
+  Meta_all_RecTime <- Meta_all_RecTime[which(!is.na(Meta_all_RecTime$timespan)),]
+  
+  ### merge
+  Meta_all_combsH <- list(inferred_bin,Meta_all_RecTime)
+  Meta_all_combsH <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta_all_combsH)
+  #clean
+  Meta_all_combsH <- Meta_all_combsH[which(!is.na(Meta_all_combsH$Rec_Name)),]
+  Meta_all_combsH <- Meta_all_combsH[which(!is.na(Meta_all_combsH$timespan)),]
+  #add 0 counts and durations
+  Meta_all_combsH[is.na(Meta_all_combsH$Act_Name),"Count_byAnt"] <- 0
+  Meta_all_combsH[is.na(Meta_all_combsH$Act_Name),"duration"]    <- 0
+  #Re-add missing treatments
+  Meta_all_combsH$TREATMENT <- substr(Meta_all_combsH$REP_treat,(nchar(Meta_all_combsH$REP_treat)+1)-2,nchar(Meta_all_combsH$REP_treat))
+  #Re-add missing PERIODs
+  for (ROW in 1:nrow(Meta_all_combsH)) {
+    #since these are times in seconds, it is ok to  have strict ">" instead of ">="
+    if(Meta_all_combsH[ROW,"timespan"] >= 0){ Meta_all_combsH[ROW,"PERIOD"] <- "post"
+    }else if ( Meta_all_combsH[ROW,"timespan"] < 0) {  Meta_all_combsH[ROW,"PERIOD"] <- "pre" }}
+  
   if (TIME=="hour") {
-  ## TEMP: assign a time of the day!
-  Time_dictionary <- data.frame(timespan= -36:35, time_of_day= rep(0:23,3))
-  inferred_bin <- left_join(inferred_bin, Time_dictionary, by = "timespan")
+    ## TEMP: assign a time of the day!
+    Time_dictionary <- data.frame(timespan= -36:35, time_of_day= rep(0:23,3))
+    Meta_all_combsH <- left_join(Meta_all_combsH, Time_dictionary, by = "timespan")
   } else   if (TIME=="h4") {
     Time_dictionary1 <- data.frame(timespan= c(-7:6), time_of_day= c(8, 12, 16, 20, 0, 4, 8,  12,  16,  20,  0,  4,  8, 12))
-    inferred_bin <- left_join(inferred_bin, Time_dictionary1, by = "timespan")
+    Meta_all_combsH <- left_join(Meta_all_combsH, Time_dictionary1, by = "timespan")
   }
   
+  # OVERWRITE
+  inferred_bin <- Meta_all_combsH
+  
+  # Rename by name
+  inferred_bin$TREATMENT <- as.factor(inferred_bin$TREATMENT)
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BS"] <- "Big Sham"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BP"] <- "Big Pathogen"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SS"] <- "Small Sham"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SP"] <- "Small Pathogen"
+  ################################################
   
   ## count the number of observations by ant and get mean
-  inferred_count_bin_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat + Rec_Name, FUN=length, na.action=na.pass, inferred_bin)
+  inferred_count_bin_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat + Rec_Name, FUN=sum, na.action=na.pass, inferred_bin)
   ## calculate mean durations for REP
   inferred_dur_bin_summary      <- aggregate(duration ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat + Rec_Name, FUN=mean, na.rm=T, na.action=na.pass, inferred_bin)
   #sum by ant (SUM DUR MAY BE MORE INFORMATIVE AS THE GROOMING DETECTION MAY RESULT FAGMENTED)
@@ -391,8 +462,8 @@ for (TIME in time.break) {
   infer_bin_Nevents  <- aggregate(Count_byAnt ~ PERIOD + time_of_day + timespan + TREATMENT,                 FUN=length,      na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_bin_Nevents) [match("Count_byAnt",colnames(infer_bin_Nevents))] <- "N_Count_REP"
   infer_bin_SD  <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD + time_of_day + timespan + TREATMENT,                 FUN=sd,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_bin_SD) [match("Count_byAnt",colnames(infer_bin_SD))] <- "SD_Count_byAnt" ; colnames(infer_bin_SD) [match("duration",colnames(infer_bin_SD))] <- "SD_duration"
   ## finally, get the mean & S.E. for each behav before/after  for barplots
-  infer_bin_MEAN  <- aggregate(cbind(Count_byAnt,duration,SUM_duration)  ~ PERIOD + time_of_day + timespan + TREATMENT,    FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) 
-  infer_bin_SE    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + time_of_day + timespan + TREATMENT,     FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos1) 
+  infer_bin_MEAN  <- aggregate(cbind(Count_byAnt,duration,SUM_duration)  ~ PERIOD + time_of_day + timespan + TREATMENT,    FUN=mean,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1) 
+  infer_bin_SE    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + time_of_day + timespan + TREATMENT,     FUN=std.error, na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1) 
   #rename cols
   colnms <- c("Count_byAnt","duration","SUM_duration")
   colnames(infer_bin_MEAN)[match(colnms, colnames(infer_bin_MEAN))] <- paste0("Mean_",colnms)
@@ -913,8 +984,8 @@ ggplot(Train_HitMiss_long, aes(id, Vars)) + geom_tile(aes(fill = value,alpha=Alp
 # ## replace the NAs with 0 counts            
 # Counts_by_Behaviour_AllCombos$Count[which(is.na(Counts_by_Behaviour_AllCombos$Count))] <- 0
 # ## finally, get the mean & S.E. for each behav before/after  for barplots
-# Counts_by_Behaviour_MEAN  <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=mean,      na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
-# Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=std.error, na.rm=T, na.action=NULL, Counts_by_Behaviour_AllCombos)
+# Counts_by_Behaviour_MEAN  <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=mean,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos)
+# Counts_by_Behaviour_SE    <- aggregate(cbind(Count,duration) ~ Behaviour + period,                 FUN=std.error, na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos)
 # 
 # 
 # 
