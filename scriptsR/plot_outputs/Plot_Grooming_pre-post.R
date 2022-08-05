@@ -45,6 +45,25 @@ Presentation_plots             <- FALSE #script for single interactions heatmaps
 ###### PRELIMINARY OUTPUT HAS BEEN SAVED ON A SPECIFIC THIRD FILE inferred_groomings_ALL_withCommonStart
 ###########################################################################################################
 
+
+
+
+
+
+
+
+
+
+
+###########################################################################################################
+###### REWORK THIS TO GET METADATAINFO FROM BASE CENTRALISED FILE
+###### 
+###### 
+###### 
+###### 
+###########################################################################################################
+
+
 if (!file.exists(paste0(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt"))) {
 
 ## TIME WINDOW SHIFT. WARNING: THIS IS AN APPROXIMATION. IN THE FUTURE, THE TIME OF EXP ANTS RETURN PER TRACKING SYSTEM SHOULD BE USED!
@@ -192,6 +211,18 @@ write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",se
 #######################################################
 #start from here
 
+
+
+
+##############
+###
+## CHANGE RESIDUAL na.action=NULL WITH na.action=na.pass
+##EXPAND GRID TO BE DONE ON LIST OF EXPOSED NURSES PER TS THAT HAVE REVEIVED ZERO GROOMING (HAVE 1 LINE PER TREATED WORKER) 
+###############
+
+
+
+
 ###### AGGREGATE ALL VALUES FOR PRE.POST  #####
 inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 Reps_N_exposed <- read.table(paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
@@ -261,6 +292,7 @@ infer_full$TREATMENT <- factor(infer_full$TREATMENT, levels = c("Big Pathogen","
 
 #----------------------------------
 #ONGOING
+## CALCULATING THE DIFFERENCES POST MINUS AFTER REQUIRES SUBTRACTING MEANS, THEREFORE SE HAS TO BE CALCULATED ACCORDINGLY
 # https://rpubs.com/brouwern/SEdiff2means
 
 ## diff after relative to before
