@@ -1,4 +1,13 @@
 # PhD-exp1-data-analysis
-Linux
-R scripts for Colony Maturation Experiment and similar material
+
+
+R scripts for:
+- Tracking Data Post-processing
+- Machine Learning Behavioural Classification
+- Colony Maturation Experiment
+- extra related material
+
+Code written by Adriano Wanderlingh, Nathalie Stroeymeyt, Tom Richardson with contributions by Enrico Gavagnign
+
+Ant Epidemiology Lab
 
