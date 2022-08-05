@@ -58,8 +58,9 @@ for (REP.n in 1:length(files_list)) {
     print(REP.FILES) ##}}
     #open experiment
     e <- fmExperimentOpen(REP.FILES)
-    exp.Ants <- e$ants
-    exp_end <- fmQueryGetDataInformations(e)$end
+    exp.Ants  <- e$ants
+    exp_end   <- fmQueryGetDataInformations(e)$end
+    exp_start <- fmQueryGetDataInformations(e)$start
    
     ############# CREATE BASE FILE #########################
     metadata <- NULL
@@ -126,7 +127,12 @@ for (REP.n in 1:length(files_list)) {
     
     # N_exposed in the colony
     metadata$N_exposed <- sum(metadata$Exposed)
-
+    #start and end times
+    metadata$ExpStart  <-  exp_start
+    attr(metadata$ExpStart,"tzone") <- "GMT"
+    metadata$ExpEnd    <-  exp_end
+    attr(metadata$ExpEnd,"tzone") <- "GMT"
+    
     
     # save
     if (file.exists(Metadata_Exp1)){
@@ -136,15 +142,7 @@ for (REP.n in 1:length(files_list)) {
     }
 
     gc()
-    rm(list=(c("exp"))) #remove experiment
+    rm(list=(c("e"))) #remove experiment
     
     
   }} # REP by REP
-
-
-#include all identifications (maybe start and end of identification should be included?)
-
-
-
-
-rm(list=ls())
