@@ -1,0 +1,2 @@
+Loop_ID CAPSULE_FILE DT_dist_THRESHOLD MAX_INTERACTION_GAP DISAGREEMENT_THRESH DT_frame_THRESHOLD trim_length_sec beta classifier CSI_pre_classifier Fbeta_pre_classifier precision_pre_classifier sensitivity_pre_classifier CSI_training Fbeta_training precision_training sensitivity_training CSI_test Fbeta_test precision_test sensitivity_test classif
+1 CapsuleDef3 0 20 0.5 32 2 0.5 fit_RF_smote 0.0496351080487761 0.0620699844639548 0.0504989265599001 0.743699752628324 0.574 0.78 0.818 0.658 0.378 0.641 0.722 0.442 fit_RF_smote
