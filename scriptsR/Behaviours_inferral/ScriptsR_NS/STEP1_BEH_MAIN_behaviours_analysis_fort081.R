@@ -446,3 +446,4 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
     print (paste("Trunk loop took ",trunk_loop_end_time-trunk_loop_start_time," seconds to complete"))
   }#MAX_INTERACTION_GAP
 }#CAPSULE_FILE
+

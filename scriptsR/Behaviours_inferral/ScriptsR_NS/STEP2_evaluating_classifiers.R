@@ -4,12 +4,12 @@ library(lme4)
 library(car)
 library(multcomp)
 
-outcomes <- read.table("/media/bzniks/DISK3/Ants_behaviour_analysis/Data/MachineLearning_outcomes/quality_scores.txt",header=T,stringsAsFactors = F)
+outcomes <- read.table("/home/cf19810/Documents/MachineLearning_outcomes_04-08-22/quality_scores.txt",header=T,stringsAsFactors = F)
 beta <- 0.5
 outcomes <- outcomes[which(outcomes$beta==beta),]
 
 outcomes_scores <- outcomes[which(names(outcomes) %in% names(outcomes)[which(grepl("test",names(outcomes))| grepl("training",names(outcomes)))])]
-outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("test",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
+outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("test",names(outcomes))| grepl("pre_classifier",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
 
 outcomes_to_keep <- outcomes
 for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[which(!names(outcomes_param)%in% c("CAPSULE_FILE","MAX_INTERACTION_GAP"))])){
@@ -51,11 +51,11 @@ for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[w
   outcomes_to_keep <- outcomes_to_keep[which(as.character(outcomes_to_keep[,parameter])  %in% as.character( get(paste(parameter,"_list",sep=""))) ), ]
 }
 
-###selected method: keep the ones with highest CSI_training and F1_training
+###selected method: keep the ones with highest CSI_training and Fbeta_training
 outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$CSI_training==max(outcomes_to_keep$CSI_training,na.rm=T)),]
-outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$F1_training==max(outcomes_to_keep$F1_training,na.rm=T)),]
+outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_training==max(outcomes_to_keep$Fbeta_training,na.rm=T)),]
 ###among those, keep the one that has the best generalisation value
 outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$CSI_test==max(outcomes_to_keep$CSI_test,na.rm=T)),]
 print(outcomes_to_keep)
 
-write.table(outcomes_to_keep,file="/media/bzniks/DISK3/Ants_behaviour_analysis/Data/MachineLearning_outcomes/quality_scores_CHOSEN.txt",col.names=T,row.names=F,quote=F,append=F)
+write.table(outcomes_to_keep,file="/home/cf19810/Documents/MachineLearning_outcomes/quality_scores_CHOSEN.txt",col.names=T,row.names=F,quote=F,append=F)

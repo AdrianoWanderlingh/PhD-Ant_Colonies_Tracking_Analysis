@@ -4,13 +4,13 @@ library(lme4)
 library(car)
 library(multcomp)
 
-outcomes <- read.table("/home/tracking_users/Documents/Adriano/Ants_behaviour_analysis/Data/MachineLearning_outcomes/quality_scores.txt",header=T,stringsAsFactors = F)
+outcomes <- read.table("/home/cf19810/Documents/MachineLearning_outcomes/quality_scores.txt",header=T,stringsAsFactors = F)
 beta <- 0.5
 outcomes <- outcomes[which(outcomes$beta==beta),]
 
 outcomes$classif <- outcomes$classifier #AW
 outcomes_scores <- outcomes[which(names(outcomes) %in% names(outcomes)[which(grepl("test",names(outcomes))| grepl("training",names(outcomes)))])]
-outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("classifier",names(outcomes))|grepl("test",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
+outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("pre_classifier",names(outcomes))| grepl("test",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
 #AW:added "classifer" to excluded outcomes_param
 outcomes_to_keep <- outcomes
 for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[which(!names(outcomes_param)%in% c("CAPSULE_FILE","MAX_INTERACTION_GAP"))])){
@@ -53,7 +53,7 @@ for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[w
 }
 
 ###selected method: keep the ones with highest Fbeta_training and Fbeta_training
-outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_training==max(outcomes_to_keep$Fbeta_training,na.rm=T)),]
+outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$CSI_training==max(outcomes_to_keep$CSI_training,na.rm=T)),]
 outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_training==max(outcomes_to_keep$Fbeta_training,na.rm=T)),] #AW
 ###among those, keep the one that has the best generalisation value
 outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_test==max(outcomes_to_keep$Fbeta_test,na.rm=T)),]
