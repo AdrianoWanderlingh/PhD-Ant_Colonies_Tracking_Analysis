@@ -1,3 +1,7 @@
+<p align="center">
+<img src="https://user-images.githubusercontent.com/47888790/184152615-5b94905a-9ddc-4d8f-8f27-3b10a2fda858.png" width="300" />
+</p>
+
 # PhD-exp1-data-analysis
 
 Lasius niger Colony Maturation Experiment
@@ -12,4 +16,3 @@ Code written by Adriano Wanderlingh, Nathalie Stroeymeyt, Tom Richardson with co
 
 Ant Epidemiology Lab
 
-![AntEpidemiologyLab_logo_v1_AW](https://user-images.githubusercontent.com/47888790/184152615-5b94905a-9ddc-4d8f-8f27-3b10a2fda858.png)
