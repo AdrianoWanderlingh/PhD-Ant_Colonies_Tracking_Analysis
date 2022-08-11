@@ -7,7 +7,6 @@
 gc()
 mallinfo::malloc.trim(0L)
 
-
 library(FortMyrmidon)
 library("ggplot2")
 library(lubridate)
@@ -21,6 +20,15 @@ library(stringr)
 library(dplyr)
 library(tidyr)
 
+#stats
+library(lme4)
+library(blmeco) # check dispersion for glmer
+library(emmeans) #post-hoc comparisons
+library(e1071) #calc skewness and other stuff
+library(lawstat) #for levene test (homogeneity of variance)
+library(lmPerm) # for permutations
+
+
 #### FUNCTIONS
 #list files recursive up to a certain level (level defined by "n" parameter)
 list.dirs.depth.n <- function(p, n) {
@@ -33,6 +41,22 @@ list.dirs.depth.n <- function(p, n) {
   }
 }
 
+#function to test normality of residuals
+test_norm <- function(resids){
+  print("Testing normality")
+  if (length(resids)<=300){
+    print("Fewer than 300 data points so performing Shapiro-Wilk's test")
+    print(shapiro.test(resids))
+  }else{
+    print("More than 300 data points so using the skewness and kurtosis
+approach")
+    print("Skewness should be between -3 and +3 (best around zero")
+    print(skewness(resids))
+    print("")
+    print("Excess kurtosis (i.e. absolute kurtosis -3) should be less than 4; ideally around zero")
+    print(kurtosis(resids))
+  }
+}
 
 ### DIRECTORIES
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
@@ -215,13 +239,10 @@ write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",se
 
 
 
-
 ##############
 ###
-## CHANGE RESIDUAL na.action=NULL WITH na.action=na.pass
 ## MODIFY THE COMMON START FILE AS MOST OF INFO WILL BE IN THE METADATA_EXP1 FILE ALREADY
 ###############
-
 
 
 
@@ -297,18 +318,18 @@ inferred_count_summ1 <- Reduce(function(x, y) merge(x, y, all=TRUE), inferred_co
 #calculate mean by REP
 inferred_count_summ1    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + TREATMENT  + REP_treat, FUN=mean, na.action=na.pass, inferred_count_summ1)
 
-## create a data frame with all combinations of the conditioning variables
-all_combos1 <- expand.grid ( PERIOD=unique(inferred$PERIOD), REP_treat=unique(inferred$REP_treat))
-
-## add the missing cases
-Counts_by_Behaviour_AllCombos1 <- plyr::join (x = inferred_count_summ1 , y=all_combos1, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
+# alternative expand grid for paired columns (REP_treat and TREATMENT)
+combos1 <- unique(inferred[,c("REP_treat","TREATMENT")])
+combos2 <- unique(inferred[,"PERIOD",drop=FALSE])
+combos3 <- merge(combos1,combos2)
+Counts_by_Behaviour_AllCombos1 <- merge(inferred_count_summ1,combos3,all=TRUE)
 
 ## replace the NAs with 0 counts   
-Counts_by_Behaviour_AllCombos1$Count_byAnt[which(is.na(Counts_by_Behaviour_AllCombos1$Count_byAnt))] <- 0
+Counts_by_Behaviour_AllCombos1[is.na(Counts_by_Behaviour_AllCombos1)] <- 0
 
 #add N events and SD to calculate the Std Err of the mean differences
 infer_Nevents  <- aggregate(Count_byAnt ~ PERIOD  + TREATMENT,                 FUN=length,      na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_Nevents) [match("Count_byAnt",colnames(infer_Nevents))] <- "N_Count_REP"
-infer_SD  <- aggregate(cbind(Count_byAnt,duration) ~ PERIOD  + TREATMENT,                 FUN=sd,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_SD) [match("Count_byAnt",colnames(infer_SD))] <- "SD_Count_byAnt" ; colnames(infer_SD) [match("duration",colnames(infer_SD))] <- "SD_duration"
+infer_SD  <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD  + TREATMENT,                 FUN=sd,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_SD) [match("Count_byAnt",colnames(infer_SD))] <- "SD_Count_byAnt" ; colnames(infer_SD) [match("duration",colnames(infer_SD))] <- "SD_duration"; colnames(infer_SD) [match("SUM_duration",colnames(infer_SD))] <- "SD_SUM_duration"
 ## finally, get the mean & S.E. for each behav before/after  for barplots
 infer_MEAN  <- aggregate(cbind(Count_byAnt,duration,SUM_duration)  ~ PERIOD  + TREATMENT,    FUN=mean,      na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1) 
 infer_SE    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD  + TREATMENT,     FUN=std.error, na.rm=T, na.action=na.pass, Counts_by_Behaviour_AllCombos1) 
@@ -327,7 +348,6 @@ infer_full$TREATMENT <- factor(infer_full$TREATMENT, levels = c("Big Pathogen","
 infer_full$PERIOD <- factor(infer_full$PERIOD, levels = c("pre","post"))
 
 #----------------------------------
-#ONGOING
 ## CALCULATING THE DIFFERENCES POST MINUS AFTER REQUIRES SUBTRACTING MEANS, THEREFORE SE HAS TO BE CALCULATED ACCORDINGLY
 # https://rpubs.com/brouwern/SEdiff2means
 
@@ -345,24 +365,38 @@ SE.diff <- function(var.pool, n1,n2){
   sqrt(var.pool*(1/n1 + 1/n2))
 }
 
-#Apply function
-## Note: uses sample size
-#se.dif <- SE.diff(var.pool,n1 = N[1],n2 = N[2]) 
-
-
-# ##### STD ERR SHOULD NOT BE TREATED LIKE THIS!!!!
-# #use the functions above to calculate the pooled SD and the N samples! 
-# infer_full_DELTA <- infer_full %>%
-#   group_by(TREATMENT) %>%
-#   dplyr::summarise(Mean_Count_PostPre = Mean_Count_byAnt[match("post", PERIOD)] - Mean_Count_byAnt[match("pre", PERIOD)],
-#                    Mean_dur_PostPre = Mean_duration[match("post", PERIOD)] - Mean_duration[match("pre", PERIOD)],
-#                    SE_Count_PostPre = SE_Count_byAnt[match("post", PERIOD)] - SE_Count_byAnt[match("pre", PERIOD)],
-#                    SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
-#                    SUM.dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
-#   )
+#use the functions above to calculate the pooled SD and the N samples!
+infer_full_DELTA <- infer_full %>%
+  group_by(TREATMENT) %>%
+  dplyr::summarise(Mean_Count_PostPre = Mean_Count_byAnt[match("post", PERIOD)] - Mean_Count_byAnt[match("pre", PERIOD)],
+                   Mean_dur_PostPre = Mean_duration[match("post", PERIOD)] - Mean_duration[match("pre", PERIOD)],
+                   Mean_SUM_dur_PostPre = Mean_SUM_duration[match("post", PERIOD)] - Mean_SUM_duration[match("pre", PERIOD)],
+                   SE_Count_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+                   SE_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+                   SE_SUM_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
+                   # SD_Count_byAnt[match("post", PERIOD)] - SD_Count_byAnt[match("pre", PERIOD)],
+                   # SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
+  )
 #---------------------------------------
 
+## SAME BUT FOR DATA ANALYSIS : 
 
+#use the functions above to calculate the pooled SD and the N samples!
+Counts_by_Behaviour_AllCombos1_DELTA <- Counts_by_Behaviour_AllCombos1 %>%
+  group_by(REP_treat) %>%
+  dplyr::summarise(Count_PostPre = Count_byAnt[match("post", PERIOD)] - Count_byAnt[match("pre", PERIOD)],
+                   dur_PostPre = duration[match("post", PERIOD)] - duration[match("pre", PERIOD)],
+                   SUM_dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
+                   TREATMENT = TREATMENT
+                   # SE_Count_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+                   # SE_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+                   # SE_SUM_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
+                   # SD_Count_byAnt[match("post", PERIOD)] - SD_Count_byAnt[match("pre", PERIOD)],
+                   # SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
+  )
+
+Counts_by_Behaviour_AllCombos1_DELTA <- dplyr::distinct(Counts_by_Behaviour_AllCombos1_DELTA)
+Counts_by_Behaviour_AllCombos1_DELTA <- as.data.frame(Counts_by_Behaviour_AllCombos1_DELTA)
 
 ###### AGGREGATE TIME BINS VALUES  #####
 
@@ -372,7 +406,7 @@ tokeep <- NA
 
 for (TIME in time.break) {
   #clean all
-  rm(list=setdiff(ls(),c("inferred","Reps_N_exposed","infer_full","WORKDIR","DATADIR","TIME","time.break","tokeep",tokeep)))
+  rm(list=setdiff(ls(),c("inferred","infer_full_DELTA","Counts_by_Behaviour_AllCombos1_DELTA","Reps_N_exposed","infer_full","WORKDIR","DATADIR","TIME","time.break","tokeep",tokeep)))
   #create local copy
   inferred_bin <- inferred
   
@@ -449,14 +483,16 @@ for (TIME in time.break) {
   #calculate mean by REP
   inferred_count_bin_summ1    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat, FUN=mean, na.action=na.pass, inferred_count_bin_summ1)
 
-  ## create a data frame with all combinations of the conditioning variables
-  all_combos1 <- expand.grid (TREATMENT=unique(inferred_bin$TREATMENT) , timespan= unique(inferred_bin$timespan)) #), PERIOD=unique(inferred_bin$PERIOD)
   
-  ## add the missing cases
-  Counts_by_Behaviour_AllCombos1 <- plyr::join (x = inferred_count_bin_summ1 , y=all_combos1, type = "right", match = "all")  #, by.x=c("Behaviour","period","treatment_rep"), by.y=c("Behaviour","period","treatment_rep") )            
-
+  # alternative expand grid for paired columns (REP_treat and TREATMENT)
+  ### IF NEEDED, MODIFY combos_bin2 TO  unique(inferred_bin[,c("timespan","PERIOD")])
+  combos_bin1 <- unique(inferred_bin[,c("REP_treat","TREATMENT")])
+  combos_bin2 <- unique(inferred_bin[,"timespan",drop=FALSE])
+  combos_bin3 <- merge(combos_bin1,combos_bin2)
+  Counts_by_Behaviour_AllCombos1 <- merge(inferred_count_bin_summ1,combos_bin3,all=TRUE)
+  
   ## replace the NAs with 0 counts   
-  Counts_by_Behaviour_AllCombos1$Count_byAnt[which(is.na(Counts_by_Behaviour_AllCombos1$Count_byAnt))] <- 0
+  Counts_by_Behaviour_AllCombos1[is.na(Counts_by_Behaviour_AllCombos1)] <- 0
   
   #add N events and SD to calculate the Std Err of the mean differences
   infer_bin_Nevents  <- aggregate(Count_byAnt ~ PERIOD + time_of_day + timespan + TREATMENT,                 FUN=length,      na.action=na.pass, Counts_by_Behaviour_AllCombos1); colnames(infer_bin_Nevents) [match("Count_byAnt",colnames(infer_bin_Nevents))] <- "N_Count_REP"
@@ -517,25 +553,154 @@ infer_bin_h4_trim <- infer_bin_h4_trim[which(infer_bin_h4_trim$timespan <=1),]
 
 
 ############################################
-# + pathogen−induced changes relative to sham−induced changes
+# pathogen−induced changes relative to sham−induced changes
 
 
 
-##correct and copy from infer_full
-# ##### STD ERR SHOULD NOT BE TREATED LIKE THIS!!!!
-# infer_bin_1h_trim_DELTA <- infer_bin_1h_trim %>%
-#   group_by(TREATMENT, time_of_day) %>%
-#   dplyr::summarise(Mean_Count_PostPre = Mean_Count_byAnt[match("post", PERIOD)] - Mean_Count_byAnt[match("pre", PERIOD)],
-#                    Mean_dur_PostPre = Mean_duration[match("post", PERIOD)] - Mean_duration[match("pre", PERIOD)],
-#                    SE_Count_PostPre = SE_Count_byAnt[match("post", PERIOD)] - SE_Count_byAnt[match("pre", PERIOD)],
-#                    SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
-#                    SUM.dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
-#                    )
+## copy from infer_full
 
 
 
 
 
+
+#####################################################################################
+##################                 STATS             ################################
+#####################################################################################
+# FULL PERIOD DELTA (POST-PRE)
+# STATISTICS ON COUNTS 
+
+ggplot(Counts_by_Behaviour_AllCombos1_DELTA, aes(x = Count_PostPre)) +
+  geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT)
+
+Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT <- as.factor(Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT)
+Counts_by_Behaviour_AllCombos1_DELTA$REP_treat<- as.factor(Counts_by_Behaviour_AllCombos1_DELTA$REP_treat)
+
+#premutation test #########################
+
+#the easy way
+#all contrasts
+summary(lmp(Count_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
+summary(lmp(dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
+summary(lmp(SUM_dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
+
+#pairs of same size
+
+DELTA_small <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Small", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
+DELTA_big   <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Big", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
+
+#small
+summary(lmp(Count_PostPre~TREATMENT,data=DELTA_small))
+summary(lmp(dur_PostPre~TREATMENT,data=DELTA_small))
+summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_small))
+
+#big
+summary(lmp(Count_PostPre~TREATMENT,data=DELTA_big))
+summary(lmp(dur_PostPre~TREATMENT,data=DELTA_big))
+summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_big))
+
+#no differences within sizes!
+
+
+# #simplify name
+# DELTA_all <- Counts_by_Behaviour_AllCombos1_DELTA
+# VAR <- colnames(Counts_by_Behaviour_AllCombos1_DELTA)
+# TREAT <- Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT
+# reps<-5000
+# 
+# 
+# numeric_variable_list  <- names(Counts_by_Behaviour_AllCombos1_DELTA) [ which (!names(Counts_by_Behaviour_AllCombos1_DELTA) %in% c( "REP_treat", "TREATMENT") )]
+# Permutation_output <- list() 
+# 
+# for (VAR in colnames(Counts_by_Behaviour_AllCombos1_DELTA)){
+#   if (VAR %in% numeric_variable_list) {
+# #Observed difference between average difference in pairwise median group species richness for each location:
+# SRpair1<-median(DELTA_all[TREAT=="Big Pathogen",VAR])-median(DELTA_all[TREAT=="Big Sham",VAR])
+# SRpair2<-median(DELTA_all[TREAT=="Big Pathogen",VAR])-median(DELTA_all[TREAT=="Small Sham",VAR])
+# SRpair3<-median(DELTA_all[TREAT=="Big Pathogen",VAR])-median(DELTA_all[TREAT=="Small Pathogen",VAR])
+# SRpair4<-median(DELTA_all[TREAT=="Small Sham",VAR])-median(DELTA_all[TREAT=="Big Sham",VAR])
+# SRpair5<-median(DELTA_all[TREAT=="Small Sham",VAR])-median(DELTA_all[TREAT=="Small Pathogen",VAR])
+# SRpair6<-median(DELTA_all[TREAT=="Big Sham",VAR])-median(DELTA_all[TREAT=="Small Pathogen",VAR])
+# observedSR.diff<-abs(mean(SRpair1,SRpair2,SRpair3,SRpair4,SRpair5,SRpair6))
+# 
+# median.permSR <- numeric(reps)
+# for (i in 1:reps) {
+#   newSRgroup<-sample(Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT,replace = F)
+#   P.SRpair1<-median(DELTA_all[newSRgroup=="Big Pathogen",VAR])-median(DELTA_all[newSRgroup=="Big Sham",VAR])
+#   P.SRpair2<-median(DELTA_all[newSRgroup=="Big Pathogen",VAR])-median(DELTA_all[newSRgroup=="Small Sham",VAR])
+#   P.SRpair3<-median(DELTA_all[newSRgroup=="Big Pathogen",VAR])-median(DELTA_all[newSRgroup=="Small Pathogen",VAR])
+#   P.SRpair4<-median(DELTA_all[newSRgroup=="Small Sham",VAR])-median(DELTA_all[newSRgroup=="Big Sham",VAR])
+#   P.SRpair5<-median(DELTA_all[newSRgroup=="Small Sham",VAR])-median(DELTA_all[newSRgroup=="Small Pathogen",VAR])
+#   P.SRpair6<-median(DELTA_all[newSRgroup=="Big Sham",VAR])-median(DELTA_all[newSRgroup=="Small Pathogen",VAR])
+#   median.permSR[i]<-abs(mean(P.SRpair1,P.SRpair2,P.SRpair3,P.SRpair4,P.SRpair5,P.SRpair6))
+# }
+# 
+# #proportion of simulated differences > observed differences
+# perm.test.SR.P <-sum(median.permSR>observedSR.diff)/reps
+# 
+# Permutation_output[[VAR]] <- perm.test.SR.P #put all vectors in the list
+# 
+# print(paste(". Observed mean pairwise differences =",observedSR.diff,"; permutation test p = ",perm.test.SR.P, sep = ""))
+# #Observed median difference is not significant
+#   }}
+# 
+# Perm_output_df <- as.data.frame(do.call("rbind",Permutation_output))
+# Perm_output_df$Var <- rownames(Perm_output_df)
+# 
+# colnames(Perm_output_df)[which(names(Perm_output_df) == "V1")] <- "perm_pval"
+
+##########################################
+
+
+
+#########################################
+
+
+
+
+
+#Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
+m1 <- lmerTest::lmer(sqrt(Count_PostPre) ~ TREATMENT * (1|REP_treat), Counts_by_Behaviour_AllCombos1_DELTA)
+summary(m1)
+test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
+qqnorm(residuals(m1))
+
+posthoc_FREQ <- emmeans(m1, specs = trt.vs.ctrlk ~ period | Behaviour)
+posthoc_FREQ_summary<-summary(posthoc_FREQ$contrasts)
+
+par(mfrow=c(1,2))
+plot(m1)
+qqnorm(residuals(m1))
+qqline(residuals(m1))
+hist(residuals(m1)) 
+
+anova(m1)
+##or
+#emmeans(m5, list(pairwise ~ period | Behaviour), adjust = "tukey")
+##or
+# contrast(emmeans(m5,~period|Behaviour, type="response"),
+#          method="pairwise", adjust="Tukey")  #method = "trt.vs.ctrl"
+
+
+# m2 <- glmer(Count ~ period * Behaviour + (1|treatment_rep), data = Counts_by_Behaviour_AllCombos1, family = "poisson")
+# summary(m2)
+# test_norm(residuals(m2))
+# qqnorm(residuals(m2))
+
+##check poisson distribution overdispersion
+##if the ratio of residual deviance to degrees of freedom it's >1 then the data are overdispersed
+#dispersion_glmer(m2)
+
+# #overdispersion can be incorporated by including an observation-level random effect (1|obs), to allow observations to be correlated with themselves
+# Counts_by_Behaviour_AllCombos1$obs=factor(1:nrow(Counts_by_Behaviour_AllCombos1))
+# m5 <- glmer(Count ~ period + Behaviour + (1|treatment_rep) +(1|obs), data = Counts_by_Behaviour_AllCombos1, family = "poisson")
+# summary(m5) # is singular fit a problem?
+# dispersion_glmer(m5)#model m5, which assumes poisson distribution and accounts for overdispersion by adding an observation-level random effect shows both lower AIC and dispersion ~1
+# anova(m2,m5)
+
+
+#####################################################################################
+#####################################################################################
 
 ############# PLOTS ################
 #style
@@ -583,7 +748,7 @@ ggplot(Groom_location, aes(x=TREATMENT, y=Count_byAnt, fill= PERIOD))+
 ############################################################
 ############################################################
 ############################################################
-#####  BARPLOTS FOR PRE-POST ##
+#####  BARPLOTS FOR PRE-POST ## FULL PERIOD
 
 ## MEAN FREQUENCY
 ggplot(infer_full, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
@@ -680,17 +845,36 @@ ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=Mean_SUM_duration, fill= TREATMENT))+
 
 
 ############################################################
-#####  BARPLOTS FOR 1H BINS DELTA POST-PRE ##
+#####  BARPLOTS FOR DELTA POST-PRE ##
 
-
-ggplot(infer_bin_1h_trim_DELTA, aes(x=TREATMENT, y=Mean_Count_PostPre, fill= TREATMENT))+
+ggplot(infer_full_DELTA, aes(x=TREATMENT, y=Mean_Count_PostPre, fill= TREATMENT))+
   geom_errorbar( aes(x=TREATMENT,ymin=Mean_Count_PostPre-SE_Count_PostPre, ymax=Mean_Count_PostPre+SE_Count_PostPre),position=position_dodge2(width=0.9, preserve = "single"))+
   geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
   STYLE +
   theme(axis.text.x=element_blank(),axis.ticks.x=element_blank())+
-  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate per HOUR")), y = "delta mean after relative to before")
+  labs(title= "Frequency of Grooming in Sham and \nPathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "pooled SE by replicate (full period)")), y = (paste("\u0394", "mean POST treatment relative to PRE")))
   
+
+
+ggplot(infer_full_DELTA, aes(x=TREATMENT, y=Mean_dur_PostPre, fill= TREATMENT))+
+  geom_errorbar( aes(x=TREATMENT,ymin=Mean_dur_PostPre-SE_dur_PostPre, ymax=Mean_dur_PostPre+SE_dur_PostPre),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+  labs(title= "Duration of Grooming in Sham and \nPathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "pooled SE by replicate (full period)")), y = (paste("\u0394", "mean POST treatment relative to PRE")))
+
+
+
+ggplot(infer_full_DELTA, aes(x=TREATMENT, y=Mean_SUM_dur_PostPre, fill= TREATMENT))+
+  geom_errorbar( aes(x=TREATMENT,ymin=Mean_SUM_dur_PostPre-SE_SUM_dur_PostPre, ymax=Mean_SUM_dur_PostPre+SE_SUM_dur_PostPre),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+  labs(title= "Duration of Grooming in Sham and \nPathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "pooled SE by replicate (full period)")), y = (paste("\u0394", "mean POST treatment relative to PRE")))
+
 
 ############################################################
 
@@ -698,13 +882,16 @@ ggplot(infer_bin_1h_trim_DELTA, aes(x=TREATMENT, y=Mean_Count_PostPre, fill= TRE
 
 ##### LINE PLOTS FOR 1H BINS ##
 
+# SOmething is off with these line plots as they don't match with the barplot data!!
+
 #FREQUENCY
 ggplot(infer_bin_1h,
        aes(x = timespan, y = Mean_Count_byAnt,group = TREATMENT,color = TREATMENT)) +
   geom_vline(xintercept = 0,color = "red")+
-  geom_point(size=1) +
-  geom_smooth(data=subset(infer_bin_1h, PERIOD=="pre"), method = "lm") + #, formula = y ~ x + I(x^2)
-  geom_smooth(data=subset(infer_bin_1h, PERIOD=="post"), method = "lm") + #, formula = y ~ x + I(x^2)
+  geom_jitter(width = 0.25) +
+  #geom_point(size=1) +
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="pre"), method = "lm", formula = y ~ x + I(x^2)) +
+  geom_smooth(data=subset(infer_bin_1h, PERIOD=="post"), method = "lm", formula = y ~ x + I(x^2)) +
   STYLE_continous +
   labs(title = "Frequency of Grooming in Sham and Pathogen treated colonies",
        subtitle = "mean by ant and mean by rep",
@@ -715,7 +902,8 @@ ggplot(infer_bin_1h,
 ggplot(infer_bin_1h,
        aes(x = timespan, y = Mean_duration,group = TREATMENT,color = TREATMENT)) +
   geom_vline(xintercept = 0,color = "red")+
-  geom_point(size=1) +
+  geom_jitter(width = 0.25) +
+  #geom_point(size=1) +
   geom_smooth(data=subset(infer_bin_1h, PERIOD=="pre"), method = "lm") + #, formula = y ~ x + I(x^2)
   geom_smooth(data=subset(infer_bin_1h, PERIOD=="post"), method = "lm") + #, formula = y ~ x + I(x^2)
   STYLE_continous +
@@ -728,7 +916,8 @@ ggplot(infer_bin_1h,
 ggplot(infer_bin_1h,
        aes(x = timespan, y = Mean_SUM_duration,group = TREATMENT,color = TREATMENT)) +
   geom_vline(xintercept = 0,color = "red")+
-  geom_point(size=1) +
+  geom_jitter(width = 0.25) +
+  #geom_point(size=1) +
   geom_smooth(data=subset(infer_bin_1h, PERIOD=="pre"), method = "lm") + #, formula = y ~ x + I(x^2)
   geom_smooth(data=subset(infer_bin_1h, PERIOD=="post"), method = "lm") + #, formula = y ~ x + I(x^2)
   STYLE_continous +
