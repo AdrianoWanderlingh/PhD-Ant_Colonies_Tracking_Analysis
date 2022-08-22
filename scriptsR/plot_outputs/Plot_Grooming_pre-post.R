@@ -1,3 +1,25 @@
+
+# # To Do
+
+### FIND A WAY TO COPY RELEVANT DATA INFO (E.G. TREATMENT, ETC,) WHEN EXPAND GRIDDING! 
+# SHOULD JOIN BE USED INSTEAD OF MERGE? ANY THER ALTERNATIVE?
+
+
+# FOR RELEVANT STATS, FIX THE MISSING INDIVIDUALS in PRE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ####################################################################################
 #### THIS SCRIPT CONTAINS:
 #### DATA MANIPULATION TO PLOT INFERRED GROOMING
@@ -251,10 +273,6 @@ inferred <- read.table(paste(DATADIR,"/inferred_groomings_ALL_withCommonStart.tx
 Reps_N_exposed <- read.table(paste(DATADIR,"/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 
-#SELECT RELEVANT ROWS
-#Remove non-exposed reveivers and dead ants
-inferred <- inferred[which(inferred$exposed=="exposed"),]
-inferred <- inferred[which(inferred$dead=="no"),]
 # #REMOVE EXP_GAP data
 inferred <- inferred[which(inferred$PERIOD!="EXPOSURE_GAP"),]
 #add count column
@@ -268,6 +286,7 @@ table(str_sub( unique(inferred$REP_treat),-2,-1))
 # select only exposed
 metadata_sel <- metadata[which(metadata$Exposed==TRUE),]
 colnames(metadata_sel)[which(names(metadata_sel)=="antID")] <- "Rec_Name"
+metadata_sel$Rec_Name <- paste0("ant_",metadata_sel$Rec_Name)
 
 ### Get info from metadata
 Meta <- list(inferred,metadata_sel)
@@ -279,17 +298,32 @@ Meta_all_RecPer <- Meta %>%
                   tidyr::expand (Rec_Name,PERIOD)
 Meta_all_RecPer <- Meta_all_RecPer[which(!is.na(Meta_all_RecPer$PERIOD)),]
 
+####
+# FOR SOME REASON, THERE ARE UNMATCHED  PERIOD-REC_Name-REP_treat COMBS, AS SHOWN HERE:
+# table(table(paste0(Meta_all_RecPer$REP_treat,Meta_all_RecPer$Rec_Name))) 
+# HOW TO FIX IT?
+
 ### merge
 Meta_all_combs <- list(Meta,Meta_all_RecPer)
-Meta_all_combs <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta_all_combs)
-#clean
-Meta_all_combs <- Meta_all_combs[which(!is.na(Meta_all_combs$Rec_Name)),]
-Meta_all_combs <- Meta_all_combs[which(!is.na(Meta_all_combs$PERIOD)),]
-#add 0 counts and durations
+Meta_all_combs <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta_all_combs) #, by = c("REP_treat","PERIOD","Rec_Name")
+#SELECT RELEVANT ROWS
+#Remove non-exposed receivers and dead ants
+Meta_all_combs <- Meta_all_combs[which(Meta_all_combs$Exposed==TRUE),]
+Meta_all_combs <- Meta_all_combs[which(Meta_all_combs$IsAlive==TRUE),]
+# remove data with only NAs
+# WHY IS THAT THE CASE? WHEN HAS THIS BEEN GENERATED?
+Meta_all_combs <- Meta_all_combs[!is.na(Meta_all_combs$PERIOD),]
+
+# #add 0 counts and durations
 Meta_all_combs[is.na(Meta_all_combs$Act_Name),"Count_byAnt"] <- 0
-Meta_all_combs[is.na(Meta_all_combs$Act_Name),"duration"]    <- 0
-#Re-add missing treatments
-Meta_all_combs$TREATMENT <- substr(Meta_all_combs$REP_treat,(nchar(Meta_all_combs$REP_treat)+1)-2,nchar(Meta_all_combs$REP_treat))
+Meta_all_combs[is.na(Meta_all_combs$Act_Name),"duration"]    <- 0 #DOES THIS MAKE SENSE?
+
+#-----
+### TO FIX!!!
+#Re-add missing treatments (should be unecessary if merging works well!)
+#Meta_all_combs$TREATMENT <- substr(Meta_all_combs$REP_treat,(nchar(Meta_all_combs$REP_treat)+1)-2,nchar(Meta_all_combs$REP_treat))
+#-----
+
 # OVERWRITE
 inferred <- Meta_all_combs
 
@@ -308,15 +342,17 @@ inferred_dur_summary      <- aggregate(duration ~ PERIOD + TREATMENT  + REP_trea
 #sum by ant (SUM DUR MAY BE MORE INFORMATIVE AS THE GROOMING DETECTION MAY RESULT FAGMENTED)
 inferred_SUM              <- aggregate(duration ~ PERIOD + TREATMENT  + REP_treat + Rec_Name, FUN=sum, na.rm=T, na.action=na.pass, inferred); names(inferred_SUM)[names(inferred_SUM) == 'duration'] <- 'SUM_duration'
 
-#MERGE - REP_treatments
-inferred_count_summ1 <- list(inferred_count_summary,inferred_dur_summary,inferred_SUM)
-inferred_count_summ1 <- Reduce(function(x, y) merge(x, y, all=TRUE), inferred_count_summ1)
+#MERGE - REP_treatments 
+# THIS DATA WILL BE USED FOR STATS!
+# MAKE SURE THAT THERE ARE TWO VALUES PER ANT (pre and post treatment)
+inferred_ByAnt <- list(inferred_count_summary,inferred_dur_summary,inferred_SUM)
+inferred_ByAnt <- Reduce(function(x, y) merge(x, y, all=TRUE), inferred_ByAnt)
 
 ## merge counts & durations carefully
 #inferred_count_summ1    <-  plyr::join(x=inferred_count_summary, y=inferred_dur_summary, type = "full", match = "all")
 
 #calculate mean by REP
-inferred_count_summ1    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + TREATMENT  + REP_treat, FUN=mean, na.action=na.pass, inferred_count_summ1)
+inferred_count_summ1    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + TREATMENT  + REP_treat, FUN=mean, na.action=na.pass, inferred_ByAnt)
 
 # alternative expand grid for paired columns (REP_treat and TREATMENT)
 combos1 <- unique(inferred[,c("REP_treat","TREATMENT")])
@@ -381,22 +417,22 @@ infer_full_DELTA <- infer_full %>%
 
 ## SAME BUT FOR DATA ANALYSIS : 
 
-#use the functions above to calculate the pooled SD and the N samples!
-Counts_by_Behaviour_AllCombos1_DELTA <- Counts_by_Behaviour_AllCombos1 %>%
-  group_by(REP_treat) %>%
-  dplyr::summarise(Count_PostPre = Count_byAnt[match("post", PERIOD)] - Count_byAnt[match("pre", PERIOD)],
-                   dur_PostPre = duration[match("post", PERIOD)] - duration[match("pre", PERIOD)],
-                   SUM_dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
-                   TREATMENT = TREATMENT
-                   # SE_Count_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
-                   # SE_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
-                   # SE_SUM_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
-                   # SD_Count_byAnt[match("post", PERIOD)] - SD_Count_byAnt[match("pre", PERIOD)],
-                   # SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
-  )
-
-Counts_by_Behaviour_AllCombos1_DELTA <- dplyr::distinct(Counts_by_Behaviour_AllCombos1_DELTA)
-Counts_by_Behaviour_AllCombos1_DELTA <- as.data.frame(Counts_by_Behaviour_AllCombos1_DELTA)
+# #use the functions above to calculate the pooled SD and the N samples!
+# Counts_by_Behaviour_AllCombos1_DELTA <- Counts_by_Behaviour_AllCombos1 %>%
+#   group_by(REP_treat) %>%
+#   dplyr::summarise(Count_PostPre = Count_byAnt[match("post", PERIOD)] - Count_byAnt[match("pre", PERIOD)],
+#                    dur_PostPre = duration[match("post", PERIOD)] - duration[match("pre", PERIOD)],
+#                    SUM_dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
+#                    TREATMENT = TREATMENT
+#                    # SE_Count_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+#                    # SE_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+#                    # SE_SUM_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
+#                    # SD_Count_byAnt[match("post", PERIOD)] - SD_Count_byAnt[match("pre", PERIOD)],
+#                    # SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
+#   )
+# 
+# Counts_by_Behaviour_AllCombos1_DELTA <- dplyr::distinct(Counts_by_Behaviour_AllCombos1_DELTA)
+# Counts_by_Behaviour_AllCombos1_DELTA <- as.data.frame(Counts_by_Behaviour_AllCombos1_DELTA)
 
 ###### AGGREGATE TIME BINS VALUES  #####
 
@@ -474,14 +510,14 @@ for (TIME in time.break) {
   inferred_bin_SUM              <- aggregate(duration ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat + Rec_Name, FUN=sum, na.rm=T, na.action=na.pass, inferred_bin); names(inferred_bin_SUM)[names(inferred_bin_SUM) == 'duration'] <- 'SUM_duration'
   
   #MERGE - REP_treatments
-  inferred_count_bin_summ1 <- list(inferred_count_bin_summary,inferred_dur_bin_summary,inferred_bin_SUM)
-  inferred_count_bin_summ1 <- Reduce(function(x, y) merge(x, y, all=TRUE), inferred_count_bin_summ1)
+  inferred_bin_ByAnt <- list(inferred_count_bin_summary,inferred_dur_bin_summary,inferred_bin_SUM)
+  inferred_bin_ByAnt <- Reduce(function(x, y) merge(x, y, all=TRUE), inferred_bin_ByAnt)
   
   ## merge counts & durations carefully
   #inferred_count_bin_summ1    <-  plyr::join(x=inferred_count_bin_summary, y=inferred_dur_bin_summary, type = "full", match = "all")
   
   #calculate mean by REP
-  inferred_count_bin_summ1    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat, FUN=mean, na.action=na.pass, inferred_count_bin_summ1)
+  inferred_count_bin_summ1    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat, FUN=mean, na.action=na.pass, inferred_bin_ByAnt)
 
   
   # alternative expand grid for paired columns (REP_treat and TREATMENT)
@@ -567,114 +603,64 @@ infer_bin_h4_trim <- infer_bin_h4_trim[which(infer_bin_h4_trim$timespan <=1),]
 #####################################################################################
 ##################                 STATS             ################################
 #####################################################################################
-# FULL PERIOD DELTA (POST-PRE)
-# STATISTICS ON COUNTS 
 
-ggplot(Counts_by_Behaviour_AllCombos1_DELTA, aes(x = Count_PostPre)) +
-  geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT)
+inferred_ByAnt$TREATMENT <- as.factor(inferred_ByAnt$TREATMENT)
+inferred_ByAnt$REP_treat<- as.factor(inferred_ByAnt$REP_treat)
+inferred_ByAnt$Rec_Name<- as.factor(inferred_ByAnt$Rec_Name)
 
-Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT <- as.factor(Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT)
-Counts_by_Behaviour_AllCombos1_DELTA$REP_treat<- as.factor(Counts_by_Behaviour_AllCombos1_DELTA$REP_treat)
-
-#premutation test #########################
-
-#the easy way
-#all contrasts
-summary(lmp(Count_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
-summary(lmp(dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
-summary(lmp(SUM_dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
-
-#pairs of same size
-
-DELTA_small <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Small", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
-DELTA_big   <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Big", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
-
-#small
-summary(lmp(Count_PostPre~TREATMENT,data=DELTA_small))
-summary(lmp(dur_PostPre~TREATMENT,data=DELTA_small))
-summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_small))
-
-#big
-summary(lmp(Count_PostPre~TREATMENT,data=DELTA_big))
-summary(lmp(dur_PostPre~TREATMENT,data=DELTA_big))
-summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_big))
-
-#no differences within sizes!
+# Select variables for analysis
+numeric_variable_list  <- names(inferred_ByAnt) [ which (!names(inferred_ByAnt) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
 
 
-# #simplify name
-# DELTA_all <- Counts_by_Behaviour_AllCombos1_DELTA
-# VAR <- colnames(Counts_by_Behaviour_AllCombos1_DELTA)
-# TREAT <- Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT
-# reps<-5000
-# 
-# 
-# numeric_variable_list  <- names(Counts_by_Behaviour_AllCombos1_DELTA) [ which (!names(Counts_by_Behaviour_AllCombos1_DELTA) %in% c( "REP_treat", "TREATMENT") )]
-# Permutation_output <- list() 
-# 
-# for (VAR in colnames(Counts_by_Behaviour_AllCombos1_DELTA)){
-#   if (VAR %in% numeric_variable_list) {
-# #Observed difference between average difference in pairwise median group species richness for each location:
-# SRpair1<-median(DELTA_all[TREAT=="Big Pathogen",VAR])-median(DELTA_all[TREAT=="Big Sham",VAR])
-# SRpair2<-median(DELTA_all[TREAT=="Big Pathogen",VAR])-median(DELTA_all[TREAT=="Small Sham",VAR])
-# SRpair3<-median(DELTA_all[TREAT=="Big Pathogen",VAR])-median(DELTA_all[TREAT=="Small Pathogen",VAR])
-# SRpair4<-median(DELTA_all[TREAT=="Small Sham",VAR])-median(DELTA_all[TREAT=="Big Sham",VAR])
-# SRpair5<-median(DELTA_all[TREAT=="Small Sham",VAR])-median(DELTA_all[TREAT=="Small Pathogen",VAR])
-# SRpair6<-median(DELTA_all[TREAT=="Big Sham",VAR])-median(DELTA_all[TREAT=="Small Pathogen",VAR])
-# observedSR.diff<-abs(mean(SRpair1,SRpair2,SRpair3,SRpair4,SRpair5,SRpair6))
-# 
-# median.permSR <- numeric(reps)
-# for (i in 1:reps) {
-#   newSRgroup<-sample(Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT,replace = F)
-#   P.SRpair1<-median(DELTA_all[newSRgroup=="Big Pathogen",VAR])-median(DELTA_all[newSRgroup=="Big Sham",VAR])
-#   P.SRpair2<-median(DELTA_all[newSRgroup=="Big Pathogen",VAR])-median(DELTA_all[newSRgroup=="Small Sham",VAR])
-#   P.SRpair3<-median(DELTA_all[newSRgroup=="Big Pathogen",VAR])-median(DELTA_all[newSRgroup=="Small Pathogen",VAR])
-#   P.SRpair4<-median(DELTA_all[newSRgroup=="Small Sham",VAR])-median(DELTA_all[newSRgroup=="Big Sham",VAR])
-#   P.SRpair5<-median(DELTA_all[newSRgroup=="Small Sham",VAR])-median(DELTA_all[newSRgroup=="Small Pathogen",VAR])
-#   P.SRpair6<-median(DELTA_all[newSRgroup=="Big Sham",VAR])-median(DELTA_all[newSRgroup=="Small Pathogen",VAR])
-#   median.permSR[i]<-abs(mean(P.SRpair1,P.SRpair2,P.SRpair3,P.SRpair4,P.SRpair5,P.SRpair6))
-# }
-# 
-# #proportion of simulated differences > observed differences
-# perm.test.SR.P <-sum(median.permSR>observedSR.diff)/reps
-# 
-# Permutation_output[[VAR]] <- perm.test.SR.P #put all vectors in the list
-# 
-# print(paste(". Observed mean pairwise differences =",observedSR.diff,"; permutation test p = ",perm.test.SR.P, sep = ""))
-# #Observed median difference is not significant
-#   }}
-# 
-# Perm_output_df <- as.data.frame(do.call("rbind",Permutation_output))
-# Perm_output_df$Var <- rownames(Perm_output_df)
-# 
-# colnames(Perm_output_df)[which(names(Perm_output_df) == "V1")] <- "perm_pval"
+########### FULL PERIOD ###########
 
-##########################################
-
-
-
-#########################################
+for (VAR in colnames(inferred_ByAnt)){
+  if (VAR %in% numeric_variable_list) {
+    
+   p1 <- ggplot(inferred_ByAnt, aes(x = inferred_ByAnt[,VAR])) +
+      geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT)
+    print(p1)
+   
+   
+   # FOR RELEVANT STATS, FIX THE MISSING INDIVIDUALS in PRE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   
+   #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
+   print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
+   m1 <- lmerTest::lmer(log(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
+  
+   print(paste("###################### TEST NORMALITY OF",VAR," RESIDUALS ######################"),sep=" ")
+   print(summary(m1))
+   test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
+   
+   # POST-HOCs for TREATMENT pre-post
+   print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
+   posthoc_Treatment <- emmeans(m1, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+   posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
+   print(posthoc_Treatment_summary)
+   
+   # POST-HOCs for PERIOD by treatment
+   print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
+   posthoc_Period <- emmeans(m1, specs = trt.vs.ctrlk ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+   posthoc_Period_summary<-summary(posthoc_Period$contrasts)
+   print(posthoc_Period_summary)
+   
+   par(mfrow=c(1,2))
+   plot(m1)
+   qqnorm(residuals(m1))
+   qqline(residuals(m1))
+   hist(residuals(m1)) 
+   
+   #anova(m1)
+   
+  
+}}
 
 
 
 
 
-#Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
-m1 <- lmerTest::lmer(sqrt(Count_PostPre) ~ TREATMENT * (1|REP_treat), Counts_by_Behaviour_AllCombos1_DELTA)
-summary(m1)
-test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
-qqnorm(residuals(m1))
 
-posthoc_FREQ <- emmeans(m1, specs = trt.vs.ctrlk ~ period | Behaviour)
-posthoc_FREQ_summary<-summary(posthoc_FREQ$contrasts)
 
-par(mfrow=c(1,2))
-plot(m1)
-qqnorm(residuals(m1))
-qqline(residuals(m1))
-hist(residuals(m1)) 
-
-anova(m1)
 ##or
 #emmeans(m5, list(pairwise ~ period | Behaviour), adjust = "tukey")
 ##or
@@ -697,6 +683,52 @@ anova(m1)
 # summary(m5) # is singular fit a problem?
 # dispersion_glmer(m5)#model m5, which assumes poisson distribution and accounts for overdispersion by adding an observation-level random effect shows both lower AIC and dispersion ~1
 # anova(m2,m5)
+
+
+# - [ ]  LM on individual data (ant by ant) - GRID EXPANDED, MEANS PER ANT!
+# - [ ]  response: mean dur/freq etc
+# - [ ]  effects: period x treatment (interaction)
+# - [ ]  random: colony, Individual, time of day
+# - [ ]  on full data (and then on deltas)
+# - [ ]  add missing reps!
+
+
+
+
+
+
+############################################################################################
+
+# FULL PERIOD DELTA (POST-PRE)
+# STATISTICS ON COUNTS 
+
+
+
+
+
+#premutation test (SET ASIDE, DONE ON SUMMED UP AND NON PER ANT DATA!) #########################
+
+#the easy way
+#all contrasts
+summary(lmp(Count_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
+summary(lmp(dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
+summary(lmp(SUM_dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
+
+#pairs of same size
+
+DELTA_small <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Small", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
+DELTA_big   <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Big", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
+
+#small
+summary(lmp(Count_PostPre~TREATMENT,data=DELTA_small))
+summary(lmp(dur_PostPre~TREATMENT,data=DELTA_small))
+summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_small))
+
+#big
+summary(lmp(Count_PostPre~TREATMENT,data=DELTA_big))
+summary(lmp(dur_PostPre~TREATMENT,data=DELTA_big))
+summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_big))
+
 
 
 #####################################################################################
