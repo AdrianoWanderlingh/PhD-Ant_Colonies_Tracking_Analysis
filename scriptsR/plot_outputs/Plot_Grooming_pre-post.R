@@ -5,10 +5,9 @@
 # SHOULD JOIN BE USED INSTEAD OF MERGE? ANY THER ALTERNATIVE?
 
 
-# COPY ANALYSES FOR THE BINNED DATA, adding + (1|time_of_day) 
 
-
-## How to run a Two-Part Mixed Effects Model for Semi-Continuous Data  (data with stack of zeros and the rest as continuos data points)
+## How to run a Two-Part Mixed Effects Model for Semi-Continuous Data  (data with stack of zeros and the rest as continuos data points) 
+# - show Tom the case of inferred_bin_h4_ByAnt_trim
 
 
 ### FIX delta calcs  TO BE OPERATED DIRECTLY ON "inferred_ByAnt"!!!!!!!!!!!
@@ -86,6 +85,28 @@ approach")
     print(kurtosis(resids))
   }
 }
+
+############# PLOTS STYLE ################
+
+STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
+              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+              theme_bw(),
+              scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
+)
+
+STYLE_continous <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
+                        theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+                        theme_bw()
+)
+
+
+STYLE_NOVIR <- list(theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+                    theme_bw(),
+                    scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
+)
+
+
+
 
 ### DIRECTORIES
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
@@ -594,7 +615,7 @@ for (TIME in time.break) {
                        N_Count_REP = NA, SD_Count_byAnt = NA, SD_duration = NA, Mean_Count_byAnt=NA, Mean_duration=NA, Mean_SUM_duration = NA, SE_Count_byAnt=NA, SE_duration=NA, SE_SUM_duration=NA )
     infer_bin_1h <- rbind(infer_bin_full,GAP)
     inferred_bin_1h_ByAnt <- inferred_bin_ByAnt # this is lacking the GAP
-    tokeep <- c("tokeep","infer_bin_1h","inferred_bin_h4_ByAnt")
+    tokeep <- c("tokeep","infer_bin_1h","inferred_bin_1h_ByAnt")
     
   }else if(TIME=="10min") {
     #add break  for line plots
@@ -604,7 +625,7 @@ for (TIME in time.break) {
                        N_Count_REP = NA, SD_Count_byAnt = NA, SD_duration = NA, Mean_Count_byAnt=NA, Mean_duration=NA, Mean_SUM_duration = NA, SE_Count_byAnt=NA, SE_duration=NA, SE_SUM_duration=NA )
     infer_bin_10min<- rbind(infer_bin_full,GAP)
     inferred_bin_10min_ByAnt <- inferred_bin_ByAnt
-    tokeep <- c("tokeep","infer_bin_10min","inferred_bin_h4_ByAnt")
+    tokeep <- c("tokeep","infer_bin_10min","inferred_bin_10min_ByAnt")
   }
   
   
@@ -613,20 +634,22 @@ for (TIME in time.break) {
 #reorder levels
 infer_bin_1h$PERIOD <- factor(infer_bin_1h$PERIOD, levels = c("pre","post"))
 infer_bin_h4$PERIOD <- factor(infer_bin_h4$PERIOD, levels = c("pre","post"))
+inferred_bin_1h_ByAnt$PERIOD <- factor(inferred_bin_1h_ByAnt$PERIOD, levels = c("pre","post"))
+inferred_bin_h4_ByAnt$PERIOD <- factor(inferred_bin_h4_ByAnt$PERIOD, levels = c("pre","post"))
 
-#TRIMMED DATA
+
+#TRIMMED DATA- 4h by ANT
+inferred_bin_h4_ByAnt_trim <- inferred_bin_h4_ByAnt[which(inferred_bin_h4_ByAnt$time_of_day==12),]
+
+#TRIMMED DATA - 1h by REP
 infer_bin_1h_trim <- infer_bin_1h[which(infer_bin_1h$time_of_day>=12 & infer_bin_1h$time_of_day <=16),]
 #remove anything after timespan = 4 to exclude next day!
 infer_bin_1h_trim <- infer_bin_1h_trim[which(infer_bin_1h_trim$timespan <=4),]
 
-#TRIMMED DATA
+#TRIMMED DATA- 4h by REP
 infer_bin_h4_trim <- infer_bin_h4[which(infer_bin_h4$time_of_day==12),]
 #remove anything after timespan = 4 to exclude next day!
 infer_bin_h4_trim <- infer_bin_h4_trim[which(infer_bin_h4_trim$timespan <=1),]
-
-
-inferred_bin_ByAnt
-
 
 
 #####################################################################################
@@ -654,6 +677,7 @@ for (VAR in colnames(inferred_ByAnt)){
    
    #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
    print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
+   #  + (1|time_of_day) is non relevant for both trimmed 4h blocks and full time
    m1 <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
    
    # random effect tobit model
@@ -698,26 +722,26 @@ for (VAR in colnames(inferred_ByAnt)){
 ###### VALUES FOR PRE.POST: TIME BINS #####
 ### TO THE LEVEL OF ANT
 
-inferred_bin_ByAnt$TREATMENT <- as.factor(inferred_bin_ByAnt$TREATMENT)
-inferred_bin_ByAnt$PERIOD <- as.factor(inferred_bin_ByAnt$PERIOD)
-inferred_bin_ByAnt$REP_treat<- as.factor(inferred_bin_ByAnt$REP_treat)
-inferred_bin_ByAnt$Rec_Name<- as.factor(inferred_bin_ByAnt$Rec_Name)
-inferred_bin_ByAnt$time_of_day<- as.factor(inferred_bin_ByAnt$time_of_day)
-inferred_bin_ByAnt$timespan<- as.factor(inferred_bin_ByAnt$timespan)
+inferred_bin_h4_ByAnt_trim$TREATMENT <- as.factor(inferred_bin_h4_ByAnt_trim$TREATMENT)
+inferred_bin_h4_ByAnt_trim$PERIOD <- as.factor(inferred_bin_h4_ByAnt_trim$PERIOD)
+inferred_bin_h4_ByAnt_trim$REP_treat<- as.factor(inferred_bin_h4_ByAnt_trim$REP_treat)
+inferred_bin_h4_ByAnt_trim$Rec_Name<- as.factor(inferred_bin_h4_ByAnt_trim$Rec_Name)
+inferred_bin_h4_ByAnt_trim$time_of_day<- as.factor(inferred_bin_h4_ByAnt_trim$time_of_day)
+inferred_bin_h4_ByAnt_trim$timespan<- as.factor(inferred_bin_h4_ByAnt_trim$timespan)
 
 # Select variables for analysis
-numeric_variable_list1  <- names(inferred_bin_ByAnt) [ which (!names(inferred_bin_ByAnt) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
+numeric_variable_list1  <- names(inferred_bin_h4_ByAnt_trim) [ which (!names(inferred_bin_h4_ByAnt_trim) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
 
-for (VAR in colnames(inferred_bin_ByAnt)){
+for (VAR in colnames(inferred_bin_h4_ByAnt_trim)){
   if (VAR %in% numeric_variable_list1) {
     
-    print( ggplot(inferred_bin_ByAnt, aes(x = sqrt(inferred_bin_ByAnt[,VAR]))) +
+    print(ggplot(inferred_bin_h4_ByAnt_trim, aes(x = sqrt(inferred_bin_h4_ByAnt_trim[,VAR]))) +
       geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT) +
       xlab(VAR) )
     
     #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
     print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
-    m1 <- lmer(sqrt(inferred_bin_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name) + (1|time_of_day) , data = inferred_bin_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
+    m1 <- lmer(sqrt(inferred_bin_h4_ByAnt_trim[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name) , data = inferred_bin_h4_ByAnt_trim) # the "/" is for the nesting #  + (1|time_of_day) 
     
     print(paste("###################### TEST NORMALITY OF",VAR," RESIDUALS ######################"),sep=" ")
     print(summary(m1))
@@ -794,27 +818,8 @@ summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_big))
 
 
 #####################################################################################
+############  PLOTS   ###############################################################
 #####################################################################################
-
-############# PLOTS ################
-#style
-
-STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
-              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
-              theme_bw(),
-              scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
-              )
-
-STYLE_continous <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
-              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
-              theme_bw()
-)
-
-
-STYLE_NOVIR <- list(theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
-              theme_bw(),
-              scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
-)
 
 
 ### GROOMING LOCATION
@@ -974,32 +979,34 @@ ggplot(infer_full_DELTA, aes(x=TREATMENT, y=Mean_SUM_dur_PostPre, fill= TREATMEN
 
 ############################################################
 #### TO THE LEVEL OF ANT
-#####  BARPLOTS FOR 4H BINS ##
+#####  SCATTER PLOTS FOR 4H BINS ##
 
 ## MEAN FREQUENCY
 
-ggplot(infer_bin_h4_trim, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE +
-  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate in 4h BLOCK (since 12:00)")), y = "Mean Freq by ant")
+ggplot(inferred_bin_h4_ByAnt_trim, aes(x=PERIOD, y=Count_byAnt, colour= TREATMENT)) +
+  geom_point(aes(colour = TREATMENT,alpha= 0.5,stroke=0), position = position_jitterdodge()) +
+  geom_violin(position=position_dodge(width = .75),fill=NA) + #make the outline of violin black 
+  stat_summary( (aes(group=TREATMENT)),fun=median,fun.min=median, fun.max=median, geom="crossbar",width=0.5,colour="red" ,position = position_dodge(width=.75)) +
+  STYLE_continous +
+  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Individual datapoints with median (red) in 4h BLOCK (since 12:00)")), y = "Mean Freq by ant")
 
 
 ## MEAN DURATION
-ggplot(infer_bin_h4_trim, aes(x=PERIOD, y=Mean_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_duration-SE_duration, ymax=Mean_duration+SE_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate in 4h BLOCK (since 12:00)")), y = "Mean duration (s) by ant")
+ggplot(inferred_bin_h4_ByAnt_trim, aes(x=PERIOD, y=duration, colour= TREATMENT)) +
+  geom_point(aes(colour = TREATMENT,alpha= 0.5,stroke=0), position = position_jitterdodge()) +
+  geom_violin(position=position_dodge(width = .75),fill=NA) + #make the outline of violin black 
+  stat_summary( (aes(group=TREATMENT)),fun=median,fun.min=median, fun.max=median, geom="crossbar",width=0.5,colour="red" ,position = position_dodge(width=.75)) +
+  STYLE_continous +
+  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Individual datapoints with median (red) in 4h BLOCK (since 12:00)")), y = "Mean duration by ant")
 
 
 ## TOTAL DURATION
-ggplot(infer_bin_h4_trim, aes(x=PERIOD, y=Mean_SUM_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_SUM_duration-SE_SUM_duration, ymax=Mean_SUM_duration+SE_SUM_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE +
-  #geom_text("",line= 5) +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "SD by replicate in 4h BLOCK (since 12:00)")), y = "Total duration (s) by ant")
+ggplot(inferred_bin_h4_ByAnt_trim, aes(x=PERIOD, y=SUM_duration, colour= TREATMENT)) +
+  geom_point(aes(colour = TREATMENT,alpha= 0.5,stroke=0), position = position_jitterdodge()) +
+  geom_violin(position=position_dodge(width = .75),fill=NA) + #make the outline of violin black 
+  stat_summary( (aes(group=TREATMENT)),fun=median,fun.min=median, fun.max=median, geom="crossbar",width=0.5,colour="red" ,position = position_dodge(width=.75)) +
+  STYLE_continous +
+  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Individual datapoints with median (red) in 4h BLOCK (since 12:00)")), y = "Total duration by ant")
 
 ############################################################
 
