@@ -22,8 +22,15 @@ list.dirs.depth.n <- function(p, n) {
 
 
 #### ACCESS FILES
-WORKDIR <- "/media/cf19810/Seagate Portable Drive/ADRIANO"
-DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
+WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
+DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
+SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+
+###source function scripts
+print("Loading functions and libraries...")
+source(paste(SCRIPTDIR,"AntTasks_v082.R",sep="/"))
+
+
 
 ###define name of general output table
 Metadata_Exp1 <- file.path(DATADIR,"Metadata_Exp1_2021.txt") 
@@ -51,7 +58,7 @@ for (REP.n in 1:length(files_list)) {
   #replicate file
   for (REP.FILES in REP.filefolder) {
     #get substring in variable until R9BS_
-    # REP.FILES <- REP.filefolder[1]
+    # REP.FILES <- REP.filefolder[2]
     REP_treat <- sub("\\_.*", "", basename(REP.FILES))
     #treat_name = substr(REP_treat_name,(nchar(REP_treat_name)+1)-2,nchar(REP_treat_name))
     
@@ -61,18 +68,24 @@ for (REP.n in 1:length(files_list)) {
     exp.Ants  <- e$ants
     exp_end   <- fmQueryGetDataInformations(e)$end
     exp_start <- fmQueryGetDataInformations(e)$start
+    
+    ########### COMPUTE THE ANT TASKS (48h before exposure)
+    print(paste0("Computing Ant Tasks and Zone Uses"))
+    AntTasks <- AntTasks(exp=e)
    
     ############# CREATE BASE FILE #########################
     metadata <- NULL
     
     for (ant in exp.Ants){
     for (id in ant$identifications){
-      metadata <- rbind(metadata,data.frame(REP_treat       = REP_treat,
-                                            treatment       = substr(REP_treat,(nchar(REP_treat)+1)-2,nchar(REP_treat)),
+      metadata <- rbind(metadata,data.frame(REP_treat        = REP_treat,
+                                            treatment        = substr(REP_treat,(nchar(REP_treat)+1)-2,nchar(REP_treat)),
+                                            treatment_size   = NA,
                                             antID            = ant$ID,
                                             tagIDdecimal     = id$tagValue,
                                             identifStart     = capture.output(print(id$start)), 
                                             identifEnd       = capture.output(print(id$end)), 
+                                            AntTask          = AntTasks[which(AntTasks$antID==ant$ID),"AntTask"],
                                             stringsAsFactors = F))
       
     } }
@@ -85,6 +98,16 @@ for (REP.n in 1:length(files_list)) {
    
     #colony-wide metadata
     metadata$colony_size <- length(unique(metadata$antID))
+    
+    metadata$treatment_size[metadata$treatment=="BS"] <- "Big Sham"
+    metadata$treatment_size[metadata$treatment=="BP"] <- "Big Pathogen"
+    metadata$treatment_size[metadata$treatment=="SS"] <- "Small Sham"
+    metadata$treatment_size[metadata$treatment=="SP"] <- "Small Pathogen" 
+
+    #split in two cols output
+    treat_colz <-     data.frame(do.call('rbind',strsplit(metadata$treatment_size,' ',fixed=TRUE)))
+    metadata$treatment_size <- treat_colz$X1
+    metadata$treatment_condition <- treat_colz$X2
     
     #empty metadata columns
     metadata$Comment     <- NA
