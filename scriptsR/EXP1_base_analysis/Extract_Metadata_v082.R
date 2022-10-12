@@ -22,9 +22,18 @@ list.dirs.depth.n <- function(p, n) {
 
 
 #### ACCESS FILES
+USER <- "Adriano"
+
+if (USER=="Adriano") {
 WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
 DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
 SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+}
+if (USER=="supercompAdriano") {
+  WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
+  DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
+  SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+}
 
 ###source function scripts
 print("Loading functions and libraries...")
@@ -165,7 +174,13 @@ for (REP.n in 1:length(files_list)) {
     }
 
     gc()
-    rm(list=(c("e"))) #remove experiment
+    #remove experiment and all
+    #clean up
+    rm(list=ls()[which(!ls()%in%c("REP.folder","REP.files","REP.filefolder","files_list","Metadata_Exp1","SCRIPTDIR","WORKDIR","DATADIR","list.dirs.depth.n"))]) #close experiment
     
     
-  }} # REP by REP
+  }
+  
+  
+  
+  } # REP by REP
