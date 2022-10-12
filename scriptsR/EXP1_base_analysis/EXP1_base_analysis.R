@@ -25,6 +25,8 @@ rm(list=ls())
 # time_of_day
 # SIMPLY USE THE Time_dictionary AS GUIDE -> EVERY time_hours HAS A SPECIFIC time_of_day BUT THE OPPOSITE IS NOT TRUE (MULTIPLE DAYS PRESENT, REPETED time_of_day VALUES)
 
+# CHECK Plot_Grooming_Pre-Post.R to see how these things are used there!
+
 
 ################## GET ANT TASK ###################################
 AntTasks.ZoneUse <- function(exp,window_shift){
@@ -78,11 +80,13 @@ AntTasks.ZoneUse <- function(exp,window_shift){
       }
     }
     #match antID and tagID (live tracking gives tagID). 
-    IDs <- exp$identificationsAt(fmTimeNow())
-    IDs <- data.frame(tag_hex_ID=rownames(IDs), IDs["antID"],stringsAsFactors = F)
+    IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
+    IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
+    IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
     positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
     #positions_summaries1 <- positions_summaries
-    positions_summaries_LOOP <- aggregate(positions_summaries[ , 6:7], by = list(positions_summaries$antID), FUN = sum);  colnames(positions_summaries_LOOP) [match("Group.1",colnames(positions_summaries_LOOP))] <- "antID"
+    #positions_summaries_LOOP <- aggregate(cbind(positions_summaries$nb_frames_outside,positions_summaries$nb_frames_inside), by = list(positions_summaries$antID), FUN = sum);  colnames(positions_summaries_LOOP) [match("Group.1",colnames(positions_summaries_LOOP))] <- "antID"
+    positions_summaries_LOOP <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
     #add names that help in merging later on
     colnames(positions_summaries_LOOP) [match("nb_frames_outside",colnames(positions_summaries_LOOP))] <- paste0("nb_frames_outside",loop_N)
     colnames(positions_summaries_LOOP) [match("nb_frames_inside",colnames(positions_summaries_LOOP))] <- paste0("nb_frames_inside",loop_N)
@@ -118,7 +122,7 @@ AntTasks.ZoneUse <- function(exp,window_shift){
   #positions_summaries$prop_time_outside <- (positions_summaries$nb_frames_outside1+positions_summaries$nb_frames_outside2)/(positions_summaries$nb_frames_outside1+positions_summaries$nb_frames_outside2+positions_summaries$nb_frames_inside1+positions_summaries$nb_frames_inside2)
   
   #sum inside & outside
-  positions_SUMS<- data.frame(antID=positions_summaries$antID, outside=rowSums(positions_summaries[, grep("outside", colnames(positions_summaries))]),
+  positions_SUMS<- data.frame(antID=positions_summaries$antID,tag_hex_ID=positions_summaries$tag_hex_ID, outside=rowSums(positions_summaries[, grep("outside", colnames(positions_summaries))]),
              inside=rowSums(positions_summaries[, grep("inside", colnames(positions_summaries))]))
   
   positions_SUMS$prop_time_outside <- positions_SUMS$outside/(positions_SUMS$outside+positions_SUMS$inside)
@@ -126,7 +130,7 @@ AntTasks.ZoneUse <- function(exp,window_shift){
   positions_SUMS[which(positions_SUMS$prop_time_outside<=0.01),"AntTask"] <- "nurse"
   positions_SUMS[which(positions_SUMS$prop_time_outside>0.01),"AntTask"] <- "forager"
   
-  AntTasks <- data.frame(antID=positions_SUMS[,"antID"],AntTask= positions_SUMS[,"AntTask"])
+  AntTasks <- data.frame(antID=positions_SUMS[,"antID"],tag_hex_ID=positions_SUMS[,"tag_hex_ID"],AntTask= positions_SUMS[,"AntTask"])
   
   print("AntTasks computed")
 
@@ -152,7 +156,7 @@ AntTasks.ZoneUse <- function(exp,window_shift){
   print("Computing Zone (nest, foraging area) usage pre-post exposure")
   
   ## get 2 12Hours window for the Task calculation
-  ## calcualte the task BEFORE the EXPOSURE
+  ## calcualte the task AFTER the EXPOSURE
   start <- fmQueryGetDataInformations(exp)$end - 24*3600 - window_shift
   time_start <- fmTimeCreate(offset=start)
   stop <- fmQueryGetDataInformations(exp)$end - 12*3600 - window_shift
@@ -175,12 +179,15 @@ AntTasks.ZoneUse <- function(exp,window_shift){
     positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
     positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
   }
+
   #match antID and tagID (live tracking gives tagID). 
-  IDs <- exp$identificationsAt(fmTimeNow())
-  IDs <- data.frame(tag_hex_ID=rownames(IDs), IDs["antID"],stringsAsFactors = F)
+  IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
+  IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
+  IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
   positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
-  positions_summaries1post <- aggregate(positions_summaries[ , 5:6], by = list(positions_summaries$antID), FUN = sum);  colnames(positions_summaries1post) [match("Group.1",colnames(positions_summaries1post))] <- "antID"
-  
+  #positions_summaries1 <- positions_summaries
+  positions_summaries1post <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
+  #add names that help in merging later on
   names(positions_summaries1post)[names(positions_summaries1post)%in%c("nb_frames_outside","nb_frames_inside")] <- paste(names(positions_summaries1post)[names(positions_summaries1post)%in%c("nb_frames_outside","nb_frames_inside")],"1post",sep="")
   
   
@@ -210,17 +217,18 @@ AntTasks.ZoneUse <- function(exp,window_shift){
     positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
     positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
   }
-  #match antID and tagID (live tracking gives tagID). 
-  IDs <- exp$identificationsAt(fmTimeNow())
-  IDs <- data.frame(tag_hex_ID=rownames(IDs), IDs["antID"],stringsAsFactors = F)
+
+  #match antID and tagID (live tracking gives tagID).
+  IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
+  IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
+  IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
   positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
-  #positions_summaries2 <- positions_summaries
-  positions_summaries2post <- aggregate(positions_summaries[ , 5:6], by = list(positions_summaries$antID), FUN = sum);  colnames(positions_summaries2post) [match("Group.1",colnames(positions_summaries2post))] <- "antID"
-  
-  
-  #merge positions_summaries1 and positions_summaries2
+  #positions_summaries1 <- positions_summaries
+  positions_summaries2post <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
+  #add names that help in merging later on
   names(positions_summaries2post)[names(positions_summaries2post)%in%c("nb_frames_outside","nb_frames_inside")] <- paste(names(positions_summaries2post)[names(positions_summaries2post)%in%c("nb_frames_outside","nb_frames_inside")],"2post",sep="")
   
+  #merge positions_summaries1 and positions_summaries2
   #put all data frames into list
   psummaries_list <- list(positions_summaries_list[[3]], positions_summaries_list[[4]], positions_summaries1post,positions_summaries2post)      
   
@@ -432,8 +440,16 @@ list.dirs.depth.n <- function(p, n) {
 
 
 #### ACCESS FILES
-WORKDIR <- "/media/cf19810/DISK4/ADRIANO"
-DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
+WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
+DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
+SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+
+
+###source function scripts
+print("Loading functions and libraries...")
+source(paste(SCRIPTDIR,"AntTasks.R",sep="/"))
+
+
 
 #list subdirectories in parent folder EXPERIMENT_DATA
 files_list <- list.dirs.depth.n(DATADIR, n = 1)
@@ -471,7 +487,7 @@ for (REP.n in 1:length(files_list)) {
   
   #replicate file
   for (REP.FILES in REP.filefolder) {
-    # REP.FILES <-  REP.filefolder[1]   #temp
+    # REP.FILES <-  REP.filefolder[2]   #temp
     print(REP.FILES) ##}}
     #open experiment
     exp <- fmExperimentOpen(REP.FILES)
@@ -484,16 +500,19 @@ for (REP.n in 1:length(files_list)) {
     BoxCodes <- exp$spaces[[1]]$zones
     BoxCodes <- data.frame(space=c(BoxCodes[[1]]$name, BoxCodes[[2]]$name), box=c(exp$spaces[[1]]$name), stringsAsFactors = F )
     
-    ########### DEFINE ZONES PROPERLY
-    zones <- exp$spaces[[1]]$zones #function to show the Zones present in the Space
-    zones_tab <- data.frame(ID =c(zones[[1]]$ID, zones[[2]]$ID), name=c(zones[[1]]$name, zones[[2]]$name))
-    foraging_zone <- zones_tab[which(grepl("forag",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
-    nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
-    print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
+    # ########### DEFINE ZONES PROPERLY - DEFINED INSIDE THE ANT TASKS FUNCTION, SHOULD DO SAME FOR NEST USE
+    # #### EXPAND THIS TO EXTRACT ALL ZONES (WATER, SUGAR, ETC)
+    # zones <- exp$spaces[[1]]$zones #function to show the Zones present in the Space
+    # zones_tab <- data.frame(ID =c(zones[[1]]$ID, zones[[2]]$ID), name=c(zones[[1]]$name, zones[[2]]$name))
+    # foraging_zone <- zones_tab[which(grepl("forag",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
+    # nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
+    # print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
 
-    ########### COMPUTE THE ANT TASKS (24h before exposure)  and the zone use (pre-post exposure)
+    ########### COMPUTE THE ANT TASKS (48h before exposure)  and the zone use (pre-post exposure)
     print(paste0("Computing Ant Tasks and Zone Uses"))
     AntTasks <- AntTasks.ZoneUse(exp=exp,window_shift=window_shift)
+
+    
     
     ########## GET EXPOSED ANTS 
     exp.Ants <- exp$ants
@@ -614,7 +633,7 @@ print (paste("loop took ",as.numeric(difftime(loop_end_time, loop_start_time, un
 
 
 #######
-
+## SECTION OF MODS TO BE APPLIED!!
 
 ##############################################################################################################
 ##############################################################################################################
