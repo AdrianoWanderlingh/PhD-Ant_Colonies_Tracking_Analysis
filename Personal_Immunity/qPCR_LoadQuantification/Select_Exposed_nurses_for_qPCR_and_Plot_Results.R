@@ -4,15 +4,23 @@
 ######################################### Include the missing reps!!!
 library(dplyr)
 library(broman)
-
+library(ggplot2)
+library(stringr)
 
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
-DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data"
+DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data"
 
-metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 
 metadata <- metadata[which(metadata$Exposed==TRUE),]
 metadata <- metadata[which(metadata$IsAlive==TRUE),]
+
+# # exlcude already selected ants
+# already_selected <- read.table(paste(WORKDIR,"/Personal_Immunity/Pathogen Quantification Data/220809-Adriano-MetIS2-colony-checkup_Analysis_with_Identities.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+# already_selected_sub <- already_selected[,2:4]
+# already_selected_sub$Analysed_date <- "08/08/22"
+# metadata <- left_join(metadata, already_selected_sub, by = c("REP_treat","antID"))                 # Apply left_join dplyr function
+# metadata <- subset(metadata, is.na(metadata$Analysed_date))
 
 # keep 2 ants for the big colonies
 big <- c("BP","BS")
@@ -66,10 +74,10 @@ STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
               scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
 )
 
-Florant_output <- read.csv("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data/Pathogen Quantification Data/220809-Adriano-MetIS2-colony-checkup_Analysis.csv",header=T,stringsAsFactors = F, sep=",")
+Florant_output <- read.csv("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen Quantification Data/220809-Adriano-MetIS2-colony-checkup_Analysis.csv",header=T,stringsAsFactors = F, sep=",")
 colnames(Florant_output)[which(colnames(Florant_output)=="Reduced.quantification..ng.µL..negative.if.below.detection.threshold.0.001.")] <-   "Red_quantif_ng.µL"
 
-info_ants <- read.table("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data/Pathogen Quantification Data/Select_Exposed_nurses_for_qPCR_8-08-22_ANNOTATED.txt",header=T,stringsAsFactors = F, sep=",")
+info_ants <- read.table("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen Quantification Data/Select_Exposed_nurses_for_qPCR_8-08-22_ANNOTATED.txt",header=T,stringsAsFactors = F, sep=",")
 
 
 info_ants$Well <- gsub("^(.{1})(.*)$",         # Apply gsub
@@ -82,7 +90,11 @@ Meta_all_combs <- list(info_ants,Florant_output)
 Meta_all_combs <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta_all_combs)
 
 
-Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL == "#VALUE!"),] <- NA
+#Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL == "#VALUE!"),] <- NA
+No_CT_value <- 0.000001
+Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL == "#VALUE!"),"NOTE"] <- paste(Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL == "#VALUE!"),"NOTE"] ,"No CT is either no DNA or issue in extraction",sep=".")
+Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL == "#VALUE!"),"Red_quantif_ng.µL"] <- No_CT_value #No CT (either no DNA or issue in extraction)
+
 
 Meta_all_combs <- Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL != "No sample"),]
 
@@ -90,8 +102,7 @@ Meta_all_combs <- Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL != "No 
 Meta_all_combs$Treatment <- RIGHT(Meta_all_combs$REP_treat,2)
 
 #save output!
-
-write.table(Meta_all_combs,file="/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data/Pathogen Quantification Data/220809-Adriano-MetIS2-colony-checkup_Analysis_with_Identities.txt",append=F,col.names=T,row.names=F,quote=T,sep=",")
+write.table(Meta_all_combs,file="/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen Quantification Data/220809-Adriano-MetIS2-colony-checkup_Analysis_with_Identities.txt",append=F,col.names=T,row.names=F,quote=T,sep=",")
 
 
 # Rename by name
@@ -103,15 +114,19 @@ levels(Meta_all_combs$Treatment)[levels(Meta_all_combs$Treatment)=="SP"] <- "Sma
 
 Meta_all_combs$Red_quantif_ng.µL <- as.numeric(Meta_all_combs$Red_quantif_ng.µL)
 
+No_CT_REPs <- toString(Meta_all_combs[which(Meta_all_combs$Red_quantif_ng.µL == No_CT_value),"REP_treat"])
+
 ggplot(Meta_all_combs,
        aes(x = Treatment, y = Red_quantif_ng.µL,group = Treatment,color = Treatment, label = REP_treat)) +
   #geom_jitter(position = position_jitter(seed = 1)) +
-  geom_text(position = position_jitter(seed = 5),fontface = "bold") +
+  #geom_text(position = position_jitter(seed = 5),fontface = "bold") +
+  geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(Red_quantif_ng.µL == No_CT_value, 0.5, 1)))+
   STYLE +
   theme(legend.position = "none") +
 labs(title = "Pathogen Quantification Adriano",
 subtitle = "2 ants per large colony, 1 per small colony",
- y = "Reduced quantification ng/µL") #+
-facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
+ y = "Reduced quantification ng/µL",
+caption = paste("Threshold cycle (Ct) missing for" , No_CT_REPs) ) #+
+#facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
 
 
