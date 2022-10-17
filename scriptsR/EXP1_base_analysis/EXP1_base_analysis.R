@@ -10,7 +10,7 @@ rm(list=ls())
 
 # - DATA HAS TO BE IN CHUNKS OF 3 HOURS!!
 # - time_hours ranges from -30 to 21, with 0 being the first hour post exposure and -3 missing as it is the EXPOSURE_TIME
-# - the computation could be sped-up only doing calculations for nurses? BUT it is USEFUL to keep the comparison between trated and non treated
+# - the computation could be sped-up only doing calculations for nurses? BUT it is USEFUL to keep the comparison between treated and non treated
 
 
 ########################################################################################################
@@ -29,239 +29,239 @@ rm(list=ls())
 
 
 ################## GET ANT TASK ###################################
-AntTasks.ZoneUse <- function(exp,window_shift){
-  print("Computing AntTasks based on 48h time-window before exposure")
-  #Get complete list of Ants
-  AntID_list <- NULL
-  for (ant in   1: length(exp$ants)) {
-    AntID_list <- c(AntID_list,exp$ants[[ant]]$ID)}
-  
-  
-  hour_chunk_start <- c(75,63,51,39)
-  positions_summaries_list <- list()
-  loop_N <- 0
-  
-  for (HOUR_start in hour_chunk_start) {
-    loop_N <- loop_N + 1 
-    ## get 2 12Hours window for the Task calculation
-    ## calcualte the task BEFORE the EXPOSURE
-    start <- fmQueryGetDataInformations(exp)$end - HOUR_start*3600 - window_shift
-    #start <- fmQueryGetDataInformations(exp)$start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
-    time_start <- fmTimeCreate(offset=start)
-    #time_start <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end - 24*3600)####last time in tracking minus 24 hours
-    stop <- fmQueryGetDataInformations(exp)$end - (HOUR_start-12)*3600 - window_shift
-    #stop  <- fmQueryGetDataInformations(exp)$start + 45*3600 ####pre-tracking period 
-    time_stop   <- fmTimeCreate(offset=stop)
-    #time_stop  <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end) ####last time in tracking
-    ###QUERY 3: fmQueryComputeAntTrajectories()
-    positions                 <- fmQueryComputeAntTrajectories(exp,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
-    positions_summaries       <- positions$trajectories_summary
-    positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
-    positions_list            <- positions$trajectories
-    
-    #for each trajectory, check whether the ant was observed in the foraging zone (positions_list$zone=2) or not. 
-    # if so the ant is a forager, if not the ant is a nurse
-    positions_summaries$AntTask <- NA
-    
-    ##before going back and forth between positions_summaries and positions_list:
-    ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
-    nrow(positions_summaries)==length(positions_list)
-    ####2/ always make sure that positions_summaries is ordered correctly, using the index column
-    positions_summaries <- positions_summaries[order(positions_summaries$index),]
-    ###this ensures that the first row in positions_summaries corresponds to the first trajectory in positions_list, etc.
-    for ( ant_index in 1:length(positions_list)) {
-      positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
-      positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
-      
-      if ( foraging_zone %in% positions_list[[ant_index]][,"zone"]){
-        positions_summaries[ant_index,"AntTask"] <- "forager"
-      }else{
-        positions_summaries[ant_index,"AntTask"] <- "nurse"
-      }
-    }
-    #match antID and tagID (live tracking gives tagID). 
-    IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
-    IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
-    IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
-    positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
-    #positions_summaries1 <- positions_summaries
-    #positions_summaries_LOOP <- aggregate(cbind(positions_summaries$nb_frames_outside,positions_summaries$nb_frames_inside), by = list(positions_summaries$antID), FUN = sum);  colnames(positions_summaries_LOOP) [match("Group.1",colnames(positions_summaries_LOOP))] <- "antID"
-    positions_summaries_LOOP <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
-    #add names that help in merging later on
-    colnames(positions_summaries_LOOP) [match("nb_frames_outside",colnames(positions_summaries_LOOP))] <- paste0("nb_frames_outside",loop_N)
-    colnames(positions_summaries_LOOP) [match("nb_frames_inside",colnames(positions_summaries_LOOP))] <- paste0("nb_frames_inside",loop_N)
-    
-    
-    #positions_summaries_list <- append(positions_summaries_list, positions_summaries_LOOP)
-    positions_summaries_list[[loop_N]] <-  positions_summaries_LOOP
-    
-    
-    rm(list=ls()[which(!ls()%in%c("positions_summaries_list","exp","foraging_zone","window_shift","AntID_list","hour_chunk_start","loop_N"))]) #close experiment
-    gc()
-    mallinfo::malloc.trim(0L)
-    
-  }
-  
-  #merge all data frames together
-
-  # # non-good looking recursive merging
-  # positions_summaries_mergA <- merge(positions_summaries_list[[1]][c("antID","nb_frames_outside1","nb_frames_inside1")], # , "tag_hex_ID"
-  #                                    positions_summaries_list[[2]][c("antID","nb_frames_outside2","nb_frames_inside2")], # , "tag_hex_ID"
-  #                                    all.x=T,all.y=T)
-  # 
-  # positions_summaries_mergB <-  merge(positions_summaries_list[[3]][c("antID","nb_frames_outside3","nb_frames_inside3")], # , "tag_hex_ID"
-  #                                     positions_summaries_list[[4]][c("antID","nb_frames_outside4","nb_frames_inside4")], # , "tag_hex_ID"
-  #                                     all.x=T,all.y=T)
-  
-  positions_summaries <- Reduce(function(x, y) merge(x, y, all=TRUE), positions_summaries_list)
-  
-  positions_summaries <- as.data.frame(sapply(positions_summaries,as.numeric))
-  
-  positions_summaries[is.na(positions_summaries)] <- 0
-  
-  #positions_summaries$prop_time_outside <- (positions_summaries$nb_frames_outside1+positions_summaries$nb_frames_outside2)/(positions_summaries$nb_frames_outside1+positions_summaries$nb_frames_outside2+positions_summaries$nb_frames_inside1+positions_summaries$nb_frames_inside2)
-  
-  #sum inside & outside
-  positions_SUMS<- data.frame(antID=positions_summaries$antID,tag_hex_ID=positions_summaries$tag_hex_ID, outside=rowSums(positions_summaries[, grep("outside", colnames(positions_summaries))]),
-             inside=rowSums(positions_summaries[, grep("inside", colnames(positions_summaries))]))
-  
-  positions_SUMS$prop_time_outside <- positions_SUMS$outside/(positions_SUMS$outside+positions_SUMS$inside)
-  
-  positions_SUMS[which(positions_SUMS$prop_time_outside<=0.01),"AntTask"] <- "nurse"
-  positions_SUMS[which(positions_SUMS$prop_time_outside>0.01),"AntTask"] <- "forager"
-  
-  AntTasks <- data.frame(antID=positions_SUMS[,"antID"],tag_hex_ID=positions_SUMS[,"tag_hex_ID"],AntTask= positions_SUMS[,"AntTask"])
-  
-  print("AntTasks computed")
-
-  # #add missing ants as NURSE by DEFAULT
-  # missing_ants <- subset(AntID_list, !(AntID_list %in% AntTasks$antID))
-  # AntTasks <- rbind(AntTasks, data.frame(antID=missing_ants,AntTask=NA))
-  # AntTasks[which(is.na(AntTasks$AntTask)),"AntTask"] <- "nurse"
-  
-  AntTasks$AntTask_num <- NA
-  AntTasks[which(AntTasks$AntTask=="nurse"),"AntTask_num"] <- 1
-  AntTasks[which(AntTasks$AntTask=="forager"),"AntTask_num"] <- 2
-  AntTasks <- AntTasks[order(AntTasks$antID),]
-  
-  rm(list=ls()[which(!ls()%in%c("positions_summaries_list","positions_SUMS","exp","foraging_zone","window_shift","AntID_list","AntTasks"))]) #close experiment
-  gc()
-  mallinfo::malloc.trim(0L)
-
-  #  POSITION SUMMARIES LAST TWO ELEMENTS (IN CASE OF BLOCKS OF 12H) USED FOR ZONE USAGE
-  
-  ################################## ZONE USE
-  
-  #if (ZoneUsage) {
-  print("Computing Zone (nest, foraging area) usage pre-post exposure")
-  
-  ## get 2 12Hours window for the Task calculation
-  ## calcualte the task AFTER the EXPOSURE
-  start <- fmQueryGetDataInformations(exp)$end - 24*3600 - window_shift
-  time_start <- fmTimeCreate(offset=start)
-  stop <- fmQueryGetDataInformations(exp)$end - 12*3600 - window_shift
-  time_stop   <- fmTimeCreate(offset=stop)
-  ###QUERY 3: fmQueryComputeAntTrajectories()
-  positions                 <- fmQueryComputeAntTrajectories(exp,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
-  positions_summaries       <- positions$trajectories_summary
-  positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
-  positions_list            <- positions$trajectories
-  
-  
-  ##before going back and forth between positions_summaries and positions_list:
-  ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
-  nrow(positions_summaries)
-  length(positions_list)
-  ####2/ always make sure that positions_summaries is ordered correctly, using the index column
-  positions_summaries <- positions_summaries[order(positions_summaries$index),]
-  ###this ensures that the first row in positions_summaries corresponds to the first trajectory in positions_list, etc.
-  for ( ant_index in 1:length(positions_list)) {
-    positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
-    positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
-  }
-
-  #match antID and tagID (live tracking gives tagID). 
-  IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
-  IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
-  IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
-  positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
-  #positions_summaries1 <- positions_summaries
-  positions_summaries1post <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
-  #add names that help in merging later on
-  names(positions_summaries1post)[names(positions_summaries1post)%in%c("nb_frames_outside","nb_frames_inside")] <- paste(names(positions_summaries1post)[names(positions_summaries1post)%in%c("nb_frames_outside","nb_frames_inside")],"1post",sep="")
-  
-  
-  rm(list=ls()[which(!ls()%in%c("positions_summaries_list","positions_SUMS","positions_summaries1post","exp","foraging_zone","window_shift","AntID_list","AntTasks"))]) #close experiment
-  gc()
-  mallinfo::malloc.trim(0L)
-  
-  ####define time period to use for defining nurses/foragers
-  start <- fmQueryGetDataInformations(exp)$end - 12*3600 - window_shift
-  time_start <- fmTimeCreate(offset=start)
-  stop <- fmQueryGetDataInformations(exp)$end  - window_shift
-  time_stop   <- fmTimeCreate(offset=stop)
-  
-  ###QUERY 3: fmQueryComputeAntTrajectories()
-  positions                 <- fmQueryComputeAntTrajectories(exp,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
-  positions_summaries       <- positions$trajectories_summary
-  positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
-  positions_list            <- positions$trajectories
-  
-  ##before going back and forth between positions_summaries and positions_list:
-  ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
-  nrow(positions_summaries) ==length(positions_list)
-  ####2/ always make sure that positions_summaries is ordered correctly, using the index column
-  positions_summaries <- positions_summaries[order(positions_summaries$index),]
-  ###this ensures that the first row in psoitions_summaries corresponds to the first trajectory in positions_list, etc.
-  for ( ant_index in 1:length(positions_list)) {
-    positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
-    positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
-  }
-
-  #match antID and tagID (live tracking gives tagID).
-  IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
-  IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
-  IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
-  positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
-  #positions_summaries1 <- positions_summaries
-  positions_summaries2post <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
-  #add names that help in merging later on
-  names(positions_summaries2post)[names(positions_summaries2post)%in%c("nb_frames_outside","nb_frames_inside")] <- paste(names(positions_summaries2post)[names(positions_summaries2post)%in%c("nb_frames_outside","nb_frames_inside")],"2post",sep="")
-  
-  #merge positions_summaries1 and positions_summaries2
-  #put all data frames into list
-  psummaries_list <- list(positions_summaries_list[[3]], positions_summaries_list[[4]], positions_summaries1post,positions_summaries2post)      
-  
-  #merge all data frames together
-  positions_summaries <- Reduce(function(x, y) merge(x, y, all=TRUE), psummaries_list)
-  positions_summaries[is.na(positions_summaries)] <- 0
-  
-  positions_summaries$frames_outside_24hPRE <- positions_summaries$nb_frames_outside3 + positions_summaries$nb_frames_outside4
-  positions_summaries$frames_outside_24hPOST <- positions_summaries$nb_frames_outside1post + positions_summaries$nb_frames_outside2post
-  
-  positions_summaries$frames_inside_24hPRE <- positions_summaries$nb_frames_inside3 + positions_summaries$nb_frames_inside4
-  positions_summaries$frames_inside_24hPOST <- positions_summaries$nb_frames_inside1post + positions_summaries$nb_frames_inside2post
-  
-  ZoneUse <- positions_summaries[c("antID","frames_inside_24hPRE","frames_inside_24hPOST","frames_outside_24hPRE","frames_outside_24hPOST")]
-  
-  #merge this output with the AntTasks dataframe
-  output_summ_list <- list(AntTasks,ZoneUse)
-  
-  AntTasks <- Reduce(function(x, y) merge(x, y, all=TRUE), output_summ_list)
-  
-  ############## MODIFY! KEEP SEPARATED THE PRE AND POST OUTPUTS!!!
-  
-  #}# ZoneUSe
-  
-  rm(list=ls()[which(!ls()%in%c("AntTasks"))]) #close experiment
-  gc()
-  mallinfo::malloc.trim(0L)
-  
-  ##RETURN OUTPUT
-  # warning("Ants that died before the considered time window (pre treatment) will not be assigned a Task by the function. Currently, no task will default to Nurse")
-  return(AntTasks)
-  
-} #, ZoneUsage= TRUE
+# AntTasks.ZoneUse <- function(exp,window_shift){
+#   print("Computing AntTasks based on 48h time-window before exposure")
+#   #Get complete list of Ants
+#   AntID_list <- NULL
+#   for (ant in   1: length(exp$ants)) {
+#     AntID_list <- c(AntID_list,exp$ants[[ant]]$ID)}
+#   
+#   
+#   hour_chunk_start <- c(75,63,51,39)
+#   positions_summaries_list <- list()
+#   loop_N <- 0
+#   
+#   for (HOUR_start in hour_chunk_start) {
+#     loop_N <- loop_N + 1 
+#     ## get 2 12Hours window for the Task calculation
+#     ## calcualte the task BEFORE the EXPOSURE
+#     start <- fmQueryGetDataInformations(exp)$end - HOUR_start*3600 - window_shift
+#     #start <- fmQueryGetDataInformations(exp)$start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
+#     time_start <- fmTimeCreate(offset=start)
+#     #time_start <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end - 24*3600)####last time in tracking minus 24 hours
+#     stop <- fmQueryGetDataInformations(exp)$end - (HOUR_start-12)*3600 - window_shift
+#     #stop  <- fmQueryGetDataInformations(exp)$start + 45*3600 ####pre-tracking period 
+#     time_stop   <- fmTimeCreate(offset=stop)
+#     #time_stop  <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end) ####last time in tracking
+#     ###QUERY 3: fmQueryComputeAntTrajectories()
+#     positions                 <- fmQueryComputeAntTrajectories(exp,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
+#     positions_summaries       <- positions$trajectories_summary
+#     positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
+#     positions_list            <- positions$trajectories
+#     
+#     #for each trajectory, check whether the ant was observed in the foraging zone (positions_list$zone=2) or not. 
+#     # if so the ant is a forager, if not the ant is a nurse
+#     positions_summaries$AntTask <- NA
+#     
+#     ##before going back and forth between positions_summaries and positions_list:
+#     ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
+#     nrow(positions_summaries)==length(positions_list)
+#     ####2/ always make sure that positions_summaries is ordered correctly, using the index column
+#     positions_summaries <- positions_summaries[order(positions_summaries$index),]
+#     ###this ensures that the first row in positions_summaries corresponds to the first trajectory in positions_list, etc.
+#     for ( ant_index in 1:length(positions_list)) {
+#       positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
+#       positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
+#       
+#       if ( foraging_zone %in% positions_list[[ant_index]][,"zone"]){
+#         positions_summaries[ant_index,"AntTask"] <- "forager"
+#       }else{
+#         positions_summaries[ant_index,"AntTask"] <- "nurse"
+#       }
+#     }
+#     #match antID and tagID (live tracking gives tagID). 
+#     IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
+#     IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
+#     IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
+#     positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
+#     #positions_summaries1 <- positions_summaries
+#     #positions_summaries_LOOP <- aggregate(cbind(positions_summaries$nb_frames_outside,positions_summaries$nb_frames_inside), by = list(positions_summaries$antID), FUN = sum);  colnames(positions_summaries_LOOP) [match("Group.1",colnames(positions_summaries_LOOP))] <- "antID"
+#     positions_summaries_LOOP <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
+#     #add names that help in merging later on
+#     colnames(positions_summaries_LOOP) [match("nb_frames_outside",colnames(positions_summaries_LOOP))] <- paste0("nb_frames_outside",loop_N)
+#     colnames(positions_summaries_LOOP) [match("nb_frames_inside",colnames(positions_summaries_LOOP))] <- paste0("nb_frames_inside",loop_N)
+#     
+#     
+#     #positions_summaries_list <- append(positions_summaries_list, positions_summaries_LOOP)
+#     positions_summaries_list[[loop_N]] <-  positions_summaries_LOOP
+#     
+#     
+#     rm(list=ls()[which(!ls()%in%c("positions_summaries_list","exp","foraging_zone","window_shift","AntID_list","hour_chunk_start","loop_N"))]) #close experiment
+#     gc()
+#     mallinfo::malloc.trim(0L)
+#     
+#   }
+#   
+#   #merge all data frames together
+# 
+#   # # non-good looking recursive merging
+#   # positions_summaries_mergA <- merge(positions_summaries_list[[1]][c("antID","nb_frames_outside1","nb_frames_inside1")], # , "tag_hex_ID"
+#   #                                    positions_summaries_list[[2]][c("antID","nb_frames_outside2","nb_frames_inside2")], # , "tag_hex_ID"
+#   #                                    all.x=T,all.y=T)
+#   # 
+#   # positions_summaries_mergB <-  merge(positions_summaries_list[[3]][c("antID","nb_frames_outside3","nb_frames_inside3")], # , "tag_hex_ID"
+#   #                                     positions_summaries_list[[4]][c("antID","nb_frames_outside4","nb_frames_inside4")], # , "tag_hex_ID"
+#   #                                     all.x=T,all.y=T)
+#   
+#   positions_summaries <- Reduce(function(x, y) merge(x, y, all=TRUE), positions_summaries_list)
+#   
+#   positions_summaries <- as.data.frame(sapply(positions_summaries,as.numeric))
+#   
+#   positions_summaries[is.na(positions_summaries)] <- 0
+#   
+#   #positions_summaries$prop_time_outside <- (positions_summaries$nb_frames_outside1+positions_summaries$nb_frames_outside2)/(positions_summaries$nb_frames_outside1+positions_summaries$nb_frames_outside2+positions_summaries$nb_frames_inside1+positions_summaries$nb_frames_inside2)
+#   
+#   #sum inside & outside
+#   positions_SUMS<- data.frame(antID=positions_summaries$antID,tag_hex_ID=positions_summaries$tag_hex_ID, outside=rowSums(positions_summaries[, grep("outside", colnames(positions_summaries))]),
+#              inside=rowSums(positions_summaries[, grep("inside", colnames(positions_summaries))]))
+#   
+#   positions_SUMS$prop_time_outside <- positions_SUMS$outside/(positions_SUMS$outside+positions_SUMS$inside)
+#   
+#   positions_SUMS[which(positions_SUMS$prop_time_outside<=0.01),"AntTask"] <- "nurse"
+#   positions_SUMS[which(positions_SUMS$prop_time_outside>0.01),"AntTask"] <- "forager"
+#   
+#   AntTasks <- data.frame(antID=positions_SUMS[,"antID"],tag_hex_ID=positions_SUMS[,"tag_hex_ID"],AntTask= positions_SUMS[,"AntTask"])
+#   
+#   print("AntTasks computed")
+# 
+#   # #add missing ants as NURSE by DEFAULT
+#   # missing_ants <- subset(AntID_list, !(AntID_list %in% AntTasks$antID))
+#   # AntTasks <- rbind(AntTasks, data.frame(antID=missing_ants,AntTask=NA))
+#   # AntTasks[which(is.na(AntTasks$AntTask)),"AntTask"] <- "nurse"
+#   
+#   AntTasks$AntTask_num <- NA
+#   AntTasks[which(AntTasks$AntTask=="nurse"),"AntTask_num"] <- 1
+#   AntTasks[which(AntTasks$AntTask=="forager"),"AntTask_num"] <- 2
+#   AntTasks <- AntTasks[order(AntTasks$antID),]
+#   
+#   rm(list=ls()[which(!ls()%in%c("positions_summaries_list","positions_SUMS","exp","foraging_zone","window_shift","AntID_list","AntTasks"))]) #close experiment
+#   gc()
+#   mallinfo::malloc.trim(0L)
+# 
+#   #  POSITION SUMMARIES LAST TWO ELEMENTS (IN CASE OF BLOCKS OF 12H) USED FOR ZONE USAGE
+#   
+#   ################################## ZONE USE
+#   
+#   #if (ZoneUsage) {
+#   print("Computing Zone (nest, foraging area) usage pre-post exposure")
+#   
+#   ## get 2 12Hours window for the Task calculation
+#   ## calcualte the task AFTER the EXPOSURE
+#   start <- fmQueryGetDataInformations(exp)$end - 24*3600 - window_shift
+#   time_start <- fmTimeCreate(offset=start)
+#   stop <- fmQueryGetDataInformations(exp)$end - 12*3600 - window_shift
+#   time_stop   <- fmTimeCreate(offset=stop)
+#   ###QUERY 3: fmQueryComputeAntTrajectories()
+#   positions                 <- fmQueryComputeAntTrajectories(exp,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
+#   positions_summaries       <- positions$trajectories_summary
+#   positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
+#   positions_list            <- positions$trajectories
+#   
+#   
+#   ##before going back and forth between positions_summaries and positions_list:
+#   ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
+#   nrow(positions_summaries)
+#   length(positions_list)
+#   ####2/ always make sure that positions_summaries is ordered correctly, using the index column
+#   positions_summaries <- positions_summaries[order(positions_summaries$index),]
+#   ###this ensures that the first row in positions_summaries corresponds to the first trajectory in positions_list, etc.
+#   for ( ant_index in 1:length(positions_list)) {
+#     positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
+#     positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
+#   }
+# 
+#   #match antID and tagID (live tracking gives tagID). 
+#   IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
+#   IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
+#   IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
+#   positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
+#   #positions_summaries1 <- positions_summaries
+#   positions_summaries1post <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
+#   #add names that help in merging later on
+#   names(positions_summaries1post)[names(positions_summaries1post)%in%c("nb_frames_outside","nb_frames_inside")] <- paste(names(positions_summaries1post)[names(positions_summaries1post)%in%c("nb_frames_outside","nb_frames_inside")],"1post",sep="")
+#   
+#   
+#   rm(list=ls()[which(!ls()%in%c("positions_summaries_list","positions_SUMS","positions_summaries1post","exp","foraging_zone","window_shift","AntID_list","AntTasks"))]) #close experiment
+#   gc()
+#   mallinfo::malloc.trim(0L)
+#   
+#   ####define time period to use for defining nurses/foragers
+#   start <- fmQueryGetDataInformations(exp)$end - 12*3600 - window_shift
+#   time_start <- fmTimeCreate(offset=start)
+#   stop <- fmQueryGetDataInformations(exp)$end  - window_shift
+#   time_stop   <- fmTimeCreate(offset=stop)
+#   
+#   ###QUERY 3: fmQueryComputeAntTrajectories()
+#   positions                 <- fmQueryComputeAntTrajectories(exp,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
+#   positions_summaries       <- positions$trajectories_summary
+#   positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
+#   positions_list            <- positions$trajectories
+#   
+#   ##before going back and forth between positions_summaries and positions_list:
+#   ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
+#   nrow(positions_summaries) ==length(positions_list)
+#   ####2/ always make sure that positions_summaries is ordered correctly, using the index column
+#   positions_summaries <- positions_summaries[order(positions_summaries$index),]
+#   ###this ensures that the first row in psoitions_summaries corresponds to the first trajectory in positions_list, etc.
+#   for ( ant_index in 1:length(positions_list)) {
+#     positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]==foraging_zone))
+#     positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]!=foraging_zone))
+#   }
+# 
+#   #match antID and tagID (live tracking gives tagID).
+#   IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
+#   IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
+#   IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
+#   positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
+#   #positions_summaries1 <- positions_summaries
+#   positions_summaries2post <- aggregate(cbind(nb_frames_outside,nb_frames_inside) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
+#   #add names that help in merging later on
+#   names(positions_summaries2post)[names(positions_summaries2post)%in%c("nb_frames_outside","nb_frames_inside")] <- paste(names(positions_summaries2post)[names(positions_summaries2post)%in%c("nb_frames_outside","nb_frames_inside")],"2post",sep="")
+#   
+#   #merge positions_summaries1 and positions_summaries2
+#   #put all data frames into list
+#   psummaries_list <- list(positions_summaries_list[[3]], positions_summaries_list[[4]], positions_summaries1post,positions_summaries2post)      
+#   
+#   #merge all data frames together
+#   positions_summaries <- Reduce(function(x, y) merge(x, y, all=TRUE), psummaries_list)
+#   positions_summaries[is.na(positions_summaries)] <- 0
+#   
+#   positions_summaries$frames_outside_24hPRE <- positions_summaries$nb_frames_outside3 + positions_summaries$nb_frames_outside4
+#   positions_summaries$frames_outside_24hPOST <- positions_summaries$nb_frames_outside1post + positions_summaries$nb_frames_outside2post
+#   
+#   positions_summaries$frames_inside_24hPRE <- positions_summaries$nb_frames_inside3 + positions_summaries$nb_frames_inside4
+#   positions_summaries$frames_inside_24hPOST <- positions_summaries$nb_frames_inside1post + positions_summaries$nb_frames_inside2post
+#   
+#   ZoneUse <- positions_summaries[c("antID","frames_inside_24hPRE","frames_inside_24hPOST","frames_outside_24hPRE","frames_outside_24hPOST")]
+#   
+#   #merge this output with the AntTasks dataframe
+#   output_summ_list <- list(AntTasks,ZoneUse)
+#   
+#   AntTasks <- Reduce(function(x, y) merge(x, y, all=TRUE), output_summ_list)
+#   
+#   ############## MODIFY! KEEP SEPARATED THE PRE AND POST OUTPUTS!!!
+#   
+#   #}# ZoneUSe
+#   
+#   rm(list=ls()[which(!ls()%in%c("AntTasks"))]) #close experiment
+#   gc()
+#   mallinfo::malloc.trim(0L)
+#   
+#   ##RETURN OUTPUT
+#   # warning("Ants that died before the considered time window (pre treatment) will not be assigned a Task by the function. Currently, no task will default to Nurse")
+#   return(AntTasks)
+#   
+# } #, ZoneUsage= TRUE
 
 ################## COMPUTE NETWORK ###############################
 # it requires a "gap" to be defined, should be required by the function
@@ -443,11 +443,12 @@ list.dirs.depth.n <- function(p, n) {
 WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
 DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
 SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 
 
 ###source function scripts
 print("Loading functions and libraries...")
-source(paste(SCRIPTDIR,"AntTasks.R",sep="/"))
+source(paste(SCRIPTDIR,"AntTasks_v082.R",sep="/"))
 
 
 
@@ -508,27 +509,23 @@ for (REP.n in 1:length(files_list)) {
     # nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
     # print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
 
-    ########### COMPUTE THE ANT TASKS (48h before exposure)  and the zone use (pre-post exposure)
-    print(paste0("Computing Ant Tasks and Zone Uses"))
-    AntTasks <- AntTasks.ZoneUse(exp=exp,window_shift=window_shift)
-
     
     
-    ########## GET EXPOSED ANTS 
+    ########## GET EXPOSED ANTS from METADATA
     exp.Ants <- exp$ants
-    AntTasks$Exposed <- "no"
+    metadata$Exposed <- "no"
     for (ant in exp.Ants){
       individual  <- ant$ID
       #print(ant)
-        if (TRUE %in% ant$getValues("Exposed")[,"values"]) { AntTasks[individual,"Exposed"] <- "exposed" }
+        if (TRUE %in% ant$getValues("Exposed")[,"values"]) { metadata[individual,"Exposed"] <- "exposed" }
     }
     
     ########## GET QUEENS 
-    AntTasks$IsQueen <- "no"
+    metadata$IsQueen <- "no"
     for (ant in exp.Ants){
       individual  <- ant$ID
       #print(ant)
-      if (TRUE %in% ant$getValues("IsQueen")[,"values"]) { AntTasks[individual,"IsQueen"] <- "queen" }
+      if (TRUE %in% ant$getValues("IsQueen")[,"values"]) { metadata[individual,"IsQueen"] <- "queen" }
     }
 
     #base file info
@@ -536,7 +533,7 @@ for (REP.n in 1:length(files_list)) {
     COLONY <- sub("\\_.*", "", basename(REP.FILES))
     TREATMENT <- substr(COLONY,(nchar(COLONY)+1)-2,nchar(COLONY))
     #
-    COLONY_SIZE <- nrow(AntTasks)
+    COLONY_SIZE <- unique(metadata[which(metadata$REP_treat == COLONY),"colony_size"])
 
     # ### HOURLY LOOP; loading 24 hours of data requires >32 GB RAM & causes R to crash, so we must load the contacts in 3h blocks, stacking vertically
     print(paste0("Compute 3-hours analysis"))
@@ -576,18 +573,29 @@ for (REP.n in 1:length(files_list)) {
   
   Network_properties <- rbind(Network_properties,Network_prop_hour)
   
+  
+  #####################################################################################################
+  
+  ######TO FIX!!!!!
+  
+  # SpaceUsage should produce as output a 3h blocks list of the ants, run by run of the  HOUR loop. 
+  # similarly to Network_prop_hour (but with many rows) there should be a stacking, keeping the "hour" label and then saving the output outside per each replicate!
+  # RE RUN SPACE USAGE TO MAKE SURE IT PRODUCES AS OUTPUT A ROW PER ANT PER HOURBLOCK!
+  
+  #keep relevant exp info for SpaceUsage
+  SpaceUsage <- data.frame(randy=REP.FILES,colony=COLONY,colony_size=COLONY_SIZE,treatment=TREATMENT,period=PERIOD,time_hours=HOUR, From, To, SpaceUsage)
+  
+  #####################################################################################################
+  
   } }#REP LOOP
     
 
-    #keep relevant exp info
-    AntTasks <- data.frame(randy=REP.FILES,colony=COLONY,colony_size=COLONY_SIZE,treatment=TREATMENT, AntTasks)
-    
     ########################################
     ### prop of time Exposed ants spend inside the nest, pre-post exposure
-    AntTasks$prop_inside_24hPRE <- AntTasks$frames_inside_24hPRE /(AntTasks$frames_inside_24hPRE + AntTasks$frames_outside_24hPRE)
-    AntTasks$prop_inside_24hPOST <- AntTasks$frames_inside_24hPOST /(AntTasks$frames_inside_24hPOST + AntTasks$frames_outside_24hPOST)
-    AntTasks$delta_time_inside <- AntTasks$prop_inside_24hPOST - AntTasks$prop_inside_24hPRE
-    
+    # AntTasks$prop_inside_24hPRE <- AntTasks$frames_inside_24hPRE /(AntTasks$frames_inside_24hPRE + AntTasks$frames_outside_24hPRE)
+    # AntTasks$prop_inside_24hPOST <- AntTasks$frames_inside_24hPOST /(AntTasks$frames_inside_24hPOST + AntTasks$frames_outside_24hPOST)
+    # AntTasks$delta_time_inside <- AntTasks$prop_inside_24hPOST - AntTasks$prop_inside_24hPRE
+    # 
     ########################################
     ##### SAVE FILES IN FOLDER #############
 
@@ -598,12 +606,18 @@ for (REP.n in 1:length(files_list)) {
       write.table(Network_properties,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
     }
     
-    ## AntTasks save (saved OUTSIDE the Network_analysis folder)
-    if (file.exists(AntTasks_SpaceUse)){
-      write.table(AntTasks,file=AntTasks_SpaceUse,append=T,col.names=F,row.names=F,quote=T,sep=",")
-    }else{
-      write.table(AntTasks,file=AntTasks_SpaceUse,append=F,col.names=T,row.names=F,quote=T,sep=",")
-    }
+    
+    ###########################################################################################
+    ###########################################################################################
+    #### IMPORTANT FOR SPACEUSAGE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # ## AntTasks save (saved OUTSIDE the Network_analysis folder)
+    # if (file.exists(AntTasks_SpaceUse)){
+    #   write.table(AntTasks,file=AntTasks_SpaceUse,append=T,col.names=F,row.names=F,quote=T,sep=",")
+    # }else{
+    #   write.table(AntTasks,file=AntTasks_SpaceUse,append=F,col.names=T,row.names=F,quote=T,sep=",")
+    # }
+    #
+    
     
     #start fresh
     Network_properties            <- data.frame()
