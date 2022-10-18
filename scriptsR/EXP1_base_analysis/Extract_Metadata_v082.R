@@ -22,7 +22,7 @@ list.dirs.depth.n <- function(p, n) {
 
 
 #### ACCESS FILES
-USER <- "supercompAdriano"
+USER <- "Adriano"
 
 if (USER=="Adriano") {
 WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
@@ -32,7 +32,7 @@ SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis 
 if (USER=="supercompAdriano") {
   WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
   DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
-  SCRIPTDIR <- "/home/cf19810/Documents/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis"
+  SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
 }
 
 ###source function scripts
@@ -42,7 +42,7 @@ source(paste(SCRIPTDIR,"AntTasks_v082.R",sep="/"))
 
 
 ###define name of general output table
-Metadata_Exp1 <- file.path(DATADIR,paste0("Metadata_Exp1_2021_",Sys.Date(),".txt"))
+Metadata_Exp1 <- file.path(DATADIR,"Metadata_Exp1_2021.txt") 
 
 
 # #inferred$return_time <- NA
@@ -79,8 +79,8 @@ for (REP.n in 1:length(files_list)) {
     exp_start <- fmQueryGetDataInformations(e)$start
     
     ########### COMPUTE THE ANT TASKS (48h before exposure)
-    print(paste0("Computing Ant Tasks"))
-    AntTasks_data <- AntTasks(exp=e)
+    print(paste0("Computing Ant Tasks and Zone Uses"))
+    AntTasks <- AntTasks(exp=e)
    
     ############# CREATE BASE FILE #########################
     metadata <- NULL
@@ -94,7 +94,8 @@ for (REP.n in 1:length(files_list)) {
                                             tagIDdecimal     = id$tagValue,
                                             identifStart     = capture.output(print(id$start)), 
                                             identifEnd       = capture.output(print(id$end)), 
-                                            AntTask          = AntTasks_data[which(AntTasks_data$antID==ant$ID),"AntTask"],
+                                            AntTask          = AntTasks[which(AntTasks$antID==ant$ID),"AntTask"],
+                                            #AntTask_num          = AntTasks[which(AntTasks$antID==ant$ID),"AntTask_num"],
                                             stringsAsFactors = F))
       
     } }
@@ -176,9 +177,7 @@ for (REP.n in 1:length(files_list)) {
     gc()
     #remove experiment and all
     #clean up
-    rm(list=ls()[which(!ls()%in%c("SCRIPTDIR","WORKDIR","DATADIR", #directories
-                                  "list.dirs.depth.n","AntTasks",  #functions
-                                  "REP.folder","REP.files","REP.filefolder","files_list","Metadata_Exp1"))]) #files
+    rm(list=ls()[which(!ls()%in%c("REP.folder","REP.files","REP.filefolder","files_list","Metadata_Exp1","SCRIPTDIR","WORKDIR","DATADIR","list.dirs.depth.n"))]) #close experiment
     
     
   }

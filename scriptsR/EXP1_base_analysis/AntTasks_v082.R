@@ -3,6 +3,9 @@
 AntTasks <- function(exp){
   print("Computing AntTasks based on 48h time-window before exposure")
   
+  #required packages
+  require(FortMyrmidon)
+  require(mallinfo)
   
   #PARAMS for function
   #hour_chunk_start represents the start time (end time defined by TimeWindow)
