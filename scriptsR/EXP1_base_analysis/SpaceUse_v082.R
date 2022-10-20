@@ -12,6 +12,8 @@ SpaceUse <- function(exp, start, end){
   #### EXPAND THIS TO EXTRACT ALL ZONES (WATER, SUGAR, ETC)
   zones <- exp$spaces[[1]]$zones #function to show the Zones present in the Space
   zones_tab <- data.frame(ID =c(zones[[1]]$ID, zones[[2]]$ID), name=c(zones[[1]]$name, zones[[2]]$name))
+  
+  
   foraging_zone <- zones_tab[which(grepl("forag",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
   nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
   print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
@@ -64,16 +66,13 @@ SpaceUse <- function(exp, start, end){
   
   SpaceUsage <- SpaceUsage[order(SpaceUsage$antID),]
   
-  #FINAL OUTPUT #DATAFRAME
-  SpaceUsage_data <- cbind(randy=REP.FILES,colony=COLONY,colony_size=COLONY_SIZE,treatment=TREATMENT,period=PERIOD,time_hours=TIME_HOURS, time_of_day=TIME_OF_DAY,From, To,SpaceUsage)
-
-  #"positions_summaries_list",
-  rm(list=ls()[which(!ls()%in%c("SpaceUsage_data"))]) #close experiment
+  
+  rm(list=ls()[which(!ls()%in%c("SpaceUsage"))]) #close experiment
   gc()
   mallinfo::malloc.trim(0L)
   
   print("SpaceUse computed")
   ##RETURN OUTPUT
-  return(SpaceUsage_data)
+  return(SpaceUsage)
 
 }

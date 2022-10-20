@@ -88,8 +88,8 @@ for (REP.n in 1:length(files_list)) {
     for (ant in exp.Ants){
     for (id in ant$identifications){
       metadata <- rbind(metadata,data.frame(REP_treat        = REP_treat,
-                                            treatment        = substr(REP_treat,(nchar(REP_treat)+1)-2,nchar(REP_treat)),
-                                            treatment_size   = NA,
+                                            size_treat       = substr(REP_treat,(nchar(REP_treat)+1)-2,nchar(REP_treat)),
+                                            status           = NA,
                                             antID            = ant$ID,
                                             tagIDdecimal     = id$tagValue,
                                             identifStart     = capture.output(print(id$start)), 
@@ -109,15 +109,15 @@ for (REP.n in 1:length(files_list)) {
     #colony-wide metadata
     metadata$colony_size <- length(unique(metadata$antID))
     
-    metadata$treatment_size[metadata$treatment=="BS"] <- "Big Sham"
-    metadata$treatment_size[metadata$treatment=="BP"] <- "Big Pathogen"
-    metadata$treatment_size[metadata$treatment=="SS"] <- "Small Sham"
-    metadata$treatment_size[metadata$treatment=="SP"] <- "Small Pathogen" 
+    metadata$status[metadata$size_treat=="BS"] <- "Big Sham"
+    metadata$status[metadata$size_treat=="BP"] <- "Big Pathogen"
+    metadata$status[metadata$size_treat=="SS"] <- "Small Sham"
+    metadata$status[metadata$size_treat=="SP"] <- "Small Pathogen" 
 
     #split in two cols output
-    treat_colz <-     data.frame(do.call('rbind',strsplit(metadata$treatment_size,' ',fixed=TRUE)))
-    metadata$treatment_size <- treat_colz$X1
-    metadata$treatment_condition <- treat_colz$X2
+    treat_colz <-     data.frame(do.call('rbind',strsplit(metadata$status,' ',fixed=TRUE)))
+    metadata$status <- treat_colz$X1
+    metadata$treatment <- treat_colz$X2
     
     #empty metadata columns
     metadata$Comment     <- NA

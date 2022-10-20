@@ -7,6 +7,7 @@
 compute_G <- function(exp, start, end){ # min_cum_duration , link_type, nest_focus, frm_rate
   print(paste0("Computing networks"))
   
+  
   #required packages
   require(igraph)
   require(FortMyrmidon)
@@ -89,7 +90,8 @@ compute_G <- function(exp, start, end){ # min_cum_duration , link_type, nest_foc
     G <- set_vertex_attr(G, name="AntTask", index = V(G), value = V_METADATA$AntTask_num)
     #REMOVE nodes without ANTTASK (missing ants from observation as likely died at early stage of experiment - not appearing in the 48h pre-exposure)
     G <- delete_vertices(G, is.na(V(G)$AntTask))
-  }
+  }else{ 
+    warning("No metadata provided, impossible to assign Vertex types to Graph")}
   
   return(G)
 } # compute_G 
@@ -113,7 +115,10 @@ NetProperties <- function(graph){
   
   ## Assortativity - Task
   #degree of preferential association between workers of the same task group, calculated using Newman’s method
-  task_assortativity  <- assortativity_nominal(graph, types= V(graph)$AntTask, directed=F)
+  #if (!is.n(V(graph)$AntTask)) {
+  task_assortativity  <- assortativity_nominal(graph, types= V(graph)$AntTask, directed=F)#}else{
+    #warning("No  Task Vertex information, impossible to calculate task_assortativity")}
+  
   ##Clustering
   clustering <- mean(transitivity(graph,type="barrat",weights=E(graph)$weight,isolates = c("NaN")),na.rm=T)
   ##Degree mean and max
@@ -139,7 +144,7 @@ NetProperties <- function(graph){
   modularity              <- modularity(graph,community_membership,weights=E(graph)$weight)
   
   #FINAL OUTPUT #DATAFRAME with the network properties per each 3 hours timeslot
-  summary_collective <- rbind(summary_collective,data.frame(randy=REP.FILES,colony=COLONY,colony_size=COLONY_SIZE,treatment=TREATMENT,period=PERIOD,time_hours=TIME_HOURS, time_of_day=TIME_OF_DAY,From, To,#time_of_day=time_of_day,
+  summary_collective <- rbind(summary_collective,data.frame(
                                                             task_assortativity=task_assortativity,
                                                             clustering=clustering,
                                                             degree_mean=degree_mean,
@@ -150,8 +155,52 @@ NetProperties <- function(graph){
                                                             modularity=modularity,stringsAsFactors = F))
   
   return(summary_collective)
-  ########### EXPANSION ##########################
+  
+  
+  
+  
+  #-------------------------------------------
+  ###COPIED
+  ##degree
+  individual[match(names(degrees),individual$tag),"degree"] <- degrees
+  ##same community as queen
+  queen_comm <- community_membership[which(V(net)$name==queenid)]
+  community_membership <- community_membership==queen_comm
+  individual[match(V(net)$name,individual$tag),"same_community_as_queen"] <- community_membership
+  ##path length to queen
+  if (queenid%in%actors){
+    path_length_to_queen <- t(shortest.paths(net,v=actors,to="665",weights=1/E(net)$weight))
+    individual[match(colnames(path_length_to_queen),individual$tag),"aggregated_distance_to_queen"] <- as.numeric(path_length_to_queen )
+  }
+  ########Mean path length to treated; aggregated_network
+  if(option!="untreated_only"){
+    path_length_to_treated                             <- as.data.frame(as.matrix(shortest.paths(net,v=actors,to=as.character(colony_treated)[as.character(colony_treated)%in%V(net)$name],weights=1/E(net)$weight)))
+    path_length_to_treated["mean_distance_to_treated"] <- NA
+    path_length_to_treated$mean_distance_to_treated    <- as.numeric(rowMeans(path_length_to_treated,na.rm=T))
+    individual[match(rownames(path_length_to_treated),individual$tag),"mean_aggregated_distance_to_treated"] <- path_length_to_treated[,"mean_distance_to_treated"]
+  }
+  ###Add data to main data table
+  summary_individual <- rbind(summary_individual,individual)
+  #------------------------------------------
+  
+  ##### INDIVIDUAL NETWORK PROPERTIES ######################################
   ####Part 2: individual network properties ####
   # look at line 218 on from /13_network_analysis.R
   # (path length to queen, etc...)
+  
+  ######Path length to Queen
+  # Path_length_Q <- BLAH BLAH
+  
+  # Degree centrality:   degree of a vertex is its the number of its adjacent edges.
+  # DONE ABOVE ALREADY: degrees         <- degree(graph,mode="all")
+  
+  
+  ####################
+  # R functions don't return multiple objects in the strict sense. The most general way to handle this is to return a list object.
+  
+  # summary_individual <- data.frame(Path_length_Q, degrees)
+
+  #return(summary_collective)
+  # transform into: newList <- list(summary_collective, summary_individual)
+  # return(newList)
 }
