@@ -6,8 +6,9 @@ rm(list=ls())
 # status is linked to size of the colony, not ("treated","untreated") ant
 
 # missing:
-# - prop_time_outside (not calculated but data is there from SpaceUse)
-# - proportion_time_active 
+# - prop_time_outside (not calculated but data is there from SpaceUse) X
+#to do in JAN 2023
+# - proportion_time_active  
 # - average_bout_speed_pixpersec
 # total_distance_travelled_pix
 
@@ -25,9 +26,9 @@ rm(list=ls())
 # 
 
 
-#reference
-individual_behavioural_data <- read.table("/home/cf19810/Documents/TEMP/individual_behavioural_data.txt",header=T,stringsAsFactors = F)
-Time_dictionary_N <- unique(individual_behavioural_data[c("time_hours","time_of_day","period")])
+# #reference
+# individual_behavioural_data <- read.table("/home/cf19810/Documents/TEMP/individual_behavioural_data.txt",header=T,stringsAsFactors = F)
+# Time_dictionary_N <- unique(individual_behavioural_data[c("time_hours","time_of_day","period")])
 
 ########################################################################################################
 ################### IMPORTANT THINGS TO MODIFY #########################################################
@@ -43,6 +44,10 @@ Time_dictionary_N <- unique(individual_behavioural_data[c("time_hours","time_of_
 # nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
 # print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
 
+#add path lenght to queen
+
+#add gap for Compute_G to the function called elements! X
+# change window_shift to actual date? As per Grooming (new exact data info to be gathered)  
 
 #little improvement to do
 print("RENAME THE EXP TO \"e\", NOT \"exp\" (FUNCTIONS' VARIABLE NAME) ")
@@ -100,7 +105,7 @@ metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-20.txt",sep=""
 ###source function scripts
 print("Loading functions and libraries...")
 source(paste(SCRIPTDIR,"SpaceUse_v082.R",sep="/")) # SPACE_USE
-source(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/")) # NET_properties
+source(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/")) # NET_properties collective + individual
 #list.functions.in.file(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/"), alphabetic = TRUE)
 
 
@@ -117,7 +122,8 @@ files_list <- files_list[grep("REP",files_list)]
 ###create folder
 dir.create(file.path(DATADIR, paste0("Exp1_Results_", Sys.Date())),recursive = T)
 ###define name of general output files
-NET_properties <- file.path(DATADIR, paste0("Exp1_Results_", Sys.Date()),"Network_properties.txt") # (saved INSIDE the folder)
+NET_properties_collective <- file.path(DATADIR, paste0("Exp1_Results_", Sys.Date()),"NetworkProp_collective.txt") # (saved INSIDE the folder)
+NET_properties_individual <- file.path(DATADIR, paste0("Exp1_Results_", Sys.Date()),"NetworkProp_individual.txt") # (saved INSIDE the folder)
 SPACE_USE <- file.path(DATADIR, paste0("Exp1_Results_", Sys.Date()),"Space_Usage.txt") # (saved INSIDE the folder)
 
 
@@ -142,8 +148,11 @@ for (REP.n in 1:length(files_list)) {
     ## some initialization
     Period_dataframe <- NULL #checking time correspondances
     #start fresh
-    Network_properties            <- data.frame()
-    SpaceUsage                    <- data.frame()
+    NetworkProp_collective            <- data.frame()
+    NetworkProp_collective_hour       <- data.frame()
+    NetworkProp_individual            <- data.frame()
+    NetworkProp_individual_hour       <- data.frame()
+    SpaceUsage                        <- data.frame()
     
     
     print(REP.FILES) ##}}
@@ -167,6 +176,7 @@ for (REP.n in 1:length(files_list)) {
 
     # ### HOURLY LOOP; loading 24 hours of data requires >32 GB RAM & causes R to crash, so we must load the contacts in 3h blocks, stacking vertically
     print(paste0("Compute 3-hours analysis"))
+    #TIME_HOURS zero is the moment of exposed ants return
     for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)] ){  ## increments by 3 hours for 48 hours
       # HOUR <- seq(from=0, to=48, by=3)
       # From  <- fmQueryGetDataInformations(exp)$end - 51*TimeWind + (HOUR * TimeWind) - window_shift
@@ -200,17 +210,27 @@ for (REP.n in 1:length(files_list)) {
   ############ NETWORK PROPERTIES: INDIVIDUAL & COLONY LEVEL ##########################    
       
   # COMPUTE NETWORK
-  Graph               <- compute_G(exp = exp, start = start, end=end)
-  # COMPUTE NETWORK PROPERTIES
-  Network_prop_hour   <- NetProperties(graph=Graph)
+  Graph               <- compute_G(exp = exp, start = start, end=end, gap=gap)
+  # COMPUTE NETWORK PROPERTIES (collective and individual)
+  Network_summ_prop_hour   <- NetProperties(graph=Graph)
+  
+  ### Collective
   #Add metadata info
-  Network_prop_hour <- cbind(data.frame(randy=REP.FILES,REP_treat=REP_TREAT,colony_size=COLONY_SIZE,period=PERIOD,time_hours=TIME_HOURS, time_of_day=TIME_OF_DAY,From, To,
-                                        Network_prop_hour,
+  NetworkProp_collective_hour <- cbind(data.frame(randy=REP.FILES,REP_treat=REP_TREAT,colony_size=COLONY_SIZE,period=PERIOD,time_hours=TIME_HOURS, time_of_day=TIME_OF_DAY,From, To,
+                                        Network_summ_prop_hour$summary_collective,
                                         stringsAsFactors = F))
   #stack
-  Network_properties  <- rbind(Network_properties,Network_prop_hour)
+  NetworkProp_collective  <- rbind(NetworkProp_collective,NetworkProp_collective_hour)
   
-  ############ INDIVIDUAL LEVEL ##########################    
+  ### Individual
+  #Add metadata info
+  NetworkProp_individual_hour <- cbind(data.frame(randy=REP.FILES,REP_treat=REP_TREAT,colony_size=COLONY_SIZE,period=PERIOD,time_hours=TIME_HOURS, time_of_day=TIME_OF_DAY,From, To,
+                                                  Network_summ_prop_hour$summary_individual,
+                                                  stringsAsFactors = F))
+  #stack
+  NetworkProp_individual  <- rbind(NetworkProp_individual,NetworkProp_individual_hour)
+  
+  ############ SPACE USE: INDIVIDUAL ##########################    
   # SPACE USAGE
   SpaceUsage_hour     <- SpaceUse(exp = exp, start = start, end=end)
   
@@ -228,22 +248,39 @@ for (REP.n in 1:length(files_list)) {
     
     #### ADD EXTRA REPLICATE INFORMATIONS
 
-    #add status (large, small) info to Network_properties
-    Network_properties <- dplyr::left_join(Network_properties,metadata[c("size_treat","status","treatment","REP_treat")], by = "REP_treat")         # Apply left_join dplyr function
+    #add status (large, small) info to NetworkProp_collective
+    NetworkProp_collective <- dplyr::left_join(NetworkProp_collective,metadata[c("size_treat","status","treatment","REP_treat")], by = "REP_treat")         # Apply left_join dplyr function
     
+    #add status (large, small) info to NetworkProp_individual
+    NetworkProp_individual <- dplyr::left_join(NetworkProp_individual,metadata[c("size_treat","status","treatment","REP_treat")], by = "REP_treat")         # Apply left_join dplyr function
+    
+
     #add task, exposure and status (large, small)  info to SpaceUsage
     SpaceUsage <- dplyr::left_join(SpaceUsage,metadata[c("size_treat","status","treatment","REP_treat","antID","Exposed","AntTask")], by = c("REP_treat","antID"))         # Apply left_join dplyr function
 
     
     ########################################
     ##### SAVE FILES IN FOLDER #############
+    
+    # NOTE ON DIFFERNCES FROM SCIENCE 2018 PAPER:
+    # period is ("pre","post"), not ("after","before")
+    # treatment is ("Pathogen","Sham"), not ("pathogen","sham")
+    # status is linked to size of the colony, not ("treated","untreated") ant
 
-    ## Network properties save (saved INSIDE the Network_analysis folder)
-    if (file.exists(NET_properties)){
-      write.table(Network_properties,file=NET_properties,append=T,col.names=F,row.names=F,quote=T,sep=",")
+    ## Network properties Collective save (saved INSIDE the Network_analysis folder)
+    if (file.exists(NET_properties_collective)){
+      write.table(NetworkProp_collective,file=NET_properties_collective,append=T,col.names=F,row.names=F,quote=T,sep=",")
     }else{
-      write.table(Network_properties,file=NET_properties,append=F,col.names=T,row.names=F,quote=T,sep=",")
+      write.table(NetworkProp_collective,file=NET_properties_collective,append=F,col.names=T,row.names=F,quote=T,sep=",")
     }
+    
+    ## Network properties Individual save (saved INSIDE the Network_analysis folder)
+    if (file.exists(NET_properties_individual)){
+      write.table(NetworkProp_individual,file=NET_properties_individual,append=T,col.names=F,row.names=F,quote=T,sep=",")
+    }else{
+      write.table(NetworkProp_individual,file=NET_properties_individual,append=F,col.names=T,row.names=F,quote=T,sep=",")
+    }
+    
     
     ## Space Use save (saved INSIDE the Network_analysis folder)
     if (file.exists(SPACE_USE)){
@@ -255,8 +292,9 @@ for (REP.n in 1:length(files_list)) {
     
     
     #start fresh
-    Network_properties            <- data.frame()
-    SpaceUsage                    <- data.frame()
+    NetworkProp_collective            <- data.frame()
+    NetworkProp_individual            <- data.frame()
+    SpaceUsage                        <- data.frame()
     
     #cleaning
     rm(   list   =  ls()[which(!ls()%in%to_keep)]    )
