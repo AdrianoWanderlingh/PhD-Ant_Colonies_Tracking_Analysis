@@ -168,6 +168,9 @@ No_CT_REPs <- NULL
 #No_CT_REPs <- toString(DNA_Results[which(DNA_Results$MbruDNA == No_CT_value),"Colony"])
 
 
+table(DNA_Results$Colony)
+
+OnlyPathogen <- DNA_Results[ which( DNA_Results$Treatment == "Big Pathogen" | DNA_Results$Treatment == "Small Pathogen") , ]
 
 ################################################################################################################
 ################################################################################################################
@@ -176,18 +179,19 @@ No_CT_REPs <- NULL
 ## FOR THAT, I WILL NEED TO CHECK THE WELLS POSITIONS TO ADD THE ANT IDENTITY!!!!!!
 
 #### RE-EXPORT FRESH METADATA, THEN PUT INFO ON PLATES/WELLS IN METADATA (FILE "METATADATA + PLATE INFO)
-# THEN IN SELECT_EXPOSED_NURSES_FOR_QPCR ADD TO DNA_Results THE EXPOSED/QUEEN/ ETC INFO!
+# THEN IN SELECT_EXPOSED_NURSES_FOR_QPCR ADD TO OnlyPathogen THE EXPOSED/QUEEN/ ETC INFO!
 
 # metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-# DNA_Results <- left_join(DNA_Results, metadata, by = c("REP_treat","antID"))                 # Apply left_join dplyr function
+# DNA_Results <- left_join(OnlyPathogen, metadata, by = c("REP_treat","antID"))                 # Apply left_join dplyr function
 
 ################################################################################################################
 ################################################################################################################
 ################################################################################################################
 
+No_CT_REPs <- toString(OnlyPathogen[which(OnlyPathogen$MbruDNA == 0),"Colony"])
+N_ants_NoCt <- length(OnlyPathogen[which(OnlyPathogen$MbruDNA == 0),"Colony"])
 
-
-ggplot(DNA_Results,
+ggplot(OnlyPathogen,
        aes(x = Treatment, y = MbruDNA,group = Treatment,color = Treatment, label = Colony)) +
   #geom_jitter(position = position_jitter(seed = 1)) +
   #geom_text(position = position_jitter(seed = 5),fontface = "bold") +
@@ -195,9 +199,9 @@ ggplot(DNA_Results,
   STYLE +
   theme(legend.position = "none") +
   labs(title = "Pathogen Quantification Adriano",
-       subtitle = "2 ants per large colony, 1 per small colony",
+       subtitle = "All ants",
        y = "Reduced quantification ng/µL",
-       caption = paste("Threshold cycle (Ct) missing for" , No_CT_REPs) ) #+
+       caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) ) #+
 #facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
 
 #ADD INFO FROM METADATA ON EXPOSURE! THEN FACET BY EXPOSURE
