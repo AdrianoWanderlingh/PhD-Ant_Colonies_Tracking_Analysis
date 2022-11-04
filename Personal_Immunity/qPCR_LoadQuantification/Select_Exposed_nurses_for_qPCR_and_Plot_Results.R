@@ -15,6 +15,7 @@ metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""
 metadata <- metadata[which(metadata$Exposed==TRUE),]
 metadata <- metadata[which(metadata$IsAlive==TRUE),]
 
+# #ADDED for second selection
 # # exlcude already selected ants
 # already_selected <- read.table(paste(WORKDIR,"/Personal_Immunity/Pathogen Quantification Data/220809-Adriano-MetIS2-colony-checkup_Analysis_with_Identities.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 # already_selected_sub <- already_selected[,2:4]
@@ -27,17 +28,21 @@ big <- c("BP","BS")
 small <- c("SP","SS")
 
 metadata_big <-
-  metadata[which(metadata$treatment==big),] %>% 
+  metadata[which(metadata$treatment %in% big),] %>% 
   group_by(REP_treat) %>% 
   filter(row_number()==c(1,2))
 
 # keep only 1 ant for the small colonies
 metadata_small <-
-  metadata[which(metadata$treatment==small),] %>% 
+  metadata[which(metadata$treatment %in% small),] %>% 
   group_by(REP_treat) %>% 
   filter(row_number()==1)
 
 metadata_Selected <- rbind(metadata_big,metadata_small)
+
+# #ADDED for second selection
+# metadata_Selected <- metadata_small
+
 
 metadata_Selected <- metadata_Selected[,c("REP_treat","antID","tagIDdecimal","Exposed","N_exposed")]
 
@@ -49,16 +54,17 @@ metadata_Selected <- rbind(metadata_Selected,extra_missing)
 # convert decimal to hex
 
 metadata_Selected$tagIDHEX <- convert2hex(metadata_Selected$tagIDdecimal)
-metadata_Selected$tagIDHEX <- paste0("0x0",metadata_Selected$tagIDHEX)
+metadata_Selected$tagIDHEX <- paste0("0x",metadata_Selected$tagIDHEX)
 
 metadata_Selected <- metadata_Selected[,c(1,6,2,3,4,5)]
 
 
 #save it! 
 
-write.table(metadata_Selected,file="/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data/Select_Exposed_nurses_for_qPCR_8-08-22.txt",append=F,col.names=T,row.names=F,quote=T,sep=",")
+write.table(metadata_Selected,file="/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Select_Exposed_nurses_for_qPCR_8-08-22.txt",append=F,col.names=T,row.names=F,quote=T,sep=",")
 
-
+# #ADDED for second selection
+# write.table(metadata_Selected,file="/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen Quantification Data/Select_Exposed_nurses_for_qPCR_17-10-22.txt",append=F,col.names=T,row.names=F,quote=T,sep=",")
 
 ########################################################################
 ##### PLOT OUTPUTS #####################################################
@@ -130,3 +136,71 @@ caption = paste("Threshold cycle (Ct) missing for" , No_CT_REPs) ) #+
 #facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
 
 
+
+
+#check if there are overlapping rows between two datasets using an indicator
+# info_test$included_FIRST <- TRUE
+# metadata_Selected$included_SECOND <- TRUE
+# res <- merge(info_test, metadata_Selected, all=TRUE)
+
+
+
+######
+####################################################
+### FULL PATHOGEN EXPOSED DATASET!
+
+# read csv
+DNA_Results <- read.csv(paste(WORKDIR,"/Personal_Immunity/Pathogen Quantification Data/Adriano-DNA_Results_Analysis_with_Identities_allPath_plus_sampleShams.csv",sep=""),header=T,stringsAsFactors = F, sep=",")
+
+
+DNA_Results$Treatment <- RIGHT(DNA_Results$Colony,2)
+
+# Rename by name
+DNA_Results$Treatment <- as.factor(DNA_Results$Treatment)
+levels(DNA_Results$Treatment)[levels(DNA_Results$Treatment)=="BS"] <- "Big Sham"
+levels(DNA_Results$Treatment)[levels(DNA_Results$Treatment)=="BP"] <- "Big Pathogen"
+levels(DNA_Results$Treatment)[levels(DNA_Results$Treatment)=="SS"] <- "Small Sham"
+levels(DNA_Results$Treatment)[levels(DNA_Results$Treatment)=="SP"] <- "Small Pathogen"
+
+DNA_Results$MbruDNA <- as.numeric(DNA_Results$MbruDNA)
+
+No_CT_REPs <- NULL
+#No_CT_REPs <- toString(DNA_Results[which(DNA_Results$MbruDNA == No_CT_value),"Colony"])
+
+
+
+################################################################################################################
+################################################################################################################
+################################################################################################################
+########## operate a leftjoin to add info on REP-treat (colony in the new file) and ANT EXPOSURE
+## FOR THAT, I WILL NEED TO CHECK THE WELLS POSITIONS TO ADD THE ANT IDENTITY!!!!!!
+
+#### RE-EXPORT FRESH METADATA, THEN PUT INFO ON PLATES/WELLS IN METADATA (FILE "METATADATA + PLATE INFO)
+# THEN IN SELECT_EXPOSED_NURSES_FOR_QPCR ADD TO DNA_Results THE EXPOSED/QUEEN/ ETC INFO!
+
+# metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+# DNA_Results <- left_join(DNA_Results, metadata, by = c("REP_treat","antID"))                 # Apply left_join dplyr function
+
+################################################################################################################
+################################################################################################################
+################################################################################################################
+
+
+
+ggplot(DNA_Results,
+       aes(x = Treatment, y = MbruDNA,group = Treatment,color = Treatment, label = Colony)) +
+  #geom_jitter(position = position_jitter(seed = 1)) +
+  #geom_text(position = position_jitter(seed = 5),fontface = "bold") +
+  geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == No_CT_value, 0.5, 1)))+
+  STYLE +
+  theme(legend.position = "none") +
+  labs(title = "Pathogen Quantification Adriano",
+       subtitle = "2 ants per large colony, 1 per small colony",
+       y = "Reduced quantification ng/µL",
+       caption = paste("Threshold cycle (Ct) missing for" , No_CT_REPs) ) #+
+#facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
+
+#ADD INFO FROM METADATA ON EXPOSURE! THEN FACET BY EXPOSURE
+
+
+#replot these data + stats!
