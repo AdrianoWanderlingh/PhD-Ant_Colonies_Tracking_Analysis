@@ -4,7 +4,7 @@
 
 # it requires a "gap" to be defined, should be required by the function
 #Gap is 10 seconds as these are interactions (he maximum gap in tracking before cutting the trajectory or interactions in two different object.)
-compute_G <- function(exp, start, end){ # min_cum_duration , link_type, nest_focus, frm_rate
+compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nest_focus, frm_rate
   print(paste0("Computing networks"))
   
   
@@ -75,23 +75,34 @@ compute_G <- function(exp, start, end){ # min_cum_duration , link_type, nest_foc
   ##################update actor list
   actors <- get.vertex.attribute(G,"name")
   
-  # Assign vertex types: "AntTask"
+  ################# assign vertex attributes
+  #subset metadata
+  METADATA <- subset(metadata,metadata$REP_treat==REP_TREAT)
+  #create matching of vertices with ants (there could be less ants in a 3-hours window than in the full exp)
+
+  ############# Assign vertex types: "AntTask"
   if ("AntTask" %in% colnames(metadata)) {
-    
-    METADATA <- subset(metadata,metadata$REP_treat==COLONY)
-    
     METADATA$AntTask_num <- NA
     METADATA[which(METADATA$AntTask=="nurse"),"AntTask_num"] <- 1
     METADATA[which(METADATA$AntTask=="forager"),"AntTask_num"] <- 2
     
-    #create matching of vertices with ants (there could be less ants in a 3-hours window than in the full exp)
-    #keep only antTasks corresponding to vertices
+    #keep only ants corresponding to vertices
     V_METADATA <- METADATA[which(METADATA$antID %in% V(G)$name),]
+ 
     G <- set_vertex_attr(G, name="AntTask", index = V(G), value = V_METADATA$AntTask_num)
     #REMOVE nodes without ANTTASK (missing ants from observation as likely died at early stage of experiment - not appearing in the 48h pre-exposure)
     G <- delete_vertices(G, is.na(V(G)$AntTask))
   }else{ 
-    warning("No metadata provided, impossible to assign Vertex types to Graph")}
+  warning("No metadata provided, impossible to assign Vertex types to Graph")}
+  
+  #############  Assign vertex types: "Exposed"
+  G <- set_vertex_attr(G, name="Exposed", index = V(G), value = V_METADATA$Exposed)
+  
+  #############  Assign vertex types: "IsQueen"
+  G <- set_vertex_attr(G, name="IsQueen", index = V(G), value = V_METADATA$IsQueen)
+  
+  #############  Assign vertex types: "antID"
+  G <- set_vertex_attr(G, name="antID", index = V(G), value = V_METADATA$antID)
   
   return(G)
 } # compute_G 
@@ -109,6 +120,8 @@ NetProperties <- function(graph){
   
   
   summary_collective <- NULL
+  summary_individual <- NULL
+  
   
   ##### COLLECTIVE NETWORK PROPERTIES ######################################
   #### inherited from Stroeymeyt et al. 2018
@@ -154,53 +167,41 @@ NetProperties <- function(graph){
                                                             efficiency=efficiency,
                                                             modularity=modularity,stringsAsFactors = F))
   
-  return(summary_collective)
-  
-  
-  
-  
-  #-------------------------------------------
-  ###COPIED
+  ##### INDIVIDUAL NETWORK PROPERTIES ######################################
+  #### inherited from Stroeymeyt et al. 2018
+  ####Part 2: individual network properties ####
+
+  ####Part 2: individual network properties ####
+  ###prepare table
+  individual <- data.frame(antID=V(graph)$antID,
+                           IsQueen=V(graph)$IsQueen,
+                           Exposed=V(graph)$Exposed,
+                           AntTask=V(graph)$AntTask,
+                           degree=NA,
+                           aggregated_distance_to_queen=NA#,
+                           #mean_aggregated_distance_to_treated=NA,
+                           #same_community_as_queen=NA
+                           )
   ##degree
-  individual[match(names(degrees),individual$tag),"degree"] <- degrees
-  ##same community as queen
-  queen_comm <- community_membership[which(V(net)$name==queenid)]
-  community_membership <- community_membership==queen_comm
-  individual[match(V(net)$name,individual$tag),"same_community_as_queen"] <- community_membership
+  individual[match(names(degrees),individual$antID),"degree"] <- degrees
+  # ##same community as queen
+  # queen_comm <- community_membership[which(V(net)$name==queenid)]
+  # community_membership <- community_membership==queen_comm
+  # individual[match(V(net)$name,individual$tag),"same_community_as_queen"] <- community_membership
   ##path length to queen
-  if (queenid%in%actors){
-    path_length_to_queen <- t(shortest.paths(net,v=actors,to="665",weights=1/E(net)$weight))
-    individual[match(colnames(path_length_to_queen),individual$tag),"aggregated_distance_to_queen"] <- as.numeric(path_length_to_queen )
-  }
+    path_length_to_queen <- t(shortest.paths(graph,v=V(graph),to=V(graph)[which(V(graph)$IsQueen==TRUE)] ,weights=1/E(graph)$weight))
+    individual[match(colnames(path_length_to_queen),individual$antID),"aggregated_distance_to_queen"] <- as.numeric(path_length_to_queen )
   ########Mean path length to treated; aggregated_network
-  if(option!="untreated_only"){
-    path_length_to_treated                             <- as.data.frame(as.matrix(shortest.paths(net,v=actors,to=as.character(colony_treated)[as.character(colony_treated)%in%V(net)$name],weights=1/E(net)$weight)))
+    path_length_to_treated                             <- as.data.frame(as.matrix(shortest.paths(graph,v=V(graph),to=V(graph)[which(V(graph)$Exposed==TRUE)] ,weights=1/E(graph)$weight)))
     path_length_to_treated["mean_distance_to_treated"] <- NA
     path_length_to_treated$mean_distance_to_treated    <- as.numeric(rowMeans(path_length_to_treated,na.rm=T))
-    individual[match(rownames(path_length_to_treated),individual$tag),"mean_aggregated_distance_to_treated"] <- path_length_to_treated[,"mean_distance_to_treated"]
-  }
+    individual[match(rownames(path_length_to_treated),individual$antID),"mean_aggregated_distance_to_treated"] <- path_length_to_treated[,"mean_distance_to_treated"]
   ###Add data to main data table
   summary_individual <- rbind(summary_individual,individual)
-  #------------------------------------------
-  
-  ##### INDIVIDUAL NETWORK PROPERTIES ######################################
-  ####Part 2: individual network properties ####
-  # look at line 218 on from /13_network_analysis.R
-  # (path length to queen, etc...)
-  
-  ######Path length to Queen
-  # Path_length_Q <- BLAH BLAH
-  
-  # Degree centrality:   degree of a vertex is its the number of its adjacent edges.
-  # DONE ABOVE ALREADY: degrees         <- degree(graph,mode="all")
-  
   
   ####################
-  # R functions don't return multiple objects in the strict sense. The most general way to handle this is to return a list object.
+  #return a list object.
   
-  # summary_individual <- data.frame(Path_length_Q, degrees)
-
-  #return(summary_collective)
-  # transform into: newList <- list(summary_collective, summary_individual)
-  # return(newList)
+  summaries_network <- list(summary_collective=summary_collective, summary_individual=summary_individual)
+  return(summaries_network)
 }
