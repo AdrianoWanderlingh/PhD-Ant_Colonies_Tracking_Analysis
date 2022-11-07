@@ -60,10 +60,12 @@ SpaceUse <- function(exp, start, end){
    #print ( exp$ants[[MISSING]]$identifications[[id]]$tagValue )
     missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING, tag_hex_ID= exp$ants[[MISSING]]$identifications[[id]]$tagValue))
   }}
+  
+  if (nrow(missing_ants_table)>0) {
   #add empty cols
   missing_ants_table[setdiff(names(SpaceUsage),names(missing_ants_table))] <- NA
   SpaceUsage <- rbind(SpaceUsage, missing_ants_table)
-  
+  }
   SpaceUsage <- SpaceUsage[order(SpaceUsage$antID),]
   
   

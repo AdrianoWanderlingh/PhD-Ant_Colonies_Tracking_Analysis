@@ -44,13 +44,10 @@ rm(list=ls())
 # nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
 # print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
 
-#add path lenght to queen
-
-#add gap for Compute_G to the function called elements! X
 # change window_shift to actual date? As per Grooming (new exact data info to be gathered)  
 
 #little improvement to do
-print("RENAME THE EXP TO \"e\", NOT \"exp\" (FUNCTIONS' VARIABLE NAME) ")
+#RENAME THE EXP TO \"e\", NOT \"exp\" (FUNCTIONS' VARIABLE NAME)
 
 
 ##############################################################################
@@ -96,11 +93,24 @@ list.dirs.depth.n <- function(p, n) {
   }
 }
 
+
+#starting params
+USER <- "Supercomputer"
+
 #### ACCESS FILES
+if (USER=="Adriano") {
 WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
 DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
 SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
 metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-20.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+}
+
+if (USER=="Supercomputer") {
+  WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
+  DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
+  SCRIPTDIR <- "/home/cf19810/Documents/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis/EXP1_analysis_scripts" #"/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+  metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-20.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+}
 
 ###source function scripts
 print("Loading functions and libraries...")
@@ -249,10 +259,10 @@ for (REP.n in 1:length(files_list)) {
     #### ADD EXTRA REPLICATE INFORMATIONS
 
     #add status (large, small) info to NetworkProp_collective
-    NetworkProp_collective <- dplyr::left_join(NetworkProp_collective,metadata[c("size_treat","status","treatment","REP_treat")], by = "REP_treat")         # Apply left_join dplyr function
+    NetworkProp_collective <- dplyr::left_join(NetworkProp_collective,unique(metadata[c("size_treat","status","treatment","REP_treat")]), by = "REP_treat")         # Apply left_join dplyr function
     
     #add status (large, small) info to NetworkProp_individual
-    NetworkProp_individual <- dplyr::left_join(NetworkProp_individual,metadata[c("size_treat","status","treatment","REP_treat")], by = "REP_treat")         # Apply left_join dplyr function
+    NetworkProp_individual <- dplyr::left_join(NetworkProp_individual,unique(metadata[c("size_treat","status","treatment","REP_treat")]), by = "REP_treat")         # Apply left_join dplyr function
     
 
     #add task, exposure and status (large, small)  info to SpaceUsage

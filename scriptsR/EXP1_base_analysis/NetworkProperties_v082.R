@@ -80,7 +80,7 @@ compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nes
   METADATA <- subset(metadata,metadata$REP_treat==REP_TREAT)
   #create matching of vertices with ants (there could be less ants in a 3-hours window than in the full exp)
 
-  ############# Assign vertex types: "AntTask"
+  ############# Assign vertex types: "AntTask_num"
   if ("AntTask" %in% colnames(metadata)) {
     METADATA$AntTask_num <- NA
     METADATA[which(METADATA$AntTask=="nurse"),"AntTask_num"] <- 1
@@ -89,11 +89,13 @@ compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nes
     #keep only ants corresponding to vertices
     V_METADATA <- METADATA[which(METADATA$antID %in% V(G)$name),]
  
-    G <- set_vertex_attr(G, name="AntTask", index = V(G), value = V_METADATA$AntTask_num)
-    #REMOVE nodes without ANTTASK (missing ants from observation as likely died at early stage of experiment - not appearing in the 48h pre-exposure)
-    G <- delete_vertices(G, is.na(V(G)$AntTask))
+    G <- set_vertex_attr(G, name="AntTask_num", index = V(G), value = V_METADATA$AntTask_num)
+
   }else{ 
   warning("No metadata provided, impossible to assign Vertex types to Graph")}
+  
+  #############  Assign vertex types: "AntTask"
+  G <- set_vertex_attr(G, name="AntTask", index = V(G), value = V_METADATA$AntTask)
   
   #############  Assign vertex types: "Exposed"
   G <- set_vertex_attr(G, name="Exposed", index = V(G), value = V_METADATA$Exposed)
@@ -103,6 +105,9 @@ compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nes
   
   #############  Assign vertex types: "antID"
   G <- set_vertex_attr(G, name="antID", index = V(G), value = V_METADATA$antID)
+  
+  #REMOVE nodes without ANTTASK (missing ants from observation as likely died at early stage of experiment - not appearing in the 48h pre-exposure)
+  G <- delete_vertices(G, is.na(V(G)$AntTask_num))
   
   return(G)
 } # compute_G 
@@ -128,8 +133,8 @@ NetProperties <- function(graph){
   
   ## Assortativity - Task
   #degree of preferential association between workers of the same task group, calculated using Newman’s method
-  #if (!is.n(V(graph)$AntTask)) {
-  task_assortativity  <- assortativity_nominal(graph, types= V(graph)$AntTask, directed=F)#}else{
+  #if (!is.n(V(graph)$AntTask_num)) {
+  task_assortativity  <- assortativity_nominal(graph, types= V(graph)$AntTask_num, directed=F)#}else{
     #warning("No  Task Vertex information, impossible to calculate task_assortativity")}
   
   ##Clustering
@@ -177,12 +182,14 @@ NetProperties <- function(graph){
                            IsQueen=V(graph)$IsQueen,
                            Exposed=V(graph)$Exposed,
                            AntTask=V(graph)$AntTask,
-                           degree=NA,
-                           aggregated_distance_to_queen=NA#,
+                           AntTask_num=V(graph)$AntTask_num,
+                           degree="NULL",
+                           aggregated_distance_to_queen="NULL"#,
                            #mean_aggregated_distance_to_treated=NA,
                            #same_community_as_queen=NA
                            )
   ##degree
+  #individual$degree <- degrees
   individual[match(names(degrees),individual$antID),"degree"] <- degrees
   # ##same community as queen
   # queen_comm <- community_membership[which(V(net)$name==queenid)]
@@ -196,8 +203,35 @@ NetProperties <- function(graph){
     path_length_to_treated["mean_distance_to_treated"] <- NA
     path_length_to_treated$mean_distance_to_treated    <- as.numeric(rowMeans(path_length_to_treated,na.rm=T))
     individual[match(rownames(path_length_to_treated),individual$antID),"mean_aggregated_distance_to_treated"] <- path_length_to_treated[,"mean_distance_to_treated"]
+  
+ # --------
+    #Get complete list of Ants
+    AntID_list <- NULL
+  for (ant in   1: length(exp$ants)) {
+    AntID_list <- c(AntID_list,exp$ants[[ant]]$ID)}
+    
+    # #add missing ants
+    missing_ants <- subset(AntID_list, !(AntID_list %in% individual$antID))
+  missing_ants_table <- data.frame()
+  
+  for (MISSING in missing_ants) {
+    for (id in length(exp$ants[[MISSING]]$identifications)) {
+      #print ( exp$ants[[MISSING]]$identifications[[id]]$tagValue )
+      missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING))
+    }}
+  
+  if (nrow(missing_ants_table)>0) {
+  #add empty cols
+  missing_ants_table[setdiff(names(individual),names(missing_ants_table))] <- NA
+  individual <- rbind(individual, missing_ants_table)
+  }
+  individual <- individual[order(individual$antID),]
+  
+ # -------
+  
   ###Add data to main data table
-  summary_individual <- rbind(summary_individual,individual)
+  summary_individual <- rbind(summary_individual,individual) ### NOT SURE THAT THIS STEP WORKS!!! AS AFTER THE FIRST RUN IT BECOMES A LIST OBKJECT AND RBIND MAY MESS0UP THINGS
+  
   
   ####################
   #return a list object.
