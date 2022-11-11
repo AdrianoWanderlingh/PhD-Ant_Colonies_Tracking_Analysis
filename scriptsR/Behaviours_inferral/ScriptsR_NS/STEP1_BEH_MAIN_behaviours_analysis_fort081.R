@@ -46,21 +46,21 @@ if (USER=="Adriano") {
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   SAVEOUTPUT <- "/home/cf19810/Documents"
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
+  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="")
 }
 if (USER=="Tom")     {
   WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   SAVEOUTPUT <- "/home/bzniks/Documents"
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="/")
+  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="/")
 }
 if (USER=="Nathalie"){
   WORKDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/BehaviouralInference_latest_BodyLength"
   SAVEOUTPUT <- "/home/bzniks/Documents"
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="/")
+  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="/")
   }
 
 ###source function scripts
