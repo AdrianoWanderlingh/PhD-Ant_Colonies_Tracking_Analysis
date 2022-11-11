@@ -1,4 +1,4 @@
-extraction_loop <- function(chunk,extract_movement_variables=T, selected_variables = NULL){
+extraction_loop <- function(chunk,extract_movement_variables=T, selected_variables = NULL,all_body_lengths=NULL){
   ### initialise variables
   interaction_MANUAL      <- NULL
   summary_MANUAL          <- NULL
@@ -24,6 +24,8 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
     # print(MyrmidonCapsuleFile)
     e <- fmExperimentOpen(MyrmidonCapsuleFile)
 
+    body_lengths <- get_body_lengths(e,all_body_lengths)
+    
     ################################################################################
     ########### START PERIOD LOOP ##################################################
     ################################################################################
@@ -70,6 +72,9 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
       ###############################################################################
       #COMPUTE TRAJECTORIES  
       positions <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = TRUE,showProgress = FALSE) #set true to obtain the zone of the ant
+      #add body lengths to trajectories
+      positions <- add_body_length_to_traj(positions,body_lengths)
+      
       positions$trajectories_summary$frame_num <- NA
       #assign starting frame number
       positions$trajectories_summary["frame_num"] <- lapply(positions$trajectories_summary["start"], function(x) IF_frames$frame_num[match(x, IF_frames$time)])
@@ -149,7 +154,7 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
                                                        ,start=time_start
                                                        ,end=time_stop
                                                        ,max_time_gap = MAX_INTERACTION_GAP
-                                                       ,max_distance_moved = 2*ANT_LENGHT_PX
+                                                       ,max_distance_moved = 2*mean(body_lengths$body_length,na.rm=T)
                                                        ,capsule_matcher=ALL_CAPS_MATCHERS
                                                        ,IF_frames=IF_frames
                                                        )
@@ -161,7 +166,7 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
       #                                             # ,
       #                                             # fmMatcherAntDistanceGreaterThan(AntDistanceGreaterThan)
       #                                             # ,
-      #                                             # fmMatcherAntDisplacement(ANT_LENGHT_PX, minimumGap) #check every minimumGap seconds if ant has displaced more than ANT_LENGHT_PX - if so, will create new interaction
+      #                                             # fmMatcherAntDisplacement(mean(body_lengths$body_length), minimumGap) #check every minimumGap seconds if ant has displaced more than mean body length - if so, will create new interaction
       # ))
       # # AN EXTRA 2 THAT CAN BE USED ARE #fmMatcherAntAngleSmallerThan(), fmMatcherAntAngleGreaterThan()
       # 
@@ -267,7 +272,7 @@ extract_from_object <- function (  object, IF_frames, positions, BEH , REPLICATE
     selected_variables_individual <- NULL 
   }else{
     selected_variables_pair       <- selected_variables[which(!grepl("ACT|REC|duration",selected_variables))]
-    selected_variables_individual <- unique(c("transfmean_speed_pxpersec",gsub("_ACT","",gsub("_REC","",selected_variables[which(grepl("ACT|REC",selected_variables))]))   ))
+    selected_variables_individual <- unique(c("transfmean_speed_BLpersec",gsub("_ACT","",gsub("_REC","",selected_variables[which(grepl("ACT|REC",selected_variables))]))   ))
   }
   
   
@@ -316,7 +321,7 @@ extract_from_object <- function (  object, IF_frames, positions, BEH , REPLICATE
       traj <- process_traj(traj,IF_frames, frame_start, frame_stop)
       
       ###then run script to extract individual variables
-      summary_individual_traj <- extract_individual_movement_variables(traj,frame_start, frame_stop,selected_variables_individual)
+      summary_individual_traj <- suppressWarnings(extract_individual_movement_variables(traj,frame_start, frame_stop,selected_variables_individual))
       traj <- summary_individual_traj[["traj"]];summary_individual_traj <- summary_individual_traj[["summary_individual_traj"]]
       if (is.null(name_list_summary)&!is.null(summary_individual_traj)){
         name_list_summary <- names(summary_individual_traj)
@@ -346,7 +351,7 @@ extract_from_object <- function (  object, IF_frames, positions, BEH , REPLICATE
         ACT <- "ANT1"
         REC <- "ANT2"
       }else{
-        ACT <- c("ANT1","ANT2") [which.max(c(summary_individual_traj_ANT1$transfmean_speed_pxpersec_ANT1,summary_individual_traj_ANT2$transfmean_speed_pxpersec_ANT2))]
+        ACT <- c("ANT1","ANT2") [which.max(c(summary_individual_traj_ANT1$transfmean_speed_BLpersec_ANT1,summary_individual_traj_ANT2$transfmean_speed_BLpersec_ANT2))]
         REC <- c("ANT1","ANT2") [which( c("ANT1","ANT2")!=ACT)]
       }
     }
@@ -384,7 +389,6 @@ extract_from_object <- function (  object, IF_frames, positions, BEH , REPLICATE
       summary_ROW$ROW <- as.factor(summary_ROW$ROW )
       
       ###then pair variables
-      
       if (is.null(selected_variables_pair)|length(selected_variables_pair)>0){
         summary_BOTH <- extract_pair_movement_variables(traj_ACT,traj_REC)
         # traj_BOTH <- summary_BOTH[["traj_BOTH"]]; 
@@ -427,7 +431,7 @@ process_traj <- function(traj,IF_frames, frame_start, frame_stop){
   traj <- traj [ which(traj$frame >= frame_start & traj$frame <= frame_stop),]
   
   if (is.null(traj) | (length(traj$frame)==0)){ ###if traj is NULL or has no lines
-    traj <- data.frame(x=numeric(),y=numeric(),angle=numeric(),zone=numeric(),frame=numeric(),time_sec=numeric(),time_interval=numeric(),dt_FRAME=numeric(),distance_moved=numeric())
+    traj <- data.frame(x=numeric(),y=numeric(),angle=numeric(),zone=numeric(),frame=numeric(),time_sec=numeric(),time_interval=numeric(),dt_FRAME=numeric(),distance_moved_px=numeric())
   }else{
     ## remove 'time' column as it is confusing - it's not a common time
     traj$time <- NULL
@@ -441,7 +445,7 @@ process_traj <- function(traj,IF_frames, frame_start, frame_stop){
     traj$dt_FRAME      <- c(diff(traj$frame)   ,NA) ## time difference in frames between time t and time t+1
     
     ###calculate distance moved between successive fixes
-    traj$distance_moved <-  c(with(traj, (sqrt(diff(x)^2 + diff(y)^2))),NA) # euclidean distance
+    traj$distance_moved_px <-  c(with(traj, (sqrt(diff(x)^2 + diff(y)^2))),NA) # euclidean distance
     
   }
   return(traj)
@@ -452,13 +456,13 @@ extract_individual_movement_variables <- function(traj,frame_start, frame_stop,s
   if (is.null(selected_variables_individual)){
     selected_variables_individual <- 
       c(
-      "sum_moved_distance_px"                  
-      ,"transfmean_speed_pxpersec"             
-      ,"transfSD_speed_pxpersec"               
-      ,"transfmean_abs_accel_pxpersec2"       
-      ,"transfSD_abs_accel_pxpersec2"         
-      ,"transfmean_abs_jerk_PxPerSec3"        
-      ,"transfSD_abs_jerk_PxPerSec3"          
+      "sum_moved_distance_BL"                  
+      ,"transfmean_speed_BLpersec"             
+      ,"transfSD_speed_BLpersec"               
+      ,"transfmean_abs_accel_BLpersec2"       
+      ,"transfSD_abs_accel_BLpersec2"         
+      ,"transfmean_abs_jerk_BLPerSec3"        
+      ,"transfSD_abs_jerk_BLPerSec3"          
       ,"transfmean_abs_TurnAngle"             
       ,"transfSD_abs_TurnAngle"               
       ,"stDev_turnAngle"                      
@@ -479,8 +483,8 @@ extract_individual_movement_variables <- function(traj,frame_start, frame_stop,s
       ,"transfmean_abs_Movement_Body_Inclination_angle"
       ,"transfSD_abs_Movement_Body_Inclination_angle"  
       ,"stDev_Movement_Body_Inclination_angle"         
-      ,"root_mean_square_deviation_px"         
-      ,"chull_area"                            
+      ,"root_mean_square_deviation_BL2"         
+      ,"chull_area_BL2"                            
       ,"prop_time_undetected"   
     )
     
@@ -496,11 +500,14 @@ extract_individual_movement_variables <- function(traj,frame_start, frame_stop,s
   ### Body_Rotation: change of body orientation between time t and t+1 
   traj <- cbind(traj, add_angles (traj))  
   
-  #instantaneous speed, acceleration, and jerk(diff in accelerations) 
-  traj$speed_PxPerSec  <- traj$distance_moved  / traj$time_interval
+  #convert distance moved from px to BL
+  traj$distance_moved_BL <- traj$distance_moved_px/traj$body_length_pixels
   
-  traj$accel_PxPerSec2 <- c(diff(traj$speed_PxPerSec) ,NA) / traj$time_interval
-  traj$jerk_PxPerSec3  <- c(diff(traj$accel_PxPerSec2),NA) / traj$time_interval
+  #instantaneous speed, acceleration, and jerk(diff in accelerations) 
+  traj$speed_BLPerSec  <- traj$distance_moved_BL  / traj$time_interval
+  
+  traj$accel_BLPerSec2 <- c(diff(traj$speed_BLPerSec) ,NA) / traj$time_interval
+  traj$jerk_BLPerSec3  <- c(diff(traj$accel_BLPerSec2),NA) / traj$time_interval
   
   # angular velocity: ω = (α₂ - α₁) / t = Δα / t
   traj$ang_Velocity_Body     <- traj$Body_Rotation        / traj$time_interval
@@ -512,11 +519,12 @@ extract_individual_movement_variables <- function(traj,frame_start, frame_stop,s
   ## Apply THRESHOLDs to exclude gaps in which the individuals were not detected for very long (FRAME)
   ## remove movement variables when traj$dt_FRAME > DT_frame_THRESHOLD
   # dt_FRAME corresponds to frame between T and T+1. This should be applied to all movement characteristics
-  traj[which(traj$dt_FRAME>DT_frame_THRESHOLD), which(!names(traj)%in%c("x","y","angle","zone","frame","time_sec","time_interval","dt_FRAME"))] <- NA
+  traj[which(traj$dt_FRAME>DT_frame_THRESHOLD), which(!names(traj)%in%c("x","y","angle","zone","body_length_pixels","frame","time_sec","time_interval","dt_FRAME"))] <- NA
   
   ## Apply THRESHOLDs to exclude jitter in the individuals' movement (DISTANCE)
-  # remove movement variables when traj$distance_moved < DT_dist_THRESHOLD
-  traj[which(traj$distance_moved<DT_dist_THRESHOLD), which(!names(traj)%in%c("x","y","angle","zone","frame","time_sec","time_interval","dt_FRAME"))] <- NA
+  # remove movement variables when traj$distance_moved < DT_dist_THRESHOLD_BL
+  
+  traj[which(traj$distance_moved_BL<DT_dist_THRESHOLD_BL), which(!names(traj)%in%c("x","y","angle","zone","body_length_pixels","frame","time_sec","time_interval","dt_FRAME"))] <- NA
   
   ###now if traj has enough rows, compute summary variables
   if (nrow(traj)>1){
@@ -537,10 +545,10 @@ extract_individual_movement_variables <- function(traj,frame_start, frame_stop,s
 extract_pair_movement_variables       <- function(traj_ACT,traj_REC){
   traj_BOTH <- merge(traj_ACT, traj_REC,all=T, by=c("frame"))  ## 21 Jan 2022: Changed to sue raw unix seconds to allow simpler matching below (posix formats cause problems with the matching...)
   #straight line - euclidean distance
-  traj_BOTH$straightline_pair_dist_px    <-  sqrt((traj_BOTH$ACT.x-traj_BOTH$REC.x)^2+(traj_BOTH$ACT.y-traj_BOTH$REC.y)^2)
+  traj_BOTH$straightline_pair_dist_BL    <-  sqrt(((traj_BOTH$ACT.x-traj_BOTH$REC.x)/traj_BOTH$ACT.body_length_pixels)^2+((traj_BOTH$ACT.y-traj_BOTH$REC.y)/traj_BOTH$ACT.body_length_pixels)^2)
   traj_BOTH$pair_Body_Orient_diff_abs    <-  abs((traj_BOTH$ACT.angle  - traj_BOTH$REC.angle) %% pi)
   traj_BOTH$pair_Body_Inclination_diff   <-  unlist(lapply(traj_BOTH$pair_Body_Orient_diff , FUN=inclination_angle))###NATH_FLAG:do we want inclination here?
-  summary_both <- data.frame(mean_strghtline_pair_dist_px    = mean(traj_BOTH$straightline_pair_dist_px , na.rm=T),
+  summary_both <- data.frame(mean_strghtline_pair_dist_BL    = mean(traj_BOTH$straightline_pair_dist_BL , na.rm=T),
                              mean_pair_body_orient_diff_abs  = mean(traj_BOTH$pair_Body_Orient_diff_abs , na.rm=T),
                              mean_pair_body_inclination_diff = mean(traj_BOTH$pair_Body_Inclination_diff, na.rm=T) 
   )
@@ -548,29 +556,56 @@ extract_pair_movement_variables       <- function(traj_ACT,traj_REC){
   return(list(summary_both=summary_both))
 }
 
-chull_area <- function(traj){
+add_body_length_to_traj <- function(positions,body_lengths){
+  for (traj_segment in 1:nrow(positions$trajectories_summary)){
+    space_body_length <- body_lengths[which(body_lengths$space_ID==positions$trajectories_summary[traj_segment,"space"]),"body_length"]
+    if (length(space_body_length)==1){
+      positions$trajectories[[traj_segment]]$body_length_pixels <- space_body_length
+    }
+  }
+  return(positions)
+}
+
+chull_area_BL2 <- function(traj){
   # Convex Hull
-  box.coords <- as.matrix(traj[, c("x", "y")]); box.hpts <- chull(x = traj$x, y = traj$y) # calculate convex hull for x and y columns
+  box.coords <- traj[, c("x", "y","body_length_pixels")]
+  box.coords$x <- box.coords$x/box.coords$body_length_pixels
+  box.coords$y <- box.coords$y/box.coords$body_length_pixels
+  box.coords <- as.matrix(box.coords[c("x","y")])
+  
+  box.hpts <- chull(x = traj$x/traj$body_length_pixels, y = traj$y/traj$body_length_pixels) # calculate convex hull for x and y columns
   box.hpts <- c(box.hpts, box.hpts[1]) #add first coord at the bottom to close area
   box.chull.coords <- box.coords[box.hpts,]
   chull.poly <- Polygon(box.chull.coords, hole=F); 
   return(chull.poly@area)
 }
 
-sum_moved_distance_px <- function(traj){return(sum(traj$distance_moved   ,  na.rm = T))}
+sum_moved_distance_BL <- function(traj){return(sum(traj$distance_moved_BL   ,  na.rm = T))}
+
+get_body_lengths <- function(e,all_body_lengths) {
+  ###check how many spaces there are
+  space_list <- e$spaces
+  body_lengths <- NULL
+  
+  for (space_ID in 1:length(space_list)){
+    body_lengths <- rbind(body_lengths,data.frame(space_ID        = space_list[[space_ID]]$ID,
+                                                  tracking_system = space_list[[space_ID]]$name,
+                                                  body_length     = all_body_lengths[which(all_body_lengths$TS==space_list[[space_ID]]$name),"mean_worker_length_px"]
+    ))
+  }
+  return(body_lengths)
+}
+
+transfmean_speed_BLpersec             <- function(traj){return( exp(mean  (log(na.omit(traj$speed_BLPerSec)                           ))))}
+transfSD_speed_BLpersec               <- function(traj){return( exp(sd  (log(na.omit(traj$speed_BLPerSec)                           ))))}
 
 
-
-transfmean_speed_pxpersec             <- function(traj){return( exp(mean  (log(na.omit(traj$speed_PxPerSec)                           ))))}
-transfSD_speed_pxpersec               <- function(traj){return( exp(sd  (log(na.omit(traj$speed_PxPerSec)                           ))))}
-
-
-transfmean_abs_accel_pxpersec2        <- function(traj){return( exp(mean  (log(na.omit(abs(traj$accel_PxPerSec2))                           ))))}
-transfSD_abs_accel_pxpersec2          <- function(traj){return( exp(sd  (log(na.omit(abs(traj$accel_PxPerSec2))                           ))))}
+transfmean_abs_accel_BLpersec2        <- function(traj){return( exp(mean  (log(na.omit(abs(traj$accel_BLPerSec2))                           ))))}
+transfSD_abs_accel_BLpersec2          <- function(traj){return( exp(sd  (log(na.omit(abs(traj$accel_BLPerSec2))                           ))))}
 
 
-transfmean_abs_jerk_PxPerSec3         <- function(traj){return( exp(mean  (log(na.omit(abs(traj$jerk_PxPerSec3))                           ))))}
-transfSD_abs_jerk_PxPerSec3           <- function(traj){return( exp(sd  (log(na.omit(abs(traj$jerk_PxPerSec3))                           ))))}
+transfmean_abs_jerk_BLPerSec3         <- function(traj){return( exp(mean  (log(na.omit(abs(traj$jerk_BLPerSec3))                           ))))}
+transfSD_abs_jerk_BLPerSec3           <- function(traj){return( exp(sd  (log(na.omit(abs(traj$jerk_BLPerSec3))                           ))))}
 
 transfmean_abs_TurnAngle              <- function(traj){return( (mean  (sqrt(na.omit(abs(traj$TurnAngle))                           )))^2)}
 transfSD_abs_TurnAngle                <- function(traj){return(  (sd  (sqrt(na.omit(abs(traj$TurnAngle))                           )))^2)}
@@ -600,5 +635,5 @@ transfmean_abs_Movement_Body_Inclination_angle    <- function(traj){return( (mea
 transfSD_abs_Movement_Body_Inclination_angle      <- function(traj){return(  (sd  (sqrt(na.omit(traj$Movement_Body_Inclination_angle)                           )))^2)}
 stDev_Movement_Body_Inclination_angle           <- function(traj){return( angular.deviation(traj$Movement_Body_Inclination_angle              ,  na.rm = T))}
 
-root_mean_square_deviation_px         <- function(traj){return( sqrt((sum((traj$x-mean(traj$x,  na.rm = T))^2+(traj$y-mean(traj$y,  na.rm = T))^2))/(length(na.omit(traj$x)))))} ### Root Mean Square Deviation,  as defined in Ulrich et al 2018)}
+root_mean_square_deviation_BL2         <- function(traj){return( sqrt((sum(((traj$x/traj$body_length_pixels)-mean((traj$x/traj$body_length_pixels),  na.rm = T))^2+((traj$y/traj$body_length_pixels)-mean((traj$y/traj$body_length_pixels),  na.rm = T))^2))/(length(na.omit((traj$x/traj$body_length_pixels))))))} ### Root Mean Square Deviation,  as defined in Ulrich et al 2018)}
 prop_time_undetected                  <- function(traj,frame_start,frame_stop){return( 1-(sum(!is.na(traj$x))/(frame_stop-frame_start+1)))}

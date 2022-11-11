@@ -8,7 +8,7 @@ library(parsedate)
 library (trajr)
 library(plotrix) 
 library(circular) #to work with circular data. objects not in circular class are coerced
-library(tidyverse)
+# library(tidyverse)
 library(ggplot2)
 library(reshape2) #to use melt and similar
 library(bit64)
@@ -23,9 +23,10 @@ library(sp) #calculate convex hull area
 library(Matrix) #behavioural matrices subtraction
 
 #LDA, PCA, etc
-library(FactoMineR)
-library(factoextra)
-library(missMDA) #PCA with missing values
+# remotes::install_github("rvlenth/emmeans", dependencies = TRUE, build_opts = "")
+# library(FactoMineR)
+# library(factoextra)
+# library(missMDA) #PCA with missing values
 library(corrplot)
 require(MASS)
 require(ggplot2)
@@ -49,7 +50,7 @@ library(heplots) #Hypotesis testing plots to check Equal Covariance Ellipses in 
 #RandForOld <- "https://cran.r-project.org/src/contrib/Archive/randomForest/randomForest_4.6-14.tar.gz"
 #install.packages(RandForOld, repos=NULL, type="source") 
 library(randomForest)
-#devtools::install_github("dongyuanwu/RSBID")
+# devtools::install_github("dongyuanwu/RSBID")
 library(RSBID) # Resampling Strategies for Binary Imbalanced Datasets
 library(caret) #to tune RandomForest Hyperparameters
 library(sirus) # Stable and Interpretable RUle Set for RandomForests
@@ -59,7 +60,7 @@ library(modeest)
 library(Rcpp)
 library(smotefamily)
 library(e1071)
-#install.packages("mallinfo",repos="http://www.rforge.net/")
+# install.packages("mallinfo",repos="http://www.rforge.net/")
 library(mallinfo)
 # install.packages("R.cache")
 library(R.cache)

@@ -16,7 +16,7 @@ gc()
 mallinfo::malloc.trim(0L)
 
 ###parameter to set at start
-USER <- "Supercomputer1"
+USER <- "Nathalie"
 ###To set by user
 BEH <- "G"
 FRAME_RATE <- 8
@@ -46,6 +46,8 @@ if (USER=="Supercomputer1") {
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   EXPDATADIR <- "/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
+  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
 }
 
 if (USER=="Adriano") {
@@ -53,18 +55,26 @@ if (USER=="Adriano") {
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   EXPDATADIR <- "/media/tracking_users/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
+  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
+  
   #CHANGE EXPDATADIR TO DISK4/EXPERIMENT_DATA
+  
 }
 if (USER=="Tom")     {
   WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   EXPDATADIR <- ""
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
+  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
 }
 if (USER=="Nathalie"){
   WORKDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
-  SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/Behaviours_inferral_Nathalie_NEW"
+  SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/BehaviouralInference_latest_BodyLength"
+  MachineLearningOutcome_DIR <- "/home/bzniks/Documents/MachineLearning_outcomes"
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="/")
   EXPDATADIR <- "/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA"
 }
 
@@ -73,8 +83,10 @@ if (USER=="Simon") {
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   EXPDATADIR <- "/media/tracking_users/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
+  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
 }
-
+chosen_file_name <- file.path(MachineLearningOutcome_DIR, "quality_scores_CHOSEN.txt")
 #################################################################
 ############ OUTPUT FILE #####################################
 
@@ -96,6 +108,9 @@ sourceCpp(paste(SCRIPTDIR,"merge_interactions.cpp",sep="/"))
 ###############################################################################
 ###### PARAMETERS #############################################################
 ###############################################################################
+###body length information
+all_body_lengths <-read.table(BODYLENGTH_FILE,header=T,stringsAsFactors = F,sep=",")
+
 #plotting limits used for the coordinates plotting
 Xmin <- 2000
 Xmax <- 7900
@@ -113,7 +128,7 @@ max_gap                     <- fmHour(24*365)   ## important parameter to set! S
 ###NATH_FLAG: these parameters should be adjusted for each box as ant length may depend on focus /  camera distance
 # AntDistanceSmallerThan      <- 300 #for higher accuracy, recalculate it from: max(interaction_MANUAL$straightline_dist_px,na.rm = T)
 # AntDistanceGreaterThan      <- 70 #for higher accuracy, recalculate it from: min(interaction_MANUAL$straightline_dist_px,na.rm = T)
-ANT_LENGHT_PX               <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
+# ANT_LENGHT_PX               <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
 # minimumGap                  <- fmSecond(0.5) ## THIS OPTION DOES NOT WORK IN INTERACTIONS SO DISABLED! for a given pair of interacting ants, when interaction is interrupted by more than minimumGap, interaction will check whether ants have moved since - and if so, will create new interaction
 
 DISAGREEMENT_THRESH <- 0.5
@@ -123,7 +138,7 @@ set.seed(2)       ###define I(arbitrary) seed so results can be reproduced over 
 ###############################################################################
 #### READ CHOSEN METHOD #######################################################
 ###############################################################################
-chosen <- read.table(paste(WORKDIR,"/Data/MachineLearning_outcomes/quality_scores_CHOSEN.txt",sep=""),header=T,stringsAsFactors = F)
+chosen <- read.table(chosen_file_name,header=T,stringsAsFactors = F)
 
 ###############################################################################
 ###### EXTRACT CHOSEN PARAMETERS FROM CHOSEN ##################################
@@ -131,16 +146,16 @@ chosen <- read.table(paste(WORKDIR,"/Data/MachineLearning_outcomes/quality_score
 # #####Arguments to loop over - to comment out when running the loop
 subDir                      <- paste0("Loop_ID_",chosen[,"Loop_ID"])
 CAPSULE_FILE                <- chosen[,"CAPSULE_FILE"]
-DT_dist_THRESHOLD           <- chosen[,"DT_dist_THRESHOLD"]
+DT_dist_THRESHOLD_BL        <- chosen[,"DT_dist_THRESHOLD_BL"]
 MAX_INTERACTION_GAP         <- chosen[,"MAX_INTERACTION_GAP"]
 DISAGREEMENT_THRESH         <- chosen[,"DISAGREEMENT_THRESH"]
 trim_length_sec             <- chosen[,"trim_length_sec"]
 DT_frame_THRESHOLD          <- chosen[,"DT_frame_THRESHOLD"]
 
 ###Load BN_list
-BN_list <- dget (  file.path(DATADIR, "MachineLearning_outcomes",subDir,"BN_object_list.dat") )
+BN_list <- dget (  file.path(MachineLearningOutcome_DIR,subDir,"BN_object_list.dat") )
 ###Load_classifier
-classifier        <- list(readRDS (file.path(DATADIR, "MachineLearning_outcomes",subDir,"fits",paste(chosen[,"classifier"],".rds",sep=""))))
+classifier        <- list(readRDS (file.path(MachineLearningOutcome_DIR,subDir,"fits",paste(chosen[,"classifier"],".rds",sep=""))))
 names(classifier) <- chosen[,"classifier"]
 
 ###############################################################################
@@ -202,8 +217,10 @@ for (myrmidon_file in myrmidon_files){
     IF_frames$cum_diff <- cumsum(IF_frames$cum_diff)
     
     ###get trajectories using self-written function which automatically performs the extraction on successive chunks of 12 hours to avoid crashes, and merge all trajectories for a single ant into a single trajectory
-    to_keep2 <- c(ls(),"positions","to_keep2")
+    to_keep2 <- c(ls(),"positions","body_lengths","to_keep2")
+    body_lengths <- get_body_lengths(e,all_body_lengths)
     positions <- extract_trajectories(e,start = time_start,end = time_stop,maximumGap = max_gap,computeZones = T,showProgress = F,IF_frames=IF_frames) #set true to obtain the zone of the ant
+    positions <- add_body_length_to_traj(positions,body_lengths)
     print("Output from extract_trajectories received.")
     
     print("Clearing memory.")
@@ -232,14 +249,20 @@ for (myrmidon_file in myrmidon_files){
     gc()
     
     ########## GET EXPOSED ANTS # AW 17June2022
+
     e.Ants <- e$ants
     Exposed_list <- vector() 
     for (ant in e.Ants){
-      if (TRUE %in% ant$getValues("Exposed")[,"values"]) {
-        exposed <-ant$ID           
-        Exposed_list <- c(Exposed_list, exposed) }
-    }
-    
+    #   if (TRUE %in% ant$getValues("Exposed")[,"values"]) {    ###THIS THROWS AN ERROR FOR ME - SO ALTERNATIVE BELOW
+    #     exposed <-ant$ID           
+    #     Exposed_list <- c(Exposed_list, exposed) }
+    # }
+        if (ant$getValue("Exposed",fmTimeNow())) {    
+          exposed <-ant$ID
+          Exposed_list <- c(Exposed_list, exposed) }
+      }
+      
+
     
     print("About to detect interactions...")
     interac_start <- Sys.time()
@@ -247,7 +270,7 @@ for (myrmidon_file in myrmidon_files){
                                                      ,start=time_start
                                                      ,end=time_stop
                                                      ,max_time_gap = MAX_INTERACTION_GAP
-                                                     ,max_distance_moved = 2*ANT_LENGHT_PX
+                                                     ,max_distance_moved = 2*mean(body_lengths$body_length,na.rm=T)
                                                      ,capsule_matcher=ALL_CAPS_MATCHERS
                                                      ,IF_frames=IF_frames
                                                      ,desired_ants_OR = Exposed_list #  AW 17June2022

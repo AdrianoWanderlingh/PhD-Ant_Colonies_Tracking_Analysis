@@ -4,7 +4,17 @@ library(lme4)
 library(car)
 library(multcomp)
 
-outcomes <- read.table("/home/cf19810/Documents/MachineLearning_outcomes_04-08-22/quality_scores.txt",header=T,stringsAsFactors = F)
+USER <- "Nathalie"
+if (USER=="Adriano") {
+  SAVEOUTPUT <- "/home/cf19810/Documents"
+}
+if (USER=="Nathalie"){
+   SAVEOUTPUT <- "/home/bzniks/Documents"
+}
+output_name <- file.path(SAVEOUTPUT, "MachineLearning_outcomes","quality_scores.txt")
+
+
+outcomes <- read.table(output_name,header=T,stringsAsFactors = F)
 beta <- 0.5
 outcomes <- outcomes[which(outcomes$beta==beta),]
 
@@ -58,4 +68,5 @@ outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_training==max(
 outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$CSI_test==max(outcomes_to_keep$CSI_test,na.rm=T)),]
 print(outcomes_to_keep)
 
-write.table(outcomes_to_keep,file="/home/cf19810/Documents/MachineLearning_outcomes/quality_scores_CHOSEN.txt",col.names=T,row.names=F,quote=F,append=F)
+
+write.table(outcomes_to_keep,file=gsub("quality_scores.txt","quality_scores_CHOSEN.txt",output_name),col.names=T,row.names=F,quote=F,append=F)

@@ -17,8 +17,8 @@
 fit_classifiers <- function (summary_AUTO){
   
   #remove ant names/rep/int/etc in pca (keep only vars)
-  numeric_variable_list  <- names(summary_AUTO) [ which (!names(summary_AUTO) %in% c( "REPLICATE", "PERIOD","BEH","ROW","Act_Name","Rec_Name","ant1","ant2","INT","ACT","REC","pair","frame_start","frame_stop","disagreement","Hit") )]
-  metadata_variable_list <- names(summary_AUTO) [ which (names(summary_AUTO) %in% c( "REPLICATE", "PERIOD","BEH","ROW","Act_Name","Rec_Name","ant1","ant2","INT","ACT","REC","pair","frame_start","frame_stop","disagreement","Hit") )]
+  numeric_variable_list  <- names(summary_AUTO) [ which (!names(summary_AUTO) %in% c( "REPLICATE", "PERIOD","BEH","ROW","Act_Name","Rec_Name","ant1","ant2","INT","ACT","REC","pair","frame_start","frame_stop","disagreement","Hit","unique_interaction_id") )]
+  metadata_variable_list <- names(summary_AUTO) [ which (names(summary_AUTO) %in% c( "REPLICATE", "PERIOD","BEH","ROW","Act_Name","Rec_Name","ant1","ant2","INT","ACT","REC","pair","frame_start","frame_stop","disagreement","Hit","unique_interaction_id") )]
   
   #######################################################
   ######### MISSING CASES ###############################

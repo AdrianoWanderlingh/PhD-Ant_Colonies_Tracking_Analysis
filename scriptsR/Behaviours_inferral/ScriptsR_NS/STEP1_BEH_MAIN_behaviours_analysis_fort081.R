@@ -16,11 +16,10 @@ rm(list=ls())
 gc()
 
 ###parameter to set at start
-USER <- "Adriano"
-###To set by user
+USER <- "Adriano"#"Adriano"
 BEH <- "G"
 FRAME_RATE <- 8
-
+###TO DO: also edit the path to BODYLENGTH_FILE when defining folders from line 45 onwards
 
 if (BEH =="G"){
   interactions_of_interest <- list(c("head","body"))
@@ -47,18 +46,21 @@ if (USER=="Adriano") {
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   SAVEOUTPUT <- "/home/cf19810/Documents"
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
 }
 if (USER=="Tom")     {
   WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   SAVEOUTPUT <- "/home/bzniks/Documents"
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="/")
 }
 if (USER=="Nathalie"){
   WORKDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
-  SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/Behaviours_inferral_Nathalie_NEW"
+  SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/BehaviouralInference_latest_BodyLength"
   SAVEOUTPUT <- "/home/bzniks/Documents"
+  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="/")
   }
 
 ###source function scripts
@@ -72,9 +74,12 @@ suppressMessages(source(paste(SCRIPTDIR,"BEH_libraries.R",sep="/")))
 Sys.setenv("PKG_CXXFLAGS"="-std=c++11")
 sourceCpp(paste(SCRIPTDIR,"add_angles.cpp",sep="/"))
 sourceCpp(paste(SCRIPTDIR,"merge_interactions.cpp",sep="/"))
+
 ###############################################################################
 ###### PARAMETERS #############################################################
 ###############################################################################
+###body length information
+all_body_lengths <-read.table(BODYLENGTH_FILE,header=T,stringsAsFactors = F,sep=",")
 
 #plotting limits used for the coordinates plotting
 Xmin <- 2000
@@ -93,7 +98,7 @@ max_gap                     <- fmHour(24*365)   ## important parameter to set! S
 ###NATH_FLAG: these parameters should be adjusted for each box as ant length may depend on focus /  camera distance
 # AntDistanceSmallerThan      <- 300 #for higher accuracy, recalculate it from: max(interaction_MANUAL$straightline_dist_px,na.rm = T)
 # AntDistanceGreaterThan      <- 70 #for higher accuracy, recalculate it from: min(interaction_MANUAL$straightline_dist_px,na.rm = T)
-ANT_LENGHT_PX               <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
+# ANT_LENGHT_PX               <- 153 #useful for matcher::meanAntDisplacement mean and median value are similar
 # minimumGap                  <- fmSecond(0.5) ## THIS OPTION DOES NOT WORK IN INTERACTIONS SO DISABLED! for a given pair of interacting ants, when interaction is interrupted by more than minimumGap, interaction will check whether ants have moved since - and if so, will create new interaction
 
 DISAGREEMENT_THRESH <- 0.5
@@ -236,10 +241,10 @@ Grooming_LDA_output             <- data.frame()
 Grooming_LDA_eachRun            <- data.frame()
 
 ###initialise general output folder
-###remove folder if already exists to amke sure we don't mix things up
+##remove folder if already exists to amke sure we don't mix things up
 if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes"))){
   unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive=T)
-} 
+}
 ###create folder
 dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive = T)
 
@@ -255,7 +260,7 @@ CAPSULE_FILE_LIST           <- c("CapsuleDef3","CapsuleDef4","CapsuleDef9","Caps
 
 # #####Arguments to loop over - to comment out when running the loop
 # CAPSULE_FILE                <- "BODY-HEAD_17March22_auto_oriented_meanlength"
-# DT_dist_THRESHOLD           <- 0 # NOT HIGHER THAN 0.5 as it will cut a very large portion of data (most movements are on a very small scale) #tag length is 62 px approx (measured on full size pics in R9SP)
+# DT_dist_THRESHOLD_BL           <- 0 # NOT HIGHER THAN 0.5 as it will cut a very large portion of data (most movements are on a very small scale) #tag length is 62 px approx (measured on full size pics in R9SP)
 # MAX_INTERACTION_GAP         <- 10 ## in SECONDS, the maximum gap in tracking before cutting the trajectory or interactions in two different object
 # DISAGREEMENT_THRESH         <- 0.4#Assign Hit or Miss after matrix difference according to threshold 
 # trim_length_sec             <- 1  ####all automated interactions that last trim_length_sec or less will be removed from the automated detection to fit the LDA as they increase noise!
@@ -273,11 +278,13 @@ CAPSULE_FILE_LIST           <- c("CapsuleDef3","CapsuleDef4","CapsuleDef9","Caps
 ####initialise Loop_ID
 Loop_ID       <- 1
 Trunk_Loop_ID  <- 1
-for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
-  #fmQueryComputeAntInteractions matcher for the max time interval in iteraction when the ant pair disengages the interaction. Specific for GROOMING
+# for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
+  for (CAPSULE_FILE in CAPSULE_FILE_LIST[1]) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
+    #fmQueryComputeAntInteractions matcher for the max time interval in iteraction when the ant pair disengages the interaction. Specific for GROOMING
   #Sequentially vary the interaction gap-filling to check what effect this has on the agreement between the MANUAL & AUTOMATIC interactions
-  for (MAX_INTERACTION_GAP in c(15,20,25)) { #IN SECONDS (5,10, 15 never selected)
-    trunk_loop_start_time <- Sys.time()
+  # for (MAX_INTERACTION_GAP in c(15,20,25)) { #IN SECONDS (5,10, 15 never selected)
+    for (MAX_INTERACTION_GAP in c(25,30,35)) { #IN SECONDS (5,10, 15 never selected)
+      trunk_loop_start_time <- Sys.time()
     print(paste("TRUNK LOOP ID:",Trunk_Loop_ID))
     ##################################################################################
     ##################### EXTRACT VARIABLES FOR MANUAL AND AUTOMATIC INTERACTIONS ####
@@ -285,23 +292,26 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
     ###for these particular parameters, evaluate how successful the interaction detetection parameters are at detecting candidate frames
     ###extract interactions and manual annotations for the whole dataset
     print(paste("Evaluating quality of interaction parameters for trunk loop ID ",Trunk_Loop_ID,"...",sep=""))
-    all      <- extraction_loop("all",extract_movement_variables=F)
+    all      <- extraction_loop("all",extract_movement_variables=F,all_body_lengths=all_body_lengths)
     
     ###Run auto_manual_agreement on all data to get an idea of how well the Loop performs in discovering the candidate interaction frames
     loop_interaction_detection_TPTNFPFN <- auto_manual_agreement (all[["summary_AUTO"]] , all[["summary_MANUAL"]], all[["list_IF_Frames"]] )[["true_false_positive_negatives"]]
 
     ##THRESHOLD to exclude jitter in the individuals' movement (DISTANCE)
-    for (DT_dist_THRESHOLD in c(0,0.2,0.4)) { #NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
+    # for (DT_dist_THRESHOLD_BL in c(0,0.0015,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
+      for (DT_dist_THRESHOLD_BL in c(0,0.0015,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
+        
+      
       # Assign Hit based on threshold
       # maybe can be put somewhere better as it involves a later stage of the analysis
-        for (DT_frame_THRESHOLD in c(32,40)){
+        for (DT_frame_THRESHOLD in c(32,40,48)){
           
           ###for these particular parameters, calculate variables of interest for manual annotations and automatic interactions for each of training and test dataset
           print("Extracting movement variables for manually-annotated data and automatic interactions:")
           print("-training data...")
-          training <- extraction_loop("training")
+          training <- extraction_loop("training",all_body_lengths=all_body_lengths)
           print("-test data...")
-          test     <- extraction_loop("test")
+          test     <- extraction_loop("test",all_body_lengths=all_body_lengths)
           
           ##############################################################################
           ######### MANUAL/AUTO AGREEMENT  ###################################
@@ -317,8 +327,9 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
           ####define to_keep variables to keep clearing memory between runs
           to_keep <- c(ls(),c("to_keep","trim_length_sec"))
           
-          for (trim_length_sec in c(2,3)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
-            
+          # for (trim_length_sec in c(2,3)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
+            for (trim_length_sec in c(3,4,6)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
+              
             ###prepare output directories for Loop_ID
             subDir <- paste0("Loop_ID_",Loop_ID)
             if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir))){
@@ -357,7 +368,9 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
               ##check match with manual 
               for (beta in c(0.5)){
                 quality_scores_pre_classifier       <- quality_scores(loop_interaction_detection_TPTNFPFN,beta)
-                print(paste("Automatic interaction detectionin trunk loop ID ",Trunk_Loop_ID,"had a sensitivity of ",round(quality_scores_pre_classifier["sensitivity"],digits=2)," and a precision of ",round(quality_scores_pre_classifier["precision"],digits=2),".",sep=""))
+                if (class_idx==1){
+                  print(paste("Automatic interaction detection in trunk loop ID ",Trunk_Loop_ID," had a sensitivity of ",round(quality_scores_pre_classifier["sensitivity"],digits=2)," and a precision of ",round(quality_scores_pre_classifier["precision"],digits=2)," PRE CLASSIFIER.",sep=""))
+                }
                 
                 
                 for (what in c("training","test")){
@@ -387,12 +400,14 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
                     assign (paste("quality_scores",what,sep="_"),round(c(CSI=0,Fbeta=0,precision=0,sensitivity=0),digits=3 ))
                     assign (paste("true_false_positive_negatives",what,sep="_"),data.frame(true_negatives=NA,true_positives=0,false_negatives=NA,false_positives=0))
                   }
-                  
+                  if(what=="training"){
+                    print(paste("Automatic interaction detection in trunk loop ID ",Trunk_Loop_ID," has a sensitivity of ",round(get(paste("quality_scores",what,sep="_"))["sensitivity"],digits=2)," and a precision of ",round(get(paste("quality_scores",what,sep="_"))["precision"],digits=2)," POST CLASSIFIER ",class_idx,".",sep=""))
+                  }
                 }
                 #create a row per each Loop run 
                 Grooming_LDA_eachRun  <- data.frame(Loop_ID=Loop_ID,
                                                     CAPSULE_FILE=CAPSULE_FILE,
-                                                    DT_dist_THRESHOLD=DT_dist_THRESHOLD, 
+                                                    DT_dist_THRESHOLD_BL=DT_dist_THRESHOLD_BL, 
                                                     MAX_INTERACTION_GAP=MAX_INTERACTION_GAP,
                                                     DISAGREEMENT_THRESH=DISAGREEMENT_THRESH,
                                                     DT_frame_THRESHOLD = DT_frame_THRESHOLD,
@@ -440,7 +455,7 @@ for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###
           }#trim_length_sec
         }#DT_frame_THRESHOLD
 
-    }#DT_dist_THRESHOLD
+    }#DT_dist_THRESHOLD_BL
     Trunk_Loop_ID <- Trunk_Loop_ID +1
     trunk_loop_end_time <- Sys.time()
     print (paste("Trunk loop took ",trunk_loop_end_time-trunk_loop_start_time," seconds to complete"))
