@@ -16,7 +16,7 @@ gc()
 mallinfo::malloc.trim(0L)
 
 ###parameter to set at start
-USER <- "Nathalie"
+USER <- "Adriano"
 ###To set by user
 BEH <- "G"
 FRAME_RATE <- 8
@@ -188,7 +188,8 @@ for (myrmidon_file in myrmidon_files){
   REPLICATE <- unlist(strsplit(myrmidon_file,split="_"))[grepl("SP|SS|BP|BS",unlist(strsplit(myrmidon_file,split="_")))] #AW
   PERIOD    <- "whole_experiment" ###to gain time you might want to loop over pre/post 24 hour periods and thus use different time_start and time_stop and different values for PERIOD
   output_name <- file.path(EXPDATADIR,paste("inferred_groomings_",unlist(strsplit(REPLICATE,split="\\/"))[which(grepl("BS|BP|SS|SP",unlist(strsplit(REPLICATE,split="\\/"))))],"_",PERIOD,".txt",sep=""))
-  
+  output_name_with_nongroom <- file.path(EXPDATADIR,paste("inferred_groomings_and_nongroom_",unlist(strsplit(REPLICATE,split="\\/"))[which(grepl("BS|BP|SS|SP",unlist(strsplit(REPLICATE,split="\\/"))))],"_",PERIOD,".txt",sep=""))
+
   if (file.exists(output_name)){
     print("Grooming inferrence already done.")
   }else{
@@ -339,10 +340,11 @@ for (myrmidon_file in myrmidon_files){
     interacts_AUTO_REP_PER$PERIOD <- PERIOD
     interacts_AUTO_REP_PER$REPLICATE <- REPLICATE
     
-    
     ###FINAL GROOMING TABLE, TO SAVE
     inferred_groomings     <- interacts_AUTO_REP_PER[which(interacts_AUTO_REP_PER$predicted_Hit==1),]
     
+    ###TABLE INCLUDING ALSO NON-GROOMING EVENTS FOR PLOTTING AND ELSE
+    inferred_groomings_and_nongroom     <- interacts_AUTO_REP_PER
     
     ###############################################################################
     ######        SAVING FINAL GROOMING TABLE        ##############################
@@ -353,11 +355,9 @@ for (myrmidon_file in myrmidon_files){
     # }else{
     #   write.table(inferred_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
     # }
+    
     write.table(inferred_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
-    # SAVE WITH IT A FILE WITH THE CHOSEN CLASSIFIER?
-    # ANY OTHER RELEVANT INFO?
-    
-    
+    write.table(inferred_groomings_and_nongroom,file=output_name_with_nongroom,append=F,col.names=T,row.names=F,quote=T,sep=",")
     
     print(paste("Interaction detection took",round((as.numeric(interac_stop)-as.numeric(interac_start))/60,digits=2),"minutes."))
     print(paste("Extraction of movement variables took",round((as.numeric(extraction_stop)-as.numeric(extraction_start))/3600,digits=2),"hours."))
