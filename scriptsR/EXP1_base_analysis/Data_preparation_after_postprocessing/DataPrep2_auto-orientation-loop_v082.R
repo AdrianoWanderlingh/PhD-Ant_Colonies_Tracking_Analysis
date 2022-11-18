@@ -14,7 +14,7 @@ library(Rcpp)
 library(data.table)
 library(circular)
 library(R.utils)
-
+library(reader)
 
 ##define a max temporal gap for which you are happy to calculate a movement angle; e.g. 0.5 s
 max_time_gap <- 0.2 #0.5 ##LOWER THAN 0.2 BREAKS THE CODE
@@ -45,8 +45,8 @@ sourceCpp("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/determine_angle_a
 ### directory of data and myrmidon files
 #dir_data <- '/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA'
 #dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
-#dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
-dir_data  <- "/home/cf19810/Documents/TEMP/EXPERIMENT_DATA"
+dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
+#dir_data  <- "/media/cf19810/Seagate Portable Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
 
 
 #### ACCESS FILES
@@ -60,6 +60,7 @@ files_list <- files_list[grep("REP",files_list)]
 EXP_list <- NULL
 # replicate folder
 for (REP.n in 1:length(files_list)) {
+  # REP.n <- 1
   REP.folder      <- files_list[REP.n]
   REP.files       <- list.files(REP.folder, pattern = ".myrmidon")
   REP.filefolder  <- paste(REP.folder,REP.files,sep="/")
@@ -74,8 +75,12 @@ for (REP.n in 1:length(files_list)) {
     REP.data_folder      <- list.files(path=REP.folder,pattern=glob2rx(paste0("*",treat_name,"*.0000*")))
     REP.data_folder <- REP.data_folder[!grepl(REP.data_folder,pattern="myrmidon")]
     
-    INFO.file <- paste(REP.folder,REP.data_folder,"artemis.INFO",sep="/")
+    INFO.folder <- paste(REP.folder,REP.data_folder,sep="/")
+    INFO.file <- list.files(path=INFO.folder,pattern=glob2rx(paste0("*artemis.INFO*")))
     
+    INFO.file <-  paste(INFO.folder,INFO.file,sep="/")
+    
+
     XX <- grep("Running on machine:", readLines(INFO.file), value = TRUE)
     TrackSys_name <- sub(".*Running on machine: ", "", XX) 
     
@@ -90,6 +95,7 @@ Metadata_list <- EXP_list[which(grepl(EXP_list$path_name,pattern = "DeathRecord_
 Metadata_list <- Metadata_list[which(!grepl(Metadata_list$path_name,pattern = "base")),]
 
 #exclude files already auto-oriented
+AlreadyDone <- EXP_list[which(grepl(EXP_list$path_name,pattern = "NS_NS_q.myrmidon")),]
 EXP_list <- EXP_list[which(!grepl(EXP_list$path_name,pattern = "AutoOrient")),]
 
 # flag which ones are the base oriented files
@@ -102,6 +108,7 @@ ref_orient_caps_file <- EXP_list[which(EXP_list$OrientedCapsule=="true"),]
 # feed in the analysis of auto-orientation all tracking_data files.
 #ToOrient_file <- EXP_list[which(EXP_list$OrientedCapsule=="false"),]
 ToOrient_file <- EXP_list[which(grepl(EXP_list$path_name,pattern = "AntsCreated.myrmidon")),]
+
 
 
 ### Loop through all the directories in the dir_folder
@@ -203,10 +210,11 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
   
   to_keep_2 <- c(ls(),"to_keep_2","ToOrient_myr_file")
   for (ToOrient_myr_file in ToOrient_data_list){
-    #ToOrient_myr_file <- ToOrient_data_list[1] #temp
+    #ToOrient_myr_file <- ToOrient_data_list[5] #temp
     
     # if the _AutoOriented file file doesn't exist, then continue
-    if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS.myrmidon"))) {
+    if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))) {
+   # if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS_NS_q.myrmidon"))) {
       ###get experiment and replicate name, and identify the corresponding metadata file
       ToOrient_exp_name <- unlist(strsplit(ToOrient_myr_file,split="/"))[length(unlist(strsplit(ToOrient_myr_file,split="/")))]
       ToOrient_Repl_name <- unlist(strsplit(ToOrient_exp_name,split="_"))[1]
@@ -233,7 +241,7 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
       
       ############# MAKE SURE ISALIVE METADATA KEY IS PRESENT #########################
       if (is.null(Metadata_exp$metaDataKeys$IsAlive)){
-      Metadata_exp$setMetaDataKey("IsAlive",TRUE) 
+      Metadata_exp$setMetaDataKey("IsAlive",TRUE)
         }
 
       ############# ASSIGN METADATA KEYS to tracking data #########################
@@ -247,29 +255,29 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
         #ToOrient_data$metaDataKeys[KEY]
         list_keys <- c(list_keys,key)
       }
-      
-      ############# ASSIGN ZONES #########################
-      #assign zones
-      for (space_index in 1:length(Metadata_exp$spaces)){
-        list_zones <- NULL
-        for (ZONE in   1:length(Metadata_exp$spaces[[space_index]]$zones)) {
-          zone <- Metadata_exp$spaces[[space_index]]$zones[[ZONE]]$name
-          #defaultvalue <- unname(Metadata_exp$metaDataKeys[ZONE][[1]])
-          ToOrient_data$spaces[[space_index]]$createZone(zone)
-          #check
-          #ToOrient_data$spaces[[space_index]]$zones
-          list_zones <- c(list_zones,zone)
-        }
-        
-        #Assign SHAPE to ZONE (geometry to the nest zone)
-        #extract metadata info per key
-        for (ZONE.1 in   1:length(ToOrient_data$spaces[[space_index]]$zones)) {
-          #for (ZONE_KEY in list_zones) {
-          zone_definition <- Metadata_exp$spaces[[space_index]]$zones[[ZONE.1]]$definitions
-          #assign shapes
-          ToOrient_data$spaces[[space_index]]$zones[[ZONE.1]]$addDefinition(shapes=zone_definition[[1]][["shapes"]],start= fmTimeSinceEver(),end=fmTimeForever())
-        }#ZONE.1
-      }
+
+      # ############# ASSIGN ZONES #########################
+      # #assign zones
+      # for (space_index in 1:length(Metadata_exp$spaces)){
+      #   list_zones <- NULL
+      #   for (ZONE in   1:length(Metadata_exp$spaces[[space_index]]$zones)) {
+      #     zone <- Metadata_exp$spaces[[space_index]]$zones[[ZONE]]$name
+      #     #defaultvalue <- unname(Metadata_exp$metaDataKeys[ZONE][[1]])
+      #     ToOrient_data$spaces[[space_index]]$createZone(zone)
+      #     #check
+      #     #ToOrient_data$spaces[[space_index]]$zones
+      #     list_zones <- c(list_zones,zone)
+      #   }
+      #   
+      #   #Assign SHAPE to ZONE (geometry to the nest zone)
+      #   #extract metadata info per key
+      #   for (ZONE.1 in   1:length(ToOrient_data$spaces[[space_index]]$zones)) {
+      #     #for (ZONE_KEY in list_zones) {
+      #     zone_definition <- Metadata_exp$spaces[[space_index]]$zones[[ZONE.1]]$definitions
+      #     #assign shapes
+      #     ToOrient_data$spaces[[space_index]]$zones[[ZONE.1]]$addDefinition(shapes=zone_definition[[1]][["shapes"]],start= fmTimeSinceEver(),end=fmTimeForever())
+      #   }#ZONE.1
+      # }
       
       ###create capsule list
       ###CAUTION the relationship between shape name and id may be different from your manually oriented files.
@@ -431,7 +439,7 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
           ###finally, once ant has been oriented for all identifications, add its capsules
           ##assign capule numbers that match the order of the looped capsule names positions
           capsule_number <- 0
-          for (capsule_name in unlist(tracking_data$antShapeTypeNames)) {
+          for (capsule_name in unlist(ToOrient_data$antShapeTypeNames)) {
             capsule_number <- capsule_number +1
             #MAKE SURE THERE IS CAPSULE MATCHING, TO AVOID MIXING UP SHAPE INDEXES
             capsule_ratios <- capsule_list[[capsule_name]]; names(capsule_ratios) <- gsub("_ratio","",names(capsule_ratios))
@@ -446,10 +454,10 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
         rm(list=ls()[which(!ls()%in%to_keep_3)])
         gc()
       }# LOOP ANTS      
-      ToOrient_data$save(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS.myrmidon"))
-      print(paste("Saving",ToOrient_exp_name, "as AutoOriented_withMetaData_NS.myrmidon",sep =" "))
+      ToOrient_data$save(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))
+      print(paste("Saving",ToOrient_exp_name, "as AutoOriented.myrmidon",sep =" "))
       rm(list=(c("ToOrient_data"))) #remove experiment
-    }else{print(paste0(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS.myrmidon")," already exists! Skip!"))} # ToOrient FILES LOOP #closes: for (ToOrient_myr_file in ToOrient_data_list){
+    }else{print(paste0(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon")," already exists! Skip!"))} # ToOrient FILES LOOP #closes: for (ToOrient_myr_file in ToOrient_data_list){
     
     rm (list = ls() [which(!ls()%in%to_keep_2)] )
     gc()
