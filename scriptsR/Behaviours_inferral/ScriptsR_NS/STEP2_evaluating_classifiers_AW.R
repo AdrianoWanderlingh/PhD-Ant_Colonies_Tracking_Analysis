@@ -4,27 +4,14 @@ library(lme4)
 library(car)
 library(multcomp)
 
-USER <- "Nathalie"
-if (USER=="Adriano") {
-  SAVEOUTPUT <- "/home/cf19810/Documents"
-}
-if (USER=="Nathalie"){
-   SAVEOUTPUT <- "/media/bzniks/DISK1"
-}
-
-output_names <- list.files(path= file.path(SAVEOUTPUT, "MachineLearning_outcomes"),pattern="quality_scores",full.names = T)
-output_names <-output_names[which(!grepl("CHOSEN",output_names))]
-outcomes <- NULL
-for (output_name in output_names){
-  outcomes <- rbind(outcomes,read.table(output_name,header=T,stringsAsFactors = F))
-}
-
+outcomes <- read.table("/home/tracking_users/Documents/Adriano/Ants_behaviour_analysis/Data/MachineLearning_outcomes/quality_scores.txt",header=T,stringsAsFactors = F)
 beta <- 0.5
 outcomes <- outcomes[which(outcomes$beta==beta),]
 
+outcomes$classif <- outcomes$classifier #AW
 outcomes_scores <- outcomes[which(names(outcomes) %in% names(outcomes)[which(grepl("test",names(outcomes))| grepl("training",names(outcomes)))])]
-outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("test",names(outcomes))| grepl("pre_classifier",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
-
+outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("classifier",names(outcomes))|grepl("test",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
+#AW:added "classifer" to excluded outcomes_param
 outcomes_to_keep <- outcomes
 for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[which(!names(outcomes_param)%in% c("CAPSULE_FILE","MAX_INTERACTION_GAP"))])){
   print(paste("Evaluating best values for parameter",parameter))
@@ -32,12 +19,12 @@ for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[w
     for (what in c("training","test")){ ####Best parameter values for training and for test, on average for all attempts
       ###Build data frame for stats
       dat <- data.frame(
-                  CSI= outcomes_scores[,paste("CSI_",what,sep="")],
+                  Fbeta= outcomes_scores[,paste("Fbeta_",what,sep="")],
                    parameter = as.factor(outcomes_param[,parameter]),
-                   other_params = interaction(outcomes_param[names(outcomes_param)!=parameter])
+                   other_params = interaction(outcomes_param[names(outcomes_param)!=parameter],sep=".")
       )
       ###Fit stats model
-      model <- lmer (CSI~ parameter + (1|other_params),data=dat)
+      model <- lmer (Fbeta~ parameter + (1|other_params),data=dat)
       
       ###List parameter values in decreasing beta_coefficient order (higher coefficient in model = better)
       coefs         <- data.frame(summary(model)$coefficients)
@@ -65,12 +52,11 @@ for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[w
   outcomes_to_keep <- outcomes_to_keep[which(as.character(outcomes_to_keep[,parameter])  %in% as.character( get(paste(parameter,"_list",sep=""))) ), ]
 }
 
-###selected method: keep the ones with highest CSI_training and Fbeta_training
-# outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$CSI_training==max(outcomes_to_keep$CSI_training,na.rm=T)),]
+###selected method: keep the ones with highest Fbeta_training and Fbeta_training
 outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_training==max(outcomes_to_keep$Fbeta_training,na.rm=T)),]
+outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_training==max(outcomes_to_keep$Fbeta_training,na.rm=T)),] #AW
 ###among those, keep the one that has the best generalisation value
 outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep$Fbeta_test==max(outcomes_to_keep$Fbeta_test,na.rm=T)),]
 print(outcomes_to_keep)
 
-
-write.table(outcomes_to_keep,file=file.path(SAVEOUTPUT, "MachineLearning_outcomes","quality_scores_CHOSEN.txt"),col.names=T,row.names=F,quote=F,append=F)
+write.table(outcomes_to_keep,file="/home/cf19810/Documents/Ants_behaviour_analysis/Data/MachineLearning_outcomes/quality_scores_CHOSEN.txt",col.names=T,row.names=F,quote=F,append=F)

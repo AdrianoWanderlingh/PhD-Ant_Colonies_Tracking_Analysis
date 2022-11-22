@@ -16,7 +16,7 @@ rm(list=ls())
 gc()
 
 ###parameter to set at start
-USER <- "Adriano"#"Adriano"
+USER <- "Nathalie"#"Adriano"
 BEH <- "G"
 FRAME_RATE <- 8
 ###TO DO: also edit the path to BODYLENGTH_FILE when defining folders from line 45 onwards
@@ -58,8 +58,8 @@ if (USER=="Tom")     {
 if (USER=="Nathalie"){
   WORKDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
-  SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/BehaviouralInference_latest_BodyLength"
-  SAVEOUTPUT <- "/home/bzniks/Documents"
+  SCRIPTDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/ScriptsR"
+  SAVEOUTPUT <- "/media/bzniks/DISK1"
   BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="/")
   }
 
@@ -242,14 +242,14 @@ Grooming_LDA_eachRun            <- data.frame()
 
 ###initialise general output folder
 ##remove folder if already exists to amke sure we don't mix things up
-if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes"))){
-  unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive=T)
-}
-###create folder
-dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive = T)
+# if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes"))){
+#   unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive=T)
+# }
+# ###create folder
+# dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive = T)
 
 ###define name of general output table containing quality scores
-output_name <- file.path(SAVEOUTPUT, "MachineLearning_outcomes","quality_scores.txt")
+output_name <- file.path(SAVEOUTPUT, "MachineLearning_outcomes","quality_scores_1.txt")
 
 
 ###############################################################################
@@ -279,7 +279,7 @@ CAPSULE_FILE_LIST           <- c("CapsuleDef3","CapsuleDef4","CapsuleDef9","Caps
 Loop_ID       <- 1
 Trunk_Loop_ID  <- 1
 # for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
-  for (CAPSULE_FILE in CAPSULE_FILE_LIST[1]) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
+  for (CAPSULE_FILE in CAPSULE_FILE_LIST[2]) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
     #fmQueryComputeAntInteractions matcher for the max time interval in iteraction when the ant pair disengages the interaction. Specific for GROOMING
   #Sequentially vary the interaction gap-filling to check what effect this has on the agreement between the MANUAL & AUTOMATIC interactions
   # for (MAX_INTERACTION_GAP in c(15,20,25)) { #IN SECONDS (5,10, 15 never selected)
@@ -299,7 +299,7 @@ Trunk_Loop_ID  <- 1
 
     ##THRESHOLD to exclude jitter in the individuals' movement (DISTANCE)
     # for (DT_dist_THRESHOLD_BL in c(0,0.0015,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
-      for (DT_dist_THRESHOLD_BL in c(0,0.0015,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
+      for (DT_dist_THRESHOLD_BL in c(0,0.0005,0.001,0.0015,0.002,0.0025,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
         
       
       # Assign Hit based on threshold

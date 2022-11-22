@@ -46,17 +46,17 @@ if (USER=="Supercomputer1") {
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   EXPDATADIR <- "/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
-  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
+  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="")
+  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes_12-11-22",sep="/")
 }
 
 if (USER=="Adriano") {
-  WORKDIR <- "/media/tracking_users/DISK4/Ants_behaviour_analysis" #  "/home/cf19810/Documents/Ants_behaviour_analysis" #
+  WORKDIR <- "/media/cf19810/DISK4/Ants_behaviour_analysis" #  "/home/cf19810/Documents/Ants_behaviour_analysis" #
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
-  EXPDATADIR <- "/media/tracking_users/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
-  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
+  EXPDATADIR <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
+  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="")
+  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes_12-11-22",sep="/")
   
   #CHANGE EXPDATADIR TO DISK4/EXPERIMENT_DATA
   
@@ -66,26 +66,18 @@ if (USER=="Tom")     {
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   EXPDATADIR <- ""
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
-  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
+  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="")
+  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes_12-11-22",sep="/")
 }
 if (USER=="Nathalie"){
   WORKDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis"
   DATADIR <- paste(WORKDIR,"Data",sep="/")
   SCRIPTDIR <- "/home/bzniks/Dropbox/SeniorLectureship_Bristol/Students_postdocs/PhD_students/2019 Adriano Wanderlingh/code/PhD-exp1-data-analysis-main/scriptsR/BehaviouralInference_latest_BodyLength"
-  MachineLearningOutcome_DIR <- "/home/bzniks/Documents/MachineLearning_outcomes"
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="/")
+  MachineLearningOutcome_DIR <- "/home/bzniks/Documents/MachineLearning_outcomes_12-11-22"
+  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="/")
   EXPDATADIR <- "/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA"
 }
 
-if (USER=="Simon") {
-  WORKDIR <- "/home/tracking_users/Documents/Adriano/Ants_behaviour_analysis" #  "/home/cf19810/Documents/Ants_behaviour_analysis" #
-  DATADIR <- paste(WORKDIR,"Data",sep="/")
-  SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
-  EXPDATADIR <- "/media/tracking_users/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
-  BODYLENGTH_FILE <- paste(DATADIR,"Mean_ant_length_per_TrackingSystem.txt",sep="")
-  MachineLearningOutcome_DIR <- paste(DATADIR,"MachineLearning_outcomes",sep="/")
-}
 chosen_file_name <- file.path(MachineLearningOutcome_DIR, "quality_scores_CHOSEN.txt")
 #################################################################
 ############ OUTPUT FILE #####################################
@@ -169,7 +161,7 @@ myrmidon_files <- myrmidon_files[which(grepl(CAPSULE_FILE,myrmidon_files))]
 
 # ######### SELECT SUBSET IF NEEDED
 # myrmidon_files <-  myrmidon_files[grepl(myrmidon_files,pattern="REP1/|REP2/|REP3/|REP4/|REP5/|REP6/|REP7/")]
-myrmidon_files <-  myrmidon_files[grepl(myrmidon_files,pattern="BP|BS")]
+#myrmidon_files <-  myrmidon_files[grepl(myrmidon_files,pattern="BP|BS")]
 
 # myrmidon_file <- "REP10/R10BP_14-05-21_AntsCreated_AutoOriented_withMetaData_CapDef3.myrmidon"
 

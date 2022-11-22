@@ -1,4 +1,4 @@
-extraction_loop <- function(chunk,extract_movement_variables=T, selected_variables = NULL,all_body_lengths=NULL){
+extraction_loop <- function(chunk,extract_movement_variables=T, selected_variables = NULL,all_body_lengths=NULL,focal=F){
   ### initialise variables
   interaction_MANUAL      <- NULL
   summary_MANUAL          <- NULL
@@ -149,15 +149,27 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
       # head_id <- as.numeric(names(capsules)[[which(capsules=="head")]])
       # body_id <- as.numeric(names(capsules)[[which(capsules=="body")]])
       
- 
-      interacts_AUTO_REP_PER <- interaction_detection (e=e
-                                                       ,start=time_start
-                                                       ,end=time_stop
-                                                       ,max_time_gap = MAX_INTERACTION_GAP
-                                                       ,max_distance_moved = 2*mean(body_lengths$body_length,na.rm=T)
-                                                       ,capsule_matcher=ALL_CAPS_MATCHERS
-                                                       ,IF_frames=IF_frames
-                                                       )
+      if (focal==T){
+        interacts_AUTO_REP_PER <- interaction_detection (e=e
+                                                         ,start=time_start
+                                                         ,end=time_stop
+                                                         ,max_time_gap = MAX_INTERACTION_GAP
+                                                         ,max_distance_moved = 2*mean(body_lengths$body_length,na.rm=T)
+                                                         ,capsule_matcher=ALL_CAPS_MATCHERS
+                                                         ,desired_ants_OR = XXXXXX
+                                                         ,IF_frames=IF_frames
+        )
+        
+      }else{
+        interacts_AUTO_REP_PER <- interaction_detection (e=e
+                                                         ,start=time_start
+                                                         ,end=time_stop
+                                                         ,max_time_gap = MAX_INTERACTION_GAP
+                                                         ,max_distance_moved = 2*mean(body_lengths$body_length,na.rm=T)
+                                                         ,capsule_matcher=ALL_CAPS_MATCHERS
+                                                         ,IF_frames=IF_frames
+        )
+      }
       
       # matcherCapType <- fmMatcherInteractionType(body_id,head_id)
       # matcherCapTypeAntDists <- fmMatcherAnd(list(fmMatcherInteractionType(body_id,head_id)
