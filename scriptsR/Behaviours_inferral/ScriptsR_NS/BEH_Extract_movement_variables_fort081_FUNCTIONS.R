@@ -7,11 +7,11 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
   list_IF_Frames          <- list()
   
   ### get appropriate time_window and annotations objects
-  time_window <- get(paste("time_window_",chunk,sep=""))
-  annotations <- get(paste("annotations_",chunk,sep=""))
+  time_window_ori <- get(paste("time_window_",chunk,sep=""))
+  annotations_ori <- get(paste("annotations_",chunk,sep=""))
   
   ###loop over unique combinations of REPLICATE and PERIOD
-  for (REPLICATE in unique(time_window$REPLICATE)) 
+  for (REPLICATE in unique(time_window_ori$REPLICATE)) 
   {
     ###############################################################################
     ###### OPEN EXPERIMENT INFORMATION ############################################
@@ -19,9 +19,14 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
     
     ## locate the ant info file for REPLICATE
     MyrmidonCapsuleFile <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T)
-    MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl(CAPSULE_FILE,MyrmidonCapsuleFile)]
+    if (length(MyrmidonCapsuleFile)>0){
+      MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl(CAPSULE_FILE,MyrmidonCapsuleFile)]
+    }else{
+      MyrmidonCapsuleFile <- list.files(path=file.path(DATADIR,gsub( "R", "REP"  ,     substr(REPLICATE,1,nchar(REPLICATE)-2))), pattern=REPLICATE, full.names=T)
+      MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl(gsub("Capsule","Cap",CAPSULE_FILE),MyrmidonCapsuleFile)]
+    }
     
-    # print(MyrmidonCapsuleFile)
+     # print(MyrmidonCapsuleFile)
     e <- fmExperimentOpen(MyrmidonCapsuleFile)
 
     body_lengths <- get_body_lengths(e,all_body_lengths)
@@ -30,8 +35,12 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
     ########### START PERIOD LOOP ##################################################
     ################################################################################
     
-    for (PERIOD in unique(time_window$PERIOD))
+    for (PERIOD in unique(time_window_ori[which(time_window_ori$REPLICATE==REPLICATE),       "PERIOD"]))
     {
+      print(paste(REPLICATE,PERIOD))
+      time_window <- time_window_ori[which(time_window_ori$REPLICATE==REPLICATE&time_window_ori$PERIOD==PERIOD),      ]
+      annotations <- annotations_ori[which(annotations_ori$REPLICATE==REPLICATE&annotations_ori$PERIOD==PERIOD),      ]
+      
       ## set experiment time window 
       time_start <- fmTimeCreate(time_window[which(time_window$PERIOD==PERIOD & time_window$REPLICATE==REPLICATE),"time_start"])
       time_stop  <- fmTimeCreate(time_window[which(time_window$PERIOD==PERIOD & time_window$REPLICATE==REPLICATE),"time_stop"])
@@ -60,6 +69,8 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
       #assign frame numbering to annotations 
       ###NATH_FLAG: why do you not create a new object that subsets the annotations for the replicate and period you want?
       ### here you have an object with lots of irrelevant rows
+      
+      
       annotations$frame_start <- match.closest(x = annotations$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
       annotations$frame_stop  <- match.closest(x = annotations$T_stop_sec,  table = IF_frames$time_sec, tolerance = 0.05)
       
@@ -156,7 +167,7 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
                                                          ,max_time_gap = MAX_INTERACTION_GAP
                                                          ,max_distance_moved = 2*mean(body_lengths$body_length,na.rm=T)
                                                          ,capsule_matcher=ALL_CAPS_MATCHERS
-                                                         ,desired_ants_OR = XXXXXX
+                                                         ,desired_ants_OR = unique(annotations$Focal)
                                                          ,IF_frames=IF_frames
         )
         

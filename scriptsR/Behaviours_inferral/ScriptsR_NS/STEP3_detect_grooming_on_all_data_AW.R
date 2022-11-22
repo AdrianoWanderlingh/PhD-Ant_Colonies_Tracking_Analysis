@@ -156,7 +156,7 @@ names(classifier) <- chosen[,"classifier"]
 setwd(EXPDATADIR)
 print("Finding myrmidon files...")
 myrmidon_files <- list.files(pattern="CapDef3.myrmidon",recursive = T) #should be the CapsuleDef3 files
-CAPSULE_FILE <- "CapDef3"
+CAPSULE_FILE <- gsub("Capsule","Cap",CAPSULE_FILE)
 myrmidon_files <- myrmidon_files[which(grepl(CAPSULE_FILE,myrmidon_files))]
 
 # ######### SELECT SUBSET IF NEEDED

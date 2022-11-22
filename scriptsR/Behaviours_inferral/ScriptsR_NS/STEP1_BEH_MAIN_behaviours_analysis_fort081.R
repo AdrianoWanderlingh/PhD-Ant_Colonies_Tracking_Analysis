@@ -111,14 +111,19 @@ set.seed(2)       ###define I(arbitrary) seed so results can be reproduced over 
 ###############################################################################
 print("Loading manual annotations...")
 #the current annotation file FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv underwent cross-validation by Adriano
-annotations_all <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
+# annotations_all <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
+annotations_all <- read.csv(paste(DATADIR,"/Grooming_Classifier_CrossVal_ANNOTATIONS.csv",sep = ""), sep = ",")
+
 
 ##rename some columns
+# names(annotations_all)[which(grepl("rep",names(annotations_all)))]    <- "REPLICATE"
+# names(annotations_all)[which(grepl("period",names(annotations_all)))] <- "PERIOD"
 names(annotations_all)[which(grepl("rep",names(annotations_all)))]    <- "REPLICATE"
-names(annotations_all)[which(grepl("period",names(annotations_all)))] <- "PERIOD"
+names(annotations_all)[which(grepl("treatment",names(annotations_all)))] <- "PERIOD"
 
+# annotations_all$Behaviour     <- as.character(annotations_all$Behaviour)
+annotations_all$Behaviour     <- "G"
 
-annotations_all$Behaviour     <- as.character(annotations_all$Behaviour)
 annotations_all$Actor         <- as.character(annotations_all$Actor)
 annotations_all$Receiver      <- as.character(annotations_all$Receiver)
 
@@ -129,8 +134,27 @@ annotations_all$T_start <- NULL
 annotations_all$T_stop <- NULL
 
 ###create object that will contain time limits for annotations_all (contains all annotations for all behaviour so true time limit for period analysed)
-time_window_all        <- merge(aggregate(T_start_UNIX ~ PERIOD + REPLICATE, FUN=min, data=annotations_all),aggregate(T_stop_UNIX  ~ PERIOD + REPLICATE, FUN=max, data=annotations_all))
-names(time_window_all) <- c("PERIOD","REPLICATE","time_start","time_stop")
+# time_window_all        <- merge(aggregate(T_start_UNIX ~ PERIOD + REPLICATE, FUN=min, data=annotations_all),aggregate(T_stop_UNIX  ~ PERIOD + REPLICATE, FUN=max, data=annotations_all))
+# names(time_window_all) <- c("PERIOD","REPLICATE","time_start","time_stop")
+metadata_info         <- read.csv(paste(DATADIR,"/Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU.csv",sep = ""), sep = ",")
+time_window_all        <- data.frame(
+  PERIOD = "post"
+  ,REPLICATE = metadata_info$REP_treat
+  ,time_start = metadata_info$ReturnExposed_time
+)
+
+time_window_all$time_start <- as.POSIXct(time_window_all$time_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+###add two minutes to start
+time_window_all$time_start <- time_window_all$time_start + 2*60
+time_window_all$time_stop  <- time_window_all$time_start + 30*60
+###make sure annotations don't overrun 30 minute window
+for (i in 1:nrow(annotations_all)){
+  annotations_all[i,"T_stop_UNIX"] <- min(annotations_all[i,"T_stop_UNIX"],time_window_all[which(time_window_all$REPLICATE==annotations_all[i,"REPLICATE"]&time_window_all$PERIOD==annotations_all[i,"PERIOD"]),"time_stop"]-1/FRAME_RATE)
+  annotations_all[i,"T_start_UNIX"] <- max(annotations_all[i,"T_start_UNIX"],time_window_all[which(time_window_all$REPLICATE==annotations_all[i,"REPLICATE"]&time_window_all$PERIOD==annotations_all[i,"PERIOD"]),"time_start"]+1/FRAME_RATE)
+}
+annotations_all$duration      <- as.numeric(annotations_all$T_stop_UNIX - annotations_all$T_start_UNIX)
+
+
 
 ###finally, subset annotations_all for the behaviour of interest
 annotations_all <- annotations_all[which(annotations_all$Behaviour==BEH),]
@@ -143,7 +167,8 @@ annotations_all <- annotations_all[which(annotations_all$Behaviour==BEH),]
 ### Instead you need to define contiguous periods of time that contain half the events, for each colony/period
 print("Splitting manual annotations into test and training chunks...")
 ###first list nb of events for each behaviour, each replicate and each period
-nb_events <- aggregate ( Column ~ Behaviour + PERIOD + REPLICATE, FUN=length, data=annotations_all)
+nb_events <- aggregate ( Actor ~ Behaviour + PERIOD + REPLICATE, FUN=length, data=annotations_all)
+names(nb_events)[which(names(nb_events)=="Actor")] <- "Nb"
 ###narrow down to behaviour of interest only
 nb_events <- nb_events[which(nb_events$Behaviour==BEH),]
 
@@ -154,6 +179,7 @@ time_window_training <- NULL
 time_window_test     <- NULL
 
 ###then loop over nb_events
+total_duplicated_events <- 0
 for (i in 1:nrow(nb_events)){
   ###subset annotations_all to period/replicate of interest
   PERIOD    <- nb_events[i,"PERIOD"]
@@ -162,7 +188,7 @@ for (i in 1:nrow(nb_events)){
   
   ### ensure annotation_subset is sorted by time start sec then define a time_limit in between two successive events corresponding to half the events for this period  
   annotation_subset <- annotation_subset[order(annotation_subset$T_start_UNIX),]
-  time_limit <- min (c(as.numeric(annotation_subset[floor(nb_events[i,"Column"]/2),"T_stop_UNIX"]),as.numeric(annotation_subset[1+floor(nb_events[i,"Column"]/2),"T_start_UNIX"]) )) + (1/FRAME_RATE) * floor(round(abs(as.numeric(annotation_subset[floor(nb_events[i,"Column"]/2),"T_stop_UNIX"])-as.numeric(annotation_subset[1+floor(nb_events[i,"Column"]/2),"T_start_UNIX"]))/(1/FRAME_RATE))/2)          
+  time_limit <- min (c(as.numeric(annotation_subset[floor(nb_events[i,"Nb"]/2),"T_stop_UNIX"]),as.numeric(annotation_subset[1+floor(nb_events[i,"Nb"]/2),"T_start_UNIX"]) )) + (1/FRAME_RATE) * floor(round(abs(as.numeric(annotation_subset[floor(nb_events[i,"Nb"]/2),"T_stop_UNIX"])-as.numeric(annotation_subset[1+floor(nb_events[i,"Nb"]/2),"T_start_UNIX"]))/(1/FRAME_RATE))/2)          
   
   ###time_limit will work well if those two events don't overlap
   ###but if they do the corresponding lines will need to be duplicated with one event ending at time limit and one starting just after time_limit
@@ -171,6 +197,9 @@ for (i in 1:nrow(nb_events)){
   
   ###perform duplication if necessary
   if (nrow(to_duplicate)>=1){
+    
+    total_duplicated_events <- total_duplicated_events+nrow(to_duplicate)
+    
     to_keep_as_is <- annotation_subset[which(!(as.numeric(annotation_subset$T_start_UNIX)<=time_limit & as.numeric(annotation_subset$T_stop_UNIX)>time_limit) ),]
     to_duplicate_before             <-  to_duplicate
     to_duplicate_before$T_stop_UNIX <- as.POSIXct(time_limit,  origin="1970-01-01", tz="GMT" )
