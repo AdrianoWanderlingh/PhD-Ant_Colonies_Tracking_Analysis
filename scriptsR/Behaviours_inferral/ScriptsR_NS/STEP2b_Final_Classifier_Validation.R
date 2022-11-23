@@ -17,6 +17,7 @@ gc()
 
 ###parameter to set at start
 USER <- "Nathalie"#"Adriano"
+ANNOT_DATASET <- "Vasudha2021" # "Adriano2022"
 BEH <- "G"
 FRAME_RATE <- 8
 ###TO DO: also edit the path to BODYLENGTH_FILE when defining folders from line 45 onwards
@@ -47,7 +48,7 @@ if (USER=="Tom")     {
  }
 if (USER=="Nathalie"){
   DATADIR <- "/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA"
-  ANNOTATIONDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/Data/"
+  ANNOTATIONDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/Data"
   SCRIPTDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/ScriptsR"
   MachineLearningOutcome_DIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/Data/MachineLearning_outcomes_18-11-22"
   BODYLENGTH_FILE <- "/media/bzniks/DISK3/Ants_behaviour_analysis/Data/Mean_ant_length_per_TrackingSystem.txt"
@@ -64,6 +65,11 @@ suppressMessages(source(paste(SCRIPTDIR,"BEH_libraries.R",sep="/")))
 Sys.setenv("PKG_CXXFLAGS"="-std=c++11")
 sourceCpp(paste(SCRIPTDIR,"add_angles.cpp",sep="/"))
 sourceCpp(paste(SCRIPTDIR,"merge_interactions.cpp",sep="/"))
+
+#quality scores output file
+output_scores <- file.path(ANNOTATIONDIR,paste0("quality_scores_ClassifierValidation_",ANNOT_DATASET,"_",Sys.Date(),".txt"))
+output_name <- file.path(ANNOTATIONDIR,paste0("candidate_groomings_",ANNOT_DATASET,"_",Sys.Date(),".txt"))
+
 
 ###############################################################################
 ###### PARAMETERS #############################################################
@@ -95,40 +101,79 @@ DISAGREEMENT_THRESH <- 0.5
 ###Fixed parameter
 set.seed(2)       ###define I(arbitrary) seed so results can be reproduced over multiple runs of the program
 
+### SELECT ANNOTATION DATASET TO USE
+if (ANNOT_DATASET=="Vasudha2021") {
+  
+  ###############################################################################
+  ###READ WHOLE ANNOTATIONS DATASET #############################################
+  ###############################################################################
+  print("Loading manual annotations...")
+  #the current annotation file FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv underwent cross-validation by Adriano
+  annotations_all <- read.csv(paste(ANNOTATIONDIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
+  
+  ##rename some columns
+  names(annotations_all)[which(grepl("rep",names(annotations_all)))]    <- "REPLICATE"
+  names(annotations_all)[which(grepl("period",names(annotations_all)))] <- "PERIOD"
+  
+  
+  annotations_all$Behaviour     <- as.character(annotations_all$Behaviour)
+  annotations_all$Actor         <- as.character(annotations_all$Actor)
+  annotations_all$Receiver      <- as.character(annotations_all$Receiver)
+  
+  ###define new time columns called T_start_UNIX and T_stop_UNIX and delete T_start and T_stop
+  annotations_all$T_start_UNIX  <- as.POSIXct(annotations_all$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+  annotations_all$T_stop_UNIX   <- as.POSIXct(annotations_all$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+  annotations_all$T_start <- NULL
+  annotations_all$T_stop <- NULL
+  
+  ###create object that will contain time limits for annotations_all (contains all annotations for all behaviour so true time limit for period analysed)
+  time_window_all        <- merge(aggregate(T_start_UNIX ~ PERIOD + REPLICATE, FUN=min, data=annotations_all),aggregate(T_stop_UNIX  ~ PERIOD + REPLICATE, FUN=max, data=annotations_all))
+  names(time_window_all) <- c("PERIOD","REPLICATE","time_start","time_stop")
+  
+  ###finally, subset annotations_all for the behaviour of interest
+  annotations_all <- annotations_all[which(annotations_all$Behaviour==BEH),]
+  
+}
 
-###############################################################################
-###READ NEW ANNOTATIONS DATASET #############################################
-###############################################################################
-print("Loading manual annotations...")
-###create object that will contain time limits for annotations_all (contains all annotations for all behaviour so true time limit for period analysed)
-metadata_info         <- read.csv(paste(ANNOTATIONDIR,"/Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU.csv",sep = ""), sep = ",")
-time_window_all        <- data.frame(
-  PERIOD = "post"
-  ,REPLICATE = metadata_info$REP_treat
-  ,time_start = metadata_info$ReturnExposed_time
-)
 
-time_window_all$time_start <- as.POSIXct(time_window_all$time_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-###add two minutes to start
-time_window_all$time_start <- time_window_all$time_start + 2*60
-time_window_all$time_stop  <- time_window_all$time_start + 30*60
+### SELECT ANNOTATION DATASET TO USE
+if (ANNOT_DATASET=="Adriano2022") {
 
+  ###############################################################################
+  ###READ NEW ANNOTATIONS DATASET ##############################################
+  ###############################################################################
+  print("Loading manual annotations...")
+  ###create object that will contain time limits for annotations_all (contains all annotations for all behaviour so true time limit for period analysed)
+  metadata_info         <- read.csv(paste(ANNOTATIONDIR,"/Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU.csv",sep = ""), sep = ",")
+  time_window_all        <- data.frame(
+    PERIOD = "all" # "post"
+    ,REPLICATE = metadata_info$REP_treat
+    ,time_start = metadata_info$ReturnExposed_time
+  )
+  
+  time_window_all$time_start <- as.POSIXct(time_window_all$time_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+  ###add two minutes to start
+  time_window_all$time_start <- time_window_all$time_start + 2*60
+  time_window_all$time_stop  <- time_window_all$time_start + 30*60
+  
+  
+  #the current annotation file FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv underwent cross-validation by Adriano
+  annotations_all <- read.csv(paste(ANNOTATIONDIR,"/Grooming_Classifier_CrossVal_ANNOTATIONS.csv",sep = ""), sep = ",")
+  
+  ##rename some columns
+  names(annotations_all)[which(grepl("rep",names(annotations_all)))]    <- "REPLICATE"
+  names(annotations_all)[which(grepl("treatment",names(annotations_all)))] <- "PERIOD"
+  
+  annotations_all$Actor         <- as.character(annotations_all$Actor)
+  annotations_all$Receiver      <- as.character(annotations_all$Receiver)
+  
+  ###define new time columns called T_start_UNIX and T_stop_UNIX and delete T_start and T_stop
+  annotations_all$T_start_UNIX  <- as.POSIXct(annotations_all$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+  annotations_all$T_stop_UNIX   <- as.POSIXct(annotations_all$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+  annotations_all$T_start <- NULL
+  annotations_all$T_stop <- NULL
 
-#the current annotation file FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv underwent cross-validation by Adriano
-annotations_all <- read.csv(paste(ANNOTATIONDIR,"/Grooming_Classifier_CrossVal_ANNOTATIONS.csv",sep = ""), sep = ",")
-
-##rename some columns
-names(annotations_all)[which(grepl("rep",names(annotations_all)))]    <- "REPLICATE"
-names(annotations_all)[which(grepl("treatment",names(annotations_all)))] <- "PERIOD"
-
-annotations_all$Actor         <- as.character(annotations_all$Actor)
-annotations_all$Receiver      <- as.character(annotations_all$Receiver)
-
-###define new time columns called T_start_UNIX and T_stop_UNIX and delete T_start and T_stop
-annotations_all$T_start_UNIX  <- as.POSIXct(annotations_all$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations_all$T_stop_UNIX   <- as.POSIXct(annotations_all$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
-annotations_all$T_start <- NULL
-annotations_all$T_stop <- NULL
+}
 
 ###make sure annotations don't overrun 30 minute window
 for (i in 1:nrow(annotations_all)){
@@ -191,10 +236,48 @@ candidate_groomings["predicted_Hit"] <- predict_class  (summary_AUTO =    candid
 )
 print("Grooming predicted.")
 
-aut_man_agreement <- auto_manual_agreement (candidate_groomings[which(candidate_groomings$predicted_Hit==1),]
-                                            , all[["summary_MANUAL"]]
-                                            , all[["list_IF_Frames"]]
+
+for (REP in unique(candidate_groomings$REPLICATE)) {
+
+# aut_man_agreement <- auto_manual_agreement (candidate_groomings[which(candidate_groomings$predicted_Hit==1),]
+#                                             , all[["summary_MANUAL"]]
+#                                             , all[["list_IF_Frames"]]
+# )
+
+if (nrow(candidate_groomings[which(candidate_groomings$predicted_Hit==1 & candidate_groomings$REPLICATE==REP),])<1) {
+  #temporary solution for REPs without candidate grooming
+  quality_scores_REP <- data.frame(replicate=REP,CSI=NA,Fbeta=NA,precision=NA,sensitivity=NA)
+}else{
+  aut_man_agreement_REP <- auto_manual_agreement (candidate_groomings[which(candidate_groomings$predicted_Hit==1 & candidate_groomings$REPLICATE==REP),]
+                                                , subset(all[["summary_MANUAL"]],all[["summary_MANUAL"]]$REPLICATE==REP)
+                                                , lapply(all["list_IF_Frames"], function(x) x[grep(paste0("IF_frames_",REP),names(x))])$list_IF_Frames
+                                                #, subset(all["list_IF_Frames"]$list_IF_Frames)
 )
-quality_scores_all <-round(quality_scores(aut_man_agreement[["true_false_positive_negatives"]],beta),digits=3 )
 
+  quality_scores_REP <-round(quality_scores(aut_man_agreement_REP[["true_false_positive_negatives"]],beta),digits=3 )
+  quality_scores_REP <- data.frame(replicate=REP,as.list(quality_scores_REP))
+}
 
+#add tracking system info, $spaces?
+  
+####  
+
+  if (file.exists(output_scores)){
+    write.table(quality_scores_REP,file=output_scores,append=T,col.names=F,row.names=F,quote=T)
+  }else{
+    write.table(quality_scores_REP,file=output_scores,append=F,col.names=T,row.names=F,quote=T)
+  }
+
+}
+
+###############################################################################
+######        SAVING FINAL GROOMING TABLE        ##############################
+###############################################################################
+# ### AW
+# if (file.exists(output_name)){
+#   write.table(inferred_groomings,file=output_name,append=T,col.names=F,row.names=F,quote=T,sep=",")
+# }else{
+#   write.table(inferred_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
+# }
+
+write.table(candidate_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
