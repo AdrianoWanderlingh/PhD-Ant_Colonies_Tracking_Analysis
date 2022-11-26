@@ -30,6 +30,10 @@
 gc()
 mallinfo::malloc.trim(0L)
 
+library(showtext)
+font_add_google("Montserrat")
+showtext_auto() #must be called to indicate that showtext is going to be automatically invoked to draw text whenever a plot is created.
+
 library(FortMyrmidon)
 library("ggplot2")
 library(lubridate)
@@ -88,19 +92,18 @@ approach")
 
 ############# PLOTS STYLE ################
 
-STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
-              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
-              theme_bw(),
+STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),theme_bw(),
+              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), text=element_text(family="Montserrat") ),
               scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
 )
 
 STYLE_continous <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
-                        theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+                        theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), text=element_text(family="Montserrat")),
                         theme_bw()
 )
 
 
-STYLE_NOVIR <- list(theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+STYLE_NOVIR <- list(theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), text=element_text(family="Montserrat")),
                     theme_bw(),
                     scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
 )
@@ -111,6 +114,7 @@ STYLE_NOVIR <- list(theme(panel.grid.major = element_blank(), panel.grid.minor =
 ### DIRECTORIES
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
 DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data"
+METADATADIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data"
 
 ### EXTRAS
 Presentation_plots             <- FALSE #script for single interactions heatmaps
@@ -301,8 +305,8 @@ write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",se
 ###### AGGREGATE ALL VALUES FOR PRE.POST  #####
 # LOAD
 inferred <- read.table(paste(DATADIR,"/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-Reps_N_exposed <- read.table(paste(DATADIR,"/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+Reps_N_exposed <- read.table(paste(METADATADIR,"/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+metadata <- read.table(paste(METADATADIR,"/Metadata_Exp1_2021.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 
 # remove EXP_GAP data
 inferred <- inferred[which(inferred$PERIOD!="EXPOSURE_GAP"),]
@@ -358,10 +362,10 @@ inferred <- Meta_all_combs
 
 # Rename by name
 inferred$TREATMENT <- as.factor(inferred$TREATMENT)
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BS"] <- "Big Sham"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BP"] <- "Big Pathogen"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SS"] <- "Small Sham"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SP"] <- "Small Pathogen"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BS"] <- "Large - Sham"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BP"] <- "Large - Pathogen"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SS"] <- "Small - Sham"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SP"] <- "Small - Pathogen"
 
 ###### AGGREGATE VALUES FOR PRE.POST: FULL DATASET | FOR STATISTICS #####
 ### AGGREGATE TO THE LEVEL OF ANT
@@ -536,10 +540,10 @@ for (TIME in time.break) {
   
   # Rename by name
   inferred_bin$TREATMENT <- as.factor(inferred_bin$TREATMENT)
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BS"] <- "Big Sham"
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BP"] <- "Big Pathogen"
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SS"] <- "Small Sham"
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SP"] <- "Small Pathogen"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BS"] <- "Large - Sham"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BP"] <- "Large - Pathogen"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SS"] <- "Small - Sham"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SP"] <- "Small - Pathogen"
   ################################################
   
   ## count the number of observations by ant and get mean
@@ -856,6 +860,20 @@ ggplot(infer_full, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
   #facet_wrap(~ PERIOD) + #, labeller = as_labeller(time_of_day,text.add)
   STYLE +
   labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate (full period) ")), y = "Mean Freq by ant")
+
+## MEAN FREQUENCY -VERSION FOR POSTER
+ggplot(infer_full, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
+  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.8, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
+  #facet_wrap(~ PERIOD) + #, labeller = as_labeller(time_of_day,text.add)
+  STYLE +
+  scale_x_discrete(labels = c("pre-exposure", "post-exposure")) +
+  guides(fill=guide_legend(title="Colony - treatment")) +
+  labs( y = "Mean freq. of care-giving\nevents received by ant", x="") +
+  coord_cartesian(ylim = c(0, max(infer_full$Mean_Count_byAnt)+5)) 
+
+
+
 
 ## MEAN DURATION
 ggplot(infer_full, aes(x=PERIOD, y=Mean_duration, fill= TREATMENT))+
