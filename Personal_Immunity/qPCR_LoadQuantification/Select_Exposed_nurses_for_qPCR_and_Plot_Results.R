@@ -6,9 +6,23 @@ library(dplyr)
 library(broman)
 library(ggplot2)
 library(stringr)
+library(plotrix)
+
+#functions
+RIGHT = function(x,n){
+  substring(x,nchar(x)-n+1)
+}
+
+STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
+              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+              theme_bw(),
+              scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
+)
 
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
 DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data"
+IMMUNITY_DATA <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen_Quantification_Data"
+
 
 metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 
@@ -70,20 +84,11 @@ write.table(metadata_Selected,file="/home/cf19810/Documents/scriptsR/EXP1_base_a
 ##### PLOT OUTPUTS #####################################################
 
 
-RIGHT = function(x,n){
-  substring(x,nchar(x)-n+1)
-}
 
-STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
-              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
-              theme_bw(),
-              scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
-)
-
-Florant_output <- read.csv("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen Quantification Data/220809-Adriano-MetIS2-colony-checkup_Analysis.csv",header=T,stringsAsFactors = F, sep=",")
+Florant_output <- read.csv(paste0(IMMUNITY_DATA,"/220809-Adriano-MetIS2-colony-checkup_Analysis.csv"),header=T,stringsAsFactors = F, sep=",")
 colnames(Florant_output)[which(colnames(Florant_output)=="Reduced.quantification..ng.µL..negative.if.below.detection.threshold.0.001.")] <-   "Red_quantif_ng.µL"
 
-info_ants <- read.table("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen Quantification Data/Select_Exposed_nurses_for_qPCR_8-08-22_ANNOTATED.txt",header=T,stringsAsFactors = F, sep=",")
+info_ants <- read.table(paste0(IMMUNITY_DATA,"/Select_Exposed_nurses_for_qPCR_8-08-22_ANNOTATED.txt"),header=T,stringsAsFactors = F, sep=",")
 
 
 info_ants$Well <- gsub("^(.{1})(.*)$",         # Apply gsub
@@ -145,13 +150,22 @@ caption = paste("Threshold cycle (Ct) missing for" , No_CT_REPs) ) #+
 
 
 
-######
-####################################################
-### FULL PATHOGEN EXPOSED DATASET!
+
+########################################################################################################
+### FULL PATHOGEN EXPOSED DATASET! #####################################################################
+########################################################################################################
+
+
+#### MAKE THIS INDIPENDENT FROM THE ABOVE BIT! MAYBE JUST ADDING AN IF STATEMENT OR SOMETHING ON THE TOP PART
 
 # read csv
-DNA_Results <- read.csv(paste(WORKDIR,"/Personal_Immunity/Pathogen Quantification Data/Adriano-DNA_Results_Analysis_with_Identities_allPath_plus_sampleShams.csv",sep=""),header=T,stringsAsFactors = F, sep=",")
-
+##############################
+#DESCLAIMER:
+# currently (3/11/22) the file contains the data for the first run (09/08/22) with 2 ants per colony + half of the pathogen colonies (up to the 3/11/22)
+DNA_Results <- read.csv(paste(IMMUNITY_DATA,"/02-11-22_Adriano-DNA_Results_Analysis_with_Identities_Path_plus_sampleShams.csv",sep=""),header=T,stringsAsFactors = F, sep=",")
+#fix missing labels
+DNA_Results$Sample_position <- sub(".*\\-", "", DNA_Results$Code)
+DNA_Results$Sample_Plate <- sub("\\-.*", "", DNA_Results$Code)
 
 DNA_Results$Treatment <- RIGHT(DNA_Results$Colony,2)
 
@@ -164,38 +178,65 @@ levels(DNA_Results$Treatment)[levels(DNA_Results$Treatment)=="SP"] <- "Small Pat
 
 DNA_Results$MbruDNA <- as.numeric(DNA_Results$MbruDNA)
 
-No_CT_REPs <- NULL
-#No_CT_REPs <- toString(DNA_Results[which(DNA_Results$MbruDNA == No_CT_value),"Colony"])
 
+# Select only pathogen treated colonies
+#DNA_Results <- DNA_Results[ which(DNA_Results$Treatment == "Big Pathogen" | DNA_Results$Treatment == "Small Pathogen") , ]
+#filter colonies with only handful of individuals
+DNA_Results <- DNA_Results %>% 
+                group_by(Colony) %>%
+                filter(sum(NROW(Colony))>10)
 
+#see which cols have been processed
 table(DNA_Results$Colony)
 
-OnlyPathogen <- DNA_Results[ which( DNA_Results$Treatment == "Big Pathogen" | DNA_Results$Treatment == "Small Pathogen") , ]
+### CHECK THE WELLS POSITIONS TO ADD THE ANT IDENTITY
+plate_positions_list <- list.files(path= file.path(IMMUNITY_DATA, "QPCR_SAMPLING_TAGSCANNER"),pattern="PLAQUE",full.names = T)
 
-################################################################################################################
-################################################################################################################
-################################################################################################################
-########## operate a leftjoin to add info on REP-treat (colony in the new file) and ANT EXPOSURE
-## FOR THAT, I WILL NEED TO CHECK THE WELLS POSITIONS TO ADD THE ANT IDENTITY!!!!!!
+plate_positions <- do.call("rbind", lapply(plate_positions_list, function(x) {
+  dat <- read.csv(x, header=TRUE)
+  dat$fileName <- tools::file_path_sans_ext(basename(x))
+  dat
+}))
 
-#### RE-EXPORT FRESH METADATA, THEN PUT INFO ON PLATES/WELLS IN METADATA (FILE "METATADATA + PLATE INFO)
-# THEN IN SELECT_EXPOSED_NURSES_FOR_QPCR ADD TO OnlyPathogen THE EXPOSED/QUEEN/ ETC INFO!
+colnames(plate_positions)[which(colnames(plate_positions)=="Comment")] <- "Sample_position"
+#extract col and plaque info
+plate_positions$Sample_Plate <- sub("\\_.*", "", plate_positions$fileName)
+plate_positions$Sample_Plate <- gsub('[PLAQUE]','',plate_positions$Sample_Plate)
 
-# metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-# DNA_Results <- left_join(OnlyPathogen, metadata, by = c("REP_treat","antID"))                 # Apply left_join dplyr function
+plate_positions$Colony <- sub(".*\\-", "", plate_positions$fileName)
 
-################################################################################################################
-################################################################################################################
-################################################################################################################
 
-No_CT_REPs <- toString(OnlyPathogen[which(OnlyPathogen$MbruDNA == 0),"Colony"])
-N_ants_NoCt <- length(OnlyPathogen[which(OnlyPathogen$MbruDNA == 0),"Colony"])
+common_col_names <- intersect(names(DNA_Results), names(plate_positions))
+DNA_Results_annotated <- merge(DNA_Results, plate_positions, by=common_col_names, all.x=TRUE)
 
-ggplot(OnlyPathogen,
+# ## info on missing data
+# data_count1 <- aggregate( TagID ~ Colony,                        # Count NA by group
+#                           DNA_Results_annotated,
+#                          function(x) { sum(is.na(x)) },
+#                          na.action = NULL)
+
+metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+#rename cols to match the DNA results
+colnames(metadata)[which(colnames(metadata)=="REP_treat")] <- "Colony"
+colnames(metadata)[which(colnames(metadata)=="antID")] <- "AntID"
+
+
+#Merge info file of plate positions with the DNA results
+common_col_names1 <- intersect(names(DNA_Results_annotated), names(metadata))
+DNA_Results_annotated <- merge(DNA_Results_annotated, metadata, by=common_col_names1, all.x=TRUE)
+
+# DNA_Results <- left_join(DNA_Results, metadata, by = c("REP_treat","antID"))                 # Apply left_join dplyr function
+
+#check objects with no values
+No_CT_REPs <- toString(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
+N_ants_NoCt <- length(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
+
+#### LABELS PLOT
+ggplot(DNA_Results_annotated,
        aes(x = Treatment, y = MbruDNA,group = Treatment,color = Treatment, label = Colony)) +
   #geom_jitter(position = position_jitter(seed = 1)) +
   #geom_text(position = position_jitter(seed = 5),fontface = "bold") +
-  geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == No_CT_value, 0.5, 1)))+
+  geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
   STYLE +
   theme(legend.position = "none") +
   labs(title = "Pathogen Quantification Adriano",
@@ -204,7 +245,144 @@ ggplot(OnlyPathogen,
        caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) ) #+
 #facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
 
-#ADD INFO FROM METADATA ON EXPOSURE! THEN FACET BY EXPOSURE
+#remove  dead ants
+DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$Exposed)),]
+
+#extract info from plot for making mean of different colour
+p <- ggplot(DNA_Results_annotated,
+            aes(x = Exposed, y = MbruDNA, fill=Treatment)) + geom_boxplot()
+plotdat <- ggplot_build(p)$data[[1]]
+
+## BOXPLOT
+ggplot(DNA_Results_annotated,
+       aes(x = Exposed, y = MbruDNA, colour=Treatment)) + #,group = Exposed,color = Exposed
+  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
+  geom_boxplot(lwd=0.8) + #lwd=0.8
+  geom_point(aes(colour = Treatment),position = position_jitterdodge())+ #,alpha= 0.8,stroke=0
+  #geom_point() +
+  STYLE +
+  #theme(legend.position = "none") +
+  labs(#title = "Pathogen Quantification Adriano",
+       #subtitle = "All ants",
+       y = "Reduced M. brunneum quantification ng/µL per ant",
+       x="",
+       caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) )+
+  scale_x_discrete(labels = c("untreated", "treated")) #+
+  #geom_segment(data=plotdat, aes(x=xmin, xend=xmax, y=middle, yend=middle),colour="darkgray",size=1)
+
+
+DNA_Results_annotated_MEAN    <- aggregate(MbruDNA ~ Treatment + Exposed , FUN=mean, na.rm=T, na.action=na.pass, DNA_Results_annotated) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+DNA_Results_annotated_SE    <- aggregate(MbruDNA ~ Treatment + Exposed , FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE) [match("MbruDNA",colnames(DNA_Results_annotated_SE))] <- "SD_MbruDNA"
+DNA_Results_for_barplot    <-  plyr::join(x=DNA_Results_annotated_MEAN, y=DNA_Results_annotated_SE, type = "full", match = "all")
+
+######### barplot
+ggplot(DNA_Results_for_barplot, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
+  #geom_bar(stat='identity',position = position_dodge())+
+  geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  STYLE+
+  labs(#title = "Pathogen Quantification Adriano",
+    #subtitle = "All ants",
+    y = "Mean Reduced M. brunneum quantification ng/µL",
+    x="") +
+  scale_x_discrete(labels = c("untreated", "treated")) #+
+  #facet_wrap(~ Exposed)
+  # labs(#title= "Grooming Location",
+  #      subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
+
+
+
+####### nurses vs foragers! #####################################################
+
+## BOXPLOT
+ggplot(DNA_Results_annotated,
+       aes(x = Exposed, y = MbruDNA, colour=Treatment)) + #,group = Exposed,color = Exposed
+  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
+  geom_boxplot(lwd=0.8) + #lwd=0.8
+  geom_point(aes(colour = Treatment),position = position_jitterdodge())+ #,alpha= 0.8,stroke=0
+  #geom_point() +
+  STYLE +
+  #theme(legend.position = "none") +
+  labs(#title = "Pathogen Quantification Adriano",
+    #subtitle = "All ants",
+    y = "Reduced M. brunneum quantification ng/µL per ant",
+    x="",
+    caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) )+
+  scale_x_discrete(labels = c("untreated", "treated")) +
+  facet_grid(~ AntTask)
+#geom_segment(data=plotdat, aes(x=xmin, xend=xmax, y=middle, yend=middle),colour="darkgray",size=1)
+
+#-------
+
+### keep ant task
+DNA_Results_annotated_MEAN_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=mean, na.rm=T, na.action=na.pass, DNA_Results_annotated) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+DNA_Results_annotated_SE_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE_T) [match("MbruDNA",colnames(DNA_Results_annotated_SE_T))] <- "SD_MbruDNA"
+DNA_Results_for_barplot_T    <-  plyr::join(x=DNA_Results_annotated_MEAN_T, y=DNA_Results_annotated_SE_T, type = "full", match = "all")
+
+######### barplot
+ggplot(DNA_Results_for_barplot_T, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
+  #geom_bar(stat='identity',position = position_dodge())+
+  geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  STYLE+
+  labs(#title = "Pathogen Quantification Adriano",
+    #subtitle = "All ants",
+    y = "Mean Reduced M. brunneum quantification ng/µL",
+    x="") +
+  scale_x_discrete(labels = c("untreated", "treated")) +
+  facet_grid(~ AntTask)#+
+#facet_wrap(~ Exposed)
+# labs(#title= "Grooming Location",
+#      subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
+
+
+DNA_Results_untreated <- DNA_Results_annotated[which(DNA_Results_annotated$Exposed==FALSE),]
+DNA_Results_untreated <- DNA_Results_untreated[which(DNA_Results_untreated$IsAlive==TRUE),]
+
+######### BOXPLOT SUBSET FOR EFFECT ON UNTREATED ANTS ONLY
+## BOXPLOT
+ggplot(DNA_Results_untreated,
+       aes(x = Exposed, y = MbruDNA, colour=Treatment)) + #,group = Exposed,color = Exposed
+  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
+  geom_boxplot(lwd=0.8) + #lwd=0.8
+  geom_point(aes(colour = Treatment),position = position_jitterdodge())+ #,alpha= 0.8,stroke=0
+  #geom_point() +
+  STYLE +
+  #theme(legend.position = "none") +
+  labs(#title = "Pathogen Quantification Adriano",
+    #subtitle = "All ants",
+    y = "Reduced M. brunneum quantification ng/µL per ant",
+    x ="")+
+  scale_x_discrete(labels = c("", "")) +
+  facet_grid(~ AntTask)
+
+# 
+DNA_Results_for_barplot_untreated    <-  DNA_Results_for_barplot_T[which(DNA_Results_for_barplot_T$Exposed==FALSE),]
+  
+######### barplot
+ggplot(DNA_Results_for_barplot_untreated, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
+  #geom_bar(stat='identity',position = position_dodge())+
+  geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
+  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+  STYLE+
+  labs(#title = "Pathogen Quantification Adriano",
+    #subtitle = "All ants",
+    y = "Mean Reduced M. brunneum quantification ng/µL",
+    x="") +
+  scale_x_discrete(labels = c("", "")) +
+  facet_grid(~ AntTask)
+
 
 
 #replot these data + stats!
+
+print( ggplot(DNA_Results_annotated, aes(x = MbruDNA)) +
+         geom_histogram(position = "identity", bins = 30) + facet_wrap(~Treatment)  +
+         xlab("MbruDNA") )  +
+  xlim(0.1,15)
+
+#Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
+print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
+#  + (1|time_of_day) is non relevant for both trimmed 4h blocks and full time
+m1 <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = DNA_Results_annotated) # the "/" is for the nesting #  + (1|time_of_day) 
+
