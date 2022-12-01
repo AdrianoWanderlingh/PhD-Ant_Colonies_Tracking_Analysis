@@ -1,29 +1,68 @@
-# Select Random Exposed nurses to do qpcr quantif
-## 2 per colony
 
-######################################### Include the missing reps!!!
+##### LIBRARIES
 library(dplyr)
 library(broman)
 library(ggplot2)
 library(stringr)
 library(plotrix)
+## for stats
+library(performance)
+library(remotes)
+library(remotes)
+#install_version("MuMIn", "1.46.0")
+library(MuMIn)
+library(multcomp)
+library(multcompView)
+library(blmeco)
+library(sjPlot)
+library(lsmeans)
+#library(rcompanion)
+#install_version("rcompanion", "2.3.0")
 
 #functions
 RIGHT = function(x,n){
   substring(x,nchar(x)-n+1)
 }
 
+#
 STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),
               theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
               theme_bw(),
               scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
 )
 
+#
+#function to test normality of residuals
+test_norm <- function(resids){
+  print("Testing normality")
+  if (length(resids)<=300){
+    print("Fewer than 300 data points so performing Shapiro-Wilk's test")
+    print(shapiro.test(resids))
+  }else{
+    print("More than 300 data points so using the skewness and kurtosis
+approach")
+    print("Skewness should be between -3 and +3 (best around zero")
+    print(skewness(resids))
+    print("")
+    print("Excess kurtosis (i.e. absolute kurtosis -3) should be less than 4; ideally around zero")
+    print(kurtosis(resids))
+  }
+}
+
+
+LoadOriData <- FALSE
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
 DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data"
 IMMUNITY_DATA <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen_Quantification_Data"
 
+#############################################################################################
+#############################################################################################
 
+if (LoadOriData) {
+
+  # Select Random Exposed nurses to do qpcr quantif
+  ## 2 per colony
+  
 metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 
 metadata <- metadata[which(metadata$Exposed==TRUE),]
@@ -136,10 +175,10 @@ ggplot(Meta_all_combs,
   theme(legend.position = "none") +
 labs(title = "Pathogen Quantification Adriano",
 subtitle = "2 ants per large colony, 1 per small colony",
- y = "Reduced quantification ng/µL",
+ y = " quantification ng/µL",
 caption = paste("Threshold cycle (Ct) missing for" , No_CT_REPs) ) #+
 #facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
-
+}
 
 
 
@@ -155,13 +194,9 @@ caption = paste("Threshold cycle (Ct) missing for" , No_CT_REPs) ) #+
 ### FULL PATHOGEN EXPOSED DATASET! #####################################################################
 ########################################################################################################
 
-
-#### MAKE THIS INDIPENDENT FROM THE ABOVE BIT! MAYBE JUST ADDING AN IF STATEMENT OR SOMETHING ON THE TOP PART
-
 # read csv
 ##############################
-#DESCLAIMER:
-# currently (3/11/22) the file contains the data for the first run (09/08/22) with 2 ants per colony + half of the pathogen colonies (up to the 3/11/22)
+# The file contains the data for the first run (09/08/22) with 2 ants per colony + half of the pathogen colonies (up to the 3/11/22)
 DNA_Results <- read.csv(paste(IMMUNITY_DATA,"/02-11-22_Adriano-DNA_Results_Analysis_with_Identities_Path_plus_sampleShams.csv",sep=""),header=T,stringsAsFactors = F, sep=",")
 #fix missing labels
 DNA_Results$Sample_position <- sub(".*\\-", "", DNA_Results$Code)
@@ -227,162 +262,159 @@ DNA_Results_annotated <- merge(DNA_Results_annotated, metadata, by=common_col_na
 
 # DNA_Results <- left_join(DNA_Results, metadata, by = c("REP_treat","antID"))                 # Apply left_join dplyr function
 
-#check objects with no values
-No_CT_REPs <- toString(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
-N_ants_NoCt <- length(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
+###### filter objects below detection threshold of the qPCR machine.
+## threshold calculated as the point of inflection of the values curve (scatterplot of the ordered Cts), getting the values of second derivative. 
+# by point 990 (new data only) there is the start of the threshold, corresponding to Ct of 36. Above 36 the detection is non reliable.
+DNA_Results_annotated$Ct1 <- as.numeric(DNA_Results_annotated$Ct1)
+DNA_Results_annotated$Ct2 <- as.numeric(DNA_Results_annotated$Ct2)
 
-#### LABELS PLOT
-ggplot(DNA_Results_annotated,
-       aes(x = Treatment, y = MbruDNA,group = Treatment,color = Treatment, label = Colony)) +
-  #geom_jitter(position = position_jitter(seed = 1)) +
-  #geom_text(position = position_jitter(seed = 5),fontface = "bold") +
-  geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
-  STYLE +
-  theme(legend.position = "none") +
-  labs(title = "Pathogen Quantification Adriano",
-       subtitle = "All ants",
-       y = "Reduced quantification ng/µL",
-       caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) ) #+
-#facet_wrap(~ PERIOD) #, labeller = as_labeller(time_of_day,text.add)
+DNA_Results_annotated$Ct_mean <- rowMeans(DNA_Results_annotated[,c("Ct1","Ct2")],na.rm=T)
+#filter values above detection threshold
+DNA_Results_annotated <- DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean <36),]
+
+# #check objects with no values
+# No_CT_REPs <- toString(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
+# N_ants_NoCt <- length(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
 
 #remove  dead ants
-DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$Exposed)),]
+DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$AntTask)),]
 
 #extract info from plot for making mean of different colour
 p <- ggplot(DNA_Results_annotated,
             aes(x = Exposed, y = MbruDNA, fill=Treatment)) + geom_boxplot()
 plotdat <- ggplot_build(p)$data[[1]]
 
-## BOXPLOT
-ggplot(DNA_Results_annotated,
-       aes(x = Exposed, y = MbruDNA, colour=Treatment)) + #,group = Exposed,color = Exposed
-  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
-  geom_boxplot(lwd=0.8) + #lwd=0.8
-  geom_point(aes(colour = Treatment),position = position_jitterdodge())+ #,alpha= 0.8,stroke=0
-  #geom_point() +
-  STYLE +
-  #theme(legend.position = "none") +
-  labs(#title = "Pathogen Quantification Adriano",
-       #subtitle = "All ants",
-       y = "Reduced M. brunneum quantification ng/µL per ant",
-       x="",
-       caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) )+
-  scale_x_discrete(labels = c("untreated", "treated")) #+
-  #geom_segment(data=plotdat, aes(x=xmin, xend=xmax, y=middle, yend=middle),colour="darkgray",size=1)
 
 
-DNA_Results_annotated_MEAN    <- aggregate(MbruDNA ~ Treatment + Exposed , FUN=mean, na.rm=T, na.action=na.pass, DNA_Results_annotated) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
-DNA_Results_annotated_SE    <- aggregate(MbruDNA ~ Treatment + Exposed , FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE) [match("MbruDNA",colnames(DNA_Results_annotated_SE))] <- "SD_MbruDNA"
-DNA_Results_for_barplot    <-  plyr::join(x=DNA_Results_annotated_MEAN, y=DNA_Results_annotated_SE, type = "full", match = "all")
+#####################################################################################
+##################                 STATS             ################################
+#####################################################################################
 
-######### barplot
-ggplot(DNA_Results_for_barplot, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
-  #geom_bar(stat='identity',position = position_dodge())+
-  geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE+
-  labs(#title = "Pathogen Quantification Adriano",
-    #subtitle = "All ants",
-    y = "Mean Reduced M. brunneum quantification ng/µL",
-    x="") +
-  scale_x_discrete(labels = c("untreated", "treated")) #+
-  #facet_wrap(~ Exposed)
-  # labs(#title= "Grooming Location",
-  #      subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
+# maybe low Rsquared not relevant according to this: https://stats.stackexchange.com/questions/509933/is-there-such-a-thing-as-a-too-low-r-squared-when-running-multiple-linear-regres
 
 
-
-####### nurses vs foragers! #####################################################
-
-## BOXPLOT
-ggplot(DNA_Results_annotated,
-       aes(x = Exposed, y = MbruDNA, colour=Treatment)) + #,group = Exposed,color = Exposed
-  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
-  geom_boxplot(lwd=0.8) + #lwd=0.8
-  geom_point(aes(colour = Treatment),position = position_jitterdodge())+ #,alpha= 0.8,stroke=0
-  #geom_point() +
-  STYLE +
-  #theme(legend.position = "none") +
-  labs(#title = "Pathogen Quantification Adriano",
-    #subtitle = "All ants",
-    y = "Reduced M. brunneum quantification ng/µL per ant",
-    x="",
-    caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) )+
-  scale_x_discrete(labels = c("untreated", "treated")) +
-  facet_grid(~ AntTask)
-#geom_segment(data=plotdat, aes(x=xmin, xend=xmax, y=middle, yend=middle),colour="darkgray",size=1)
-
-#-------
-
-### keep ant task
-DNA_Results_annotated_MEAN_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=mean, na.rm=T, na.action=na.pass, DNA_Results_annotated) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
-DNA_Results_annotated_SE_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE_T) [match("MbruDNA",colnames(DNA_Results_annotated_SE_T))] <- "SD_MbruDNA"
-DNA_Results_for_barplot_T    <-  plyr::join(x=DNA_Results_annotated_MEAN_T, y=DNA_Results_annotated_SE_T, type = "full", match = "all")
-
-######### barplot
-ggplot(DNA_Results_for_barplot_T, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
-  #geom_bar(stat='identity',position = position_dodge())+
-  geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE+
-  labs(#title = "Pathogen Quantification Adriano",
-    #subtitle = "All ants",
-    y = "Mean Reduced M. brunneum quantification ng/µL",
-    x="") +
-  scale_x_discrete(labels = c("untreated", "treated")) +
-  facet_grid(~ AntTask)#+
-#facet_wrap(~ Exposed)
-# labs(#title= "Grooming Location",
-#      subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
+# inferred_ByAnt$TREATMENT <- as.factor(inferred_ByAnt$TREATMENT)
+# inferred_ByAnt$PERIOD <- as.factor(inferred_ByAnt$PERIOD)
+# inferred_ByAnt$REP_treat<- as.factor(inferred_ByAnt$REP_treat)
+# inferred_ByAnt$Rec_Name<- as.factor(inferred_ByAnt$Rec_Name)
 
 
-DNA_Results_untreated <- DNA_Results_annotated[which(DNA_Results_annotated$Exposed==FALSE),]
-DNA_Results_untreated <- DNA_Results_untreated[which(DNA_Results_untreated$IsAlive==TRUE),]
+# Relevel Exposed
+DNA_Results_annotated$Exposed <- as.factor(DNA_Results_annotated$Exposed)
+levels(DNA_Results_annotated$Exposed)[levels(DNA_Results_annotated$Exposed)=="TRUE"] <- "treated"
+levels(DNA_Results_annotated$Exposed)[levels(DNA_Results_annotated$Exposed)=="FALSE"] <- "untreated"
 
-######### BOXPLOT SUBSET FOR EFFECT ON UNTREATED ANTS ONLY
-## BOXPLOT
-ggplot(DNA_Results_untreated,
-       aes(x = Exposed, y = MbruDNA, colour=Treatment)) + #,group = Exposed,color = Exposed
-  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
-  geom_boxplot(lwd=0.8) + #lwd=0.8
-  geom_point(aes(colour = Treatment),position = position_jitterdodge())+ #,alpha= 0.8,stroke=0
-  #geom_point() +
-  STYLE +
-  #theme(legend.position = "none") +
-  labs(#title = "Pathogen Quantification Adriano",
-    #subtitle = "All ants",
-    y = "Reduced M. brunneum quantification ng/µL per ant",
-    x ="")+
-  scale_x_discrete(labels = c("", "")) +
-  facet_grid(~ AntTask)
+# Create new categories!
+DNA_Results_annotated$status <- paste(DNA_Results_annotated$Exposed, DNA_Results_annotated$AntTask)
 
+## TEST DIFFERENCE BETWEEN SIZES INSIDE OF EACH ANTTASK*TREATMENT CONDITION
+m1 <- lmer(log(MbruDNA) ~ Treatment * status + (1|Colony), data = DNA_Results_annotated) # the "/" is for the nesting #  + (1|time_of_day) 
+test_norm(residuals(m1))
+summary(m1)
+Anova(m1)
+r.squaredGLMM(m1)
+tab_model(m1)
+
+
+# POST-HOCs within status
+posthoc_Treatment <- emmeans(m1, specs = pairwise ~  Treatment | status) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
+print(posthoc_Treatment_summary)
+
+# POST-HOCs for AntTask by treatment
+posthoc_status <- emmeans(m1, specs = pairwise ~  status | Treatment) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+posthoc_status_summary<-summary(posthoc_status$contrasts)
+print(posthoc_status_summary)
+
+# add letters to each mean
+model_means_cld <- cld(object = posthoc_status,
+                       adjust = "Tukey",
+                       Letters = letters,
+                       alpha = 0.05)
+
+# show output
+model_means_cld
+
+
+compareqqnorm(m1)
+#par(mfrow=c(1,2))
+plot(m1)
+qqnorm(residuals(m1))
+qqline(residuals(m1))
+hist(residuals(m1))
+#anova(m1)
+
+
+##########################################################################
+##################### PLOTTING ###########################################
+##########################################################################
+
+### HIST OF ANTS THAT RECEIVED A LOAD BY TASK
+ggplot(DNA_Results_annotated, aes(x = log(MbruDNA),fill=Exposed)) +
+  geom_histogram(position = "identity", bins = 30,alpha=0.7) + facet_wrap(~Treatment)  +
+  xlab("LOG MbruDNA")  +
+  scale_fill_discrete(labels=c('untreated', 'treated'))
+
+
+# DNA_Results_annotated_MEAN    <- aggregate(MbruDNA ~ Treatment + Exposed , FUN=mean, na.rm=T, na.action=na.pass, DNA_Results_annotated) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+# DNA_Results_annotated_SE    <- aggregate(MbruDNA ~ Treatment + Exposed , FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE) [match("MbruDNA",colnames(DNA_Results_annotated_SE))] <- "SD_MbruDNA"
+# DNA_Results_for_barplot    <-  plyr::join(x=DNA_Results_annotated_MEAN, y=DNA_Results_annotated_SE, type = "full", match = "all")
 # 
-DNA_Results_for_barplot_untreated    <-  DNA_Results_for_barplot_T[which(DNA_Results_for_barplot_T$Exposed==FALSE),]
-  
-######### barplot
-ggplot(DNA_Results_for_barplot_untreated, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
-  #geom_bar(stat='identity',position = position_dodge())+
-  geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE+
+# ######### barplot
+# ggplot(DNA_Results_for_barplot, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
+#   #geom_bar(stat='identity',position = position_dodge())+
+#   geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
+#   geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+#   STYLE+
+#   labs(#title = "Pathogen Quantification Adriano",
+#     #subtitle = "All ants",
+#     y = "Mean  M. brunneum quantification ng/µL",
+#     x="") +
+#   scale_x_discrete(labels = c("untreated", "treated")) #+
+#   #facet_wrap(~ Exposed)
+#   # labs(#title= "Grooming Location",
+#   #      subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
+
+
+
+####### BY STATUS #####################################################
+
+## BOXPLOT | LOAD VS STATUS BY TREATMENT
+ggplot(DNA_Results_annotated,
+       aes(x = status, y = log(MbruDNA), colour=Treatment)) + #,group = Exposed,color = Exposed
+  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
+  geom_boxplot(lwd=0.8) + #lwd=0.8
+  geom_point(aes(fill = Treatment),position = position_jitterdodge(),size=1,alpha=0.4)+ #,alpha= 0.8,stroke=0
+  #geom_point() +
+  STYLE +
+  #theme(legend.position = "none") +
   labs(#title = "Pathogen Quantification Adriano",
     #subtitle = "All ants",
-    y = "Mean Reduced M. brunneum quantification ng/µL",
-    x="") +
-  scale_x_discrete(labels = c("", "")) +
-  facet_grid(~ AntTask)
+    y = "LOG  M. brunneum quantification ng/µL per ant",
+    x="",
+    #caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) 
+    )+
+  #facet_grid(~ AntTask) +
+  geom_text(data = model_means_cld, aes(x = status, y = emmean+7, label = model_means_cld$.group,cex=2,fontface="bold"),position = position_jitterdodge(),show.legend = FALSE)#+
 
 
-
-#replot these data + stats!
-
-print( ggplot(DNA_Results_annotated, aes(x = MbruDNA)) +
-         geom_histogram(position = "identity", bins = 30) + facet_wrap(~Treatment)  +
-         xlab("MbruDNA") )  +
-  xlim(0.1,15)
-
-#Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
-print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
-#  + (1|time_of_day) is non relevant for both trimmed 4h blocks and full time
-m1 <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = DNA_Results_annotated) # the "/" is for the nesting #  + (1|time_of_day) 
-
+# ### keep ant task
+# DNA_Results_annotated_MEAN_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=mean, na.rm=T, na.action=na.pass, DNA_Results_annotated) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
+# DNA_Results_annotated_SE_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE_T) [match("MbruDNA",colnames(DNA_Results_annotated_SE_T))] <- "SD_MbruDNA"
+# DNA_Results_for_barplot_T    <-  plyr::join(x=DNA_Results_annotated_MEAN_T, y=DNA_Results_annotated_SE_T, type = "full", match = "all")
+# 
+# ######### barplot
+# ggplot(DNA_Results_for_barplot_T, aes(x=Exposed, y=MbruDNA, fill= Treatment))+
+#   #geom_bar(stat='identity',position = position_dodge())+
+#   geom_errorbar( aes(x=Exposed,ymin=MbruDNA-SD_MbruDNA, ymax=MbruDNA+SD_MbruDNA),position=position_dodge2(width=0.9, preserve = "single"))+
+#   geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
+#   STYLE+
+#   labs(#title = "Pathogen Quantification Adriano",
+#     #subtitle = "All ants",
+#     y = "Mean  M. brunneum quantification ng/µL",
+#     x="") +
+#   scale_x_discrete(labels = c("untreated", "treated")) +
+#   facet_grid(~ AntTask)#+
+# #facet_wrap(~ Exposed)
+# # labs(#title= "Grooming Location",
+# #      subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
