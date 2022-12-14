@@ -204,6 +204,17 @@ DNA_Results$Sample_Plate <- sub("\\-.*", "", DNA_Results$Code)
 
 DNA_Results$Treatment <- RIGHT(DNA_Results$Colony,2)
 
+# Select only pathogen treated colonies
+#DNA_Results <- DNA_Results[ which(DNA_Results$Treatment == "Big Pathogen" | DNA_Results$Treatment == "Small Pathogen") , ]
+#filter colonies with only handful of individuals
+DNA_Results <- DNA_Results %>% 
+  group_by(Colony) %>%
+  filter(sum(NROW(Colony))>10)
+
+#see which cols have been processed
+table(DNA_Results$Colony)
+
+
 # Rename by name
 DNA_Results$Treatment <- as.factor(DNA_Results$Treatment)
 levels(DNA_Results$Treatment)[levels(DNA_Results$Treatment)=="BS"] <- "Big Sham"
@@ -214,15 +225,7 @@ levels(DNA_Results$Treatment)[levels(DNA_Results$Treatment)=="SP"] <- "Small Pat
 DNA_Results$MbruDNA <- as.numeric(DNA_Results$MbruDNA)
 
 
-# Select only pathogen treated colonies
-#DNA_Results <- DNA_Results[ which(DNA_Results$Treatment == "Big Pathogen" | DNA_Results$Treatment == "Small Pathogen") , ]
-#filter colonies with only handful of individuals
-DNA_Results <- DNA_Results %>% 
-                group_by(Colony) %>%
-                filter(sum(NROW(Colony))>10)
 
-#see which cols have been processed
-table(DNA_Results$Colony)
 
 ### CHECK THE WELLS POSITIONS TO ADD THE ANT IDENTITY
 plate_positions_list <- list.files(path= file.path(IMMUNITY_DATA, "QPCR_SAMPLING_TAGSCANNER"),pattern="PLAQUE",full.names = T)
@@ -269,8 +272,15 @@ DNA_Results_annotated$Ct1 <- as.numeric(DNA_Results_annotated$Ct1)
 DNA_Results_annotated$Ct2 <- as.numeric(DNA_Results_annotated$Ct2)
 
 DNA_Results_annotated$Ct_mean <- rowMeans(DNA_Results_annotated[,c("Ct1","Ct2")],na.rm=T)
+
+#trying to replicate what we did with florent... No Ct_mean but CT1 or 2?
+plot(order(sort(DNA_Results_annotated$Ct_mean)),sort(DNA_Results_annotated$Ct_mean))
+f_of_x <- splinefun(order(sort(DNA_Results_annotated$Ct_mean)),sort(DNA_Results_annotated$Ct_mean))
+plot(f_of_x(sort(DNA_Results_annotated$Ct_mean), deriv = 2),xlim=c(0,1500),ylim=c(-0.2,0.2),cex=0.1,type="b")
+
+
 #filter values above detection threshold
-DNA_Results_annotated <- DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean <36),]
+DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean >36),"MbruDNA"] <- 0
 
 # #check objects with no values
 # No_CT_REPs <- toString(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
@@ -308,7 +318,10 @@ levels(DNA_Results_annotated$Exposed)[levels(DNA_Results_annotated$Exposed)=="FA
 DNA_Results_annotated$status <- paste(DNA_Results_annotated$Exposed, DNA_Results_annotated$AntTask)
 
 ## TEST DIFFERENCE BETWEEN SIZES INSIDE OF EACH ANTTASK*TREATMENT CONDITION
-m1 <- lmer(log(MbruDNA) ~ Treatment * status + (1|Colony), data = DNA_Results_annotated) # the "/" is for the nesting #  + (1|time_of_day) 
+constant <- min ( DNA_Results_annotated$MbruDNA[  which(DNA_Results_annotated$MbruDNA!=0)  ]  ,na.rm=T  )/10
+
+
+m1 <- lmer(log10(MbruDNA+constant) ~ Treatment * status + (1|Colony), data = DNA_Results_annotated) # the "/" is for the nesting #  + (1|time_of_day) 
 test_norm(residuals(m1))
 summary(m1)
 Anova(m1)
@@ -316,21 +329,34 @@ r.squaredGLMM(m1)
 tab_model(m1)
 
 
+###
+DNA_Results_annotated$positive<- 1
+DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA==0),"positive"] <- 0
+m2 <- glmer(positive ~ Treatment * status + (1|Colony), data = DNA_Results_annotated,family=binomial) # the "/" is for the nesting #  + (1|time_of_day) 
+Anova(m2)
+
+
+m3 <- lmer(log10(MbruDNA+constant) ~ Treatment + (1|Colony), data = DNA_Results_annotated[which(DNA_Results_annotated$status=="treated nurse"),]) # the "/" is for the nesting #  + (1|time_of_day) 
+
+
+posthoc_status <- summary(glht( m1, linfct=mcp(status="Tukey")),test=adjusted("BH"))
+
 # POST-HOCs within status
 posthoc_Treatment <- emmeans(m1, specs = pairwise ~  Treatment | status) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
 posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
 print(posthoc_Treatment_summary)
 
-# POST-HOCs for AntTask by treatment
-posthoc_status <- emmeans(m1, specs = pairwise ~  status | Treatment) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-posthoc_status_summary<-summary(posthoc_status$contrasts)
-print(posthoc_status_summary)
+# # POST-HOCs for AntTask by treatment
+# posthoc_status <- emmeans(m1, specs = pairwise ~  status | Treatment) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+# posthoc_status_summary<-summary(posthoc_status$contrasts)
+# print(posthoc_status_summary)
 
 # add letters to each mean
-model_means_cld <- cld(object = posthoc_status,
-                       adjust = "Tukey",
-                       Letters = letters,
-                       alpha = 0.05)
+# model_means_cld <- cld(object = posthoc_status,
+#                        adjust = "Tukey",
+#                        Letters = letters,
+#                        alpha = 0.05)
+model_means_cld <- cld(posthoc_status)
 
 # show output
 model_means_cld
@@ -391,11 +417,11 @@ ggplot(DNA_Results_annotated,
   labs(#title = "Pathogen Quantification Adriano",
     #subtitle = "All ants",
     y = "LOG  M. brunneum quantification ng/µL per ant",
-    x="",
+    #x="",
     #caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) 
     )+
   #facet_grid(~ AntTask) +
-  geom_text(data = model_means_cld, aes(x = status, y = emmean+7, label = model_means_cld$.group,cex=2,fontface="bold"),position = position_jitterdodge(),show.legend = FALSE)#+
+  geom_text(data = model_means_cld, aes(x = status, y = 5, label = model_means_cld$.group,cex=2,fontface="bold"),position = position_jitterdodge(),show.legend = FALSE)#+
 
 
 # ### keep ant task
