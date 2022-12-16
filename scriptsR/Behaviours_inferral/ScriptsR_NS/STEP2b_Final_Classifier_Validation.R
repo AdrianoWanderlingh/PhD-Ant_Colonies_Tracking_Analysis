@@ -15,11 +15,14 @@
 rm(list=ls())
 gc()
 
+library(multcomp)
+
 ###parameter to set at start
 USER <- "Nathalie"#"Adriano"
-ANNOT_DATASET <- "Vasudha2021" # "Adriano2022"
+ANNOT_DATASET <- "Vasudha2021" # "Adriano2022" |"Vasudha2021
 BEH <- "G"
 FRAME_RATE <- 8
+measure <- "CSI" ##""Fbeta" "CSI"
 ###TO DO: also edit the path to BODYLENGTH_FILE when defining folders from line 45 onwards
 
 if (BEH =="G"){
@@ -45,14 +48,14 @@ if (BEH =="G"){
 if (USER=="Adriano") {
 }
 if (USER=="Tom")     {
- }
+}
 if (USER=="Nathalie"){
-  DATADIR <- "/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA"
-  ANNOTATIONDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/Data"
-  SCRIPTDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/ScriptsR"
-  MachineLearningOutcome_DIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/Data/MachineLearning_outcomes_18-11-22"
-  BODYLENGTH_FILE <- "/media/bzniks/DISK3/Ants_behaviour_analysis/Data/Mean_ant_length_per_TrackingSystem.txt"
-  }
+  DATADIR <- "/media/bzniks/Seagate\ Portable\ Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
+  ANNOTATIONDIR <- "/media/bzniks/Seagate\ Portable\ Drive/Ants_behaviour_analysis/Data"
+  SCRIPTDIR <- "~/Desktop/ScriptsR"
+  MachineLearningOutcome_DIR <- "/media/bzniks/DISK1/MachineLearning_outcomes_NewAnnotations/"
+  BODYLENGTH_FILE <- "/media/bzniks/Seagate\ Portable\ Drive/Ants_behaviour_analysis/Data/Mean_ant_length_per_TrackingSystem.txt"
+}
 
 ###source function scripts
 print("Loading functions and libraries...")
@@ -103,7 +106,7 @@ set.seed(2)       ###define I(arbitrary) seed so results can be reproduced over 
 
 ### SELECT ANNOTATION DATASET TO USE
 if (ANNOT_DATASET=="Vasudha2021") {
-  
+  FOCAL <- F
   ###############################################################################
   ###READ WHOLE ANNOTATIONS DATASET #############################################
   ###############################################################################
@@ -138,7 +141,8 @@ if (ANNOT_DATASET=="Vasudha2021") {
 
 ### SELECT ANNOTATION DATASET TO USE
 if (ANNOT_DATASET=="Adriano2022") {
-
+  
+  FOCAL <- T
   ###############################################################################
   ###READ NEW ANNOTATIONS DATASET ##############################################
   ###############################################################################
@@ -146,7 +150,7 @@ if (ANNOT_DATASET=="Adriano2022") {
   ###create object that will contain time limits for annotations_all (contains all annotations for all behaviour so true time limit for period analysed)
   metadata_info         <- read.csv(paste(ANNOTATIONDIR,"/Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU.csv",sep = ""), sep = ",")
   time_window_all        <- data.frame(
-    PERIOD = "all" # "post"
+    PERIOD = "post" # "post"
     ,REPLICATE = metadata_info$REP_treat
     ,time_start = metadata_info$ReturnExposed_time
   )
@@ -159,6 +163,7 @@ if (ANNOT_DATASET=="Adriano2022") {
   
   #the current annotation file FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv underwent cross-validation by Adriano
   annotations_all <- read.csv(paste(ANNOTATIONDIR,"/Grooming_Classifier_CrossVal_ANNOTATIONS.csv",sep = ""), sep = ",")
+  annotations_all$Behaviour     <- "G"
   
   ##rename some columns
   names(annotations_all)[which(grepl("rep",names(annotations_all)))]    <- "REPLICATE"
@@ -167,12 +172,13 @@ if (ANNOT_DATASET=="Adriano2022") {
   annotations_all$Actor         <- as.character(annotations_all$Actor)
   annotations_all$Receiver      <- as.character(annotations_all$Receiver)
   
+  
   ###define new time columns called T_start_UNIX and T_stop_UNIX and delete T_start and T_stop
   annotations_all$T_start_UNIX  <- as.POSIXct(annotations_all$T_start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
   annotations_all$T_stop_UNIX   <- as.POSIXct(annotations_all$T_stop,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
   annotations_all$T_start <- NULL
   annotations_all$T_stop <- NULL
-
+  
 }
 
 ###make sure annotations don't overrun 30 minute window
@@ -184,13 +190,14 @@ for (i in 1:nrow(annotations_all)){
 
 
 annotations_all$duration      <- as.numeric(annotations_all$T_stop_UNIX - annotations_all$T_start_UNIX)
+annotations_all               <- annotations_all[which(annotations_all$duration>0),]
 
 annotations_all$T_start_sec <- round(as.numeric(annotations_all$T_start_UNIX),N_DECIMALS)
 annotations_all$T_stop_sec <- round(as.numeric(annotations_all$T_stop_UNIX),N_DECIMALS)
 
 
 ###define name of general output table containing quality scores
-chosen_file_name <- file.path(MachineLearningOutcome_DIR, "quality_scores_CHOSEN.txt")
+chosen_file_name <- file.path(MachineLearningOutcome_DIR, paste("quality_scores_",measure,"_CHOSEN.txt",sep=""))
 chosen <- read.table(chosen_file_name,header=T,stringsAsFactors = F)
 
 
@@ -221,8 +228,8 @@ all      <- extraction_loop(chunk="all"
                             ,extract_movement_variables=T
                             ,selected_variables = unlist(lapply(names(BN_list),function(x)unlist(strsplit(x,split="\\."))[1]))
                             ,all_body_lengths=all_body_lengths
-                            ,focal=T
-                            )
+                            ,focal=FOCAL
+)
 
 
 candidate_groomings <- all[["summary_AUTO"]]
@@ -236,38 +243,60 @@ candidate_groomings["predicted_Hit"] <- predict_class  (summary_AUTO =    candid
 )
 print("Grooming predicted.")
 
-
-for (REP in unique(candidate_groomings$REPLICATE)) {
-
-# aut_man_agreement <- auto_manual_agreement (candidate_groomings[which(candidate_groomings$predicted_Hit==1),]
-#                                             , all[["summary_MANUAL"]]
-#                                             , all[["list_IF_Frames"]]
-# )
-
-if (nrow(candidate_groomings[which(candidate_groomings$predicted_Hit==1 & candidate_groomings$REPLICATE==REP),])<1) {
-  #temporary solution for REPs without candidate grooming
-  quality_scores_REP <- data.frame(replicate=REP,CSI=NA,Fbeta=NA,precision=NA,sensitivity=NA)
-}else{
-  aut_man_agreement_REP <- auto_manual_agreement (candidate_groomings[which(candidate_groomings$predicted_Hit==1 & candidate_groomings$REPLICATE==REP),]
-                                                , subset(all[["summary_MANUAL"]],all[["summary_MANUAL"]]$REPLICATE==REP)
-                                                , lapply(all["list_IF_Frames"], function(x) x[grep(paste0("IF_frames_",REP),names(x))])$list_IF_Frames
-                                                #, subset(all["list_IF_Frames"]$list_IF_Frames)
+###overall test
+aut_man_agreement <- auto_manual_agreement (candidate_groomings[which(candidate_groomings$predicted_Hit==1),]
+                                            , all[["summary_MANUAL"]]
+                                            , all[["list_IF_Frames"]]
 )
+`quality_scores_overall` <-round(quality_scores(aut_man_agreement[["true_false_positive_negatives"]],beta),digits=3 )
 
-  quality_scores_REP <-round(quality_scores(aut_man_agreement_REP[["true_false_positive_negatives"]],beta),digits=3 )
-  quality_scores_REP <- data.frame(replicate=REP,as.list(quality_scores_REP))
+quality_scores_REP_PER <- NULL
+for (REP in unique(candidate_groomings$REPLICATE)) {
+  for (PER in unique(candidate_groomings[which(candidate_groomings$REPLICATE==REP),"PERIOD"])){
+    
+    if (nrow(candidate_groomings[which(candidate_groomings$predicted_Hit==1 & candidate_groomings$REPLICATE==REP & candidate_groomings$PERIOD==PER),])<1) {
+      #temporary solution for REPs without candidate grooming
+      quality_scores_REP_PER <- data.frame(replicate=REP,period=PER,CSI=NA,Fbeta=NA,precision=NA,sensitivity=NA)
+    }else{
+      aut_man_agreement_REP_PER <- auto_manual_agreement (candidate_groomings[which(candidate_groomings$predicted_Hit==1 & candidate_groomings$REPLICATE==REP & candidate_groomings$PERIOD==PER),]
+                                                          , subset(all[["summary_MANUAL"]],all[["summary_MANUAL"]]$REPLICATE==REP&all[["summary_MANUAL"]]$PERIOD==PER)
+                                                          , lapply(all["list_IF_Frames"], function(x) x[grep(paste0("IF_frames_",REP),names(x))])$list_IF_Frames
+                                                          #, subset(all["list_IF_Frames"]$list_IF_Frames)
+      )
+      
+      qual_scores <-round(quality_scores(aut_man_agreement_REP_PER[["true_false_positive_negatives"]],beta),digits=3 )
+      quality_scores_REP_PER <- rbind(quality_scores_REP_PER,data.frame(replicate=REP,period=PER,as.list(qual_scores)))
+    }
+    
+    
+    #add tracking system info, $spaces?
+    
+    ####  
+    
+    # if (file.exists(output_scores)){
+    #   write.table(quality_scores_REP,file=output_scores,append=T,col.names=F,row.names=F,quote=T)
+    # }else{
+    #   write.table(quality_scores_REP,file=output_scores,append=F,col.names=T,row.names=F,quote=T)
+    # }
+    
+  }
+  
 }
 
-#add tracking system info, $spaces?
+if (ANNOT_DATASET=="Adriano2022") {
+  quality_scores_REP_PER <- within(  quality_scores_REP_PER,  treatment <- substr(replicate,nchar(replicate)-1,nchar(replicate)))
+  quality_scores_REP_PER$treatment <- factor(quality_scores_REP_PER$treatment )
   
-####  
-
-  if (file.exists(output_scores)){
-    write.table(quality_scores_REP,file=output_scores,append=T,col.names=F,row.names=F,quote=T)
-  }else{
-    write.table(quality_scores_REP,file=output_scores,append=F,col.names=T,row.names=F,quote=T)
-  }
-
+  print(aggregate(cbind(precision,sensitivity)~treatment,function(x)cbind(mean(x),std.error(x)),data=quality_scores_REP_PER))
+  
+  model_sensitivity <- lm(     sensitivity ~ treatment, data=quality_scores_REP_PER)
+  shapiro.test(residuals(model_sensitivity))    
+  anova(model_sensitivity)
+  
+  model_precision <- lm(     (precision)^4 ~ treatment, data=quality_scores_REP_PER)
+  shapiro.test(residuals(model_precision))  
+  anova(model_precision)
+  summary(glht(model_precision,linfct = multcomp::mcp(treatment="Tukey")),test=adjusted("BH"))
 }
 
 ###############################################################################
@@ -280,4 +309,4 @@ if (nrow(candidate_groomings[which(candidate_groomings$predicted_Hit==1 & candid
 #   write.table(inferred_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
 # }
 
-write.table(candidate_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")
+# write.table(candidate_groomings,file=output_name,append=F,col.names=T,row.names=F,quote=T,sep=",")

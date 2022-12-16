@@ -122,15 +122,19 @@ fit_classifiers <- function (summary_AUTO){
   suppressMessages( train_ros   <- ROS(summary_LDA_vars_RELIEF_hit,   "Hit") )#random over-sampling algorithm (ROS)
   suppressMessages( train_rus   <- RUS(summary_LDA_vars_RELIEF_hit,   "Hit") )#random under-sampling algorithm (RUS)
   suppressMessages( train_smote <- RSBID::SMOTE(summary_LDA_vars_RELIEF_hit, "Hit") )#synthetic minority over-sampling technique (SMOTE)
-  suppressMessages( train_borderline_smote_type1 <-  BLSMOTE(X=summary_LDA_vars_RELIEF_hit[which(names(summary_LDA_vars_RELIEF_hit)!="Hit")],
-                                                       target=summary_LDA_vars_RELIEF_hit$Hit,
-                                                       K=10,C=10,dupSize=0,method =c("type1"))$data )
-  suppressMessages( train_borderline_smote_type2 <-  BLSMOTE(X=summary_LDA_vars_RELIEF_hit[which(names(summary_LDA_vars_RELIEF_hit)!="Hit")],
-                                                             target=summary_LDA_vars_RELIEF_hit$Hit,
-                                                             K=10,C=10,dupSize=0,method =c("type2"))$data )
-  names(train_borderline_smote_type1)[which(names(train_borderline_smote_type1)=="class")] <- "Hit";train_borderline_smote_type1$Hit <- as.factor(train_borderline_smote_type1$Hit); train_borderline_smote_type1 <- train_borderline_smote_type1[complete.cases(train_borderline_smote_type1),]
-  names(train_borderline_smote_type2)[which(names(train_borderline_smote_type2)=="class")] <- "Hit";train_borderline_smote_type2$Hit <- as.factor(train_borderline_smote_type2$Hit); train_borderline_smote_type2 <- train_borderline_smote_type2[complete.cases(train_borderline_smote_type2),]
   
+  try(suppressMessages( train_borderline_smote_type1 <-  BLSMOTE(X=summary_LDA_vars_RELIEF_hit[which(names(summary_LDA_vars_RELIEF_hit)!="Hit")],
+                                                                 target=summary_LDA_vars_RELIEF_hit$Hit,
+                                                                 K=10,C=10,dupSize=0,method =c("type1"))$data ),silent=T)
+  try(suppressMessages( train_borderline_smote_type2 <-  BLSMOTE(X=summary_LDA_vars_RELIEF_hit[which(names(summary_LDA_vars_RELIEF_hit)!="Hit")],
+                                                                 target=summary_LDA_vars_RELIEF_hit$Hit,
+                                                                 K=10,C=10,dupSize=0,method =c("type2"))$data ),silent=T)
+  if(exists("train_borderline_smote_type1")){
+    names(train_borderline_smote_type1)[which(names(train_borderline_smote_type1)=="class")] <- "Hit";train_borderline_smote_type1$Hit <- as.factor(train_borderline_smote_type1$Hit); train_borderline_smote_type1 <- train_borderline_smote_type1[complete.cases(train_borderline_smote_type1),]
+  }
+  if(exists("train_borderline_smote_type2")){
+    names(train_borderline_smote_type2)[which(names(train_borderline_smote_type2)=="class")] <- "Hit";train_borderline_smote_type2$Hit <- as.factor(train_borderline_smote_type2$Hit); train_borderline_smote_type2 <- train_borderline_smote_type2[complete.cases(train_borderline_smote_type2),]
+  }
   
   ##############################
   ### LDA / QDA ################
@@ -147,7 +151,7 @@ fit_classifiers <- function (summary_AUTO){
   # fit_QDA_smote <- qda(Hit ~ ., data=train_smote)
   # fit_QDA_borderline_smote_type1 <- qda(Hit ~ ., data=train_borderline_smote_type1)
   # fit_QDA_borderline_smote_type2 <- qda(Hit ~ ., data=train_borderline_smote_type2)
-
+  
   ##############################
   ### RANDOM FOREST ############
   ##############################
@@ -168,9 +172,18 @@ fit_classifiers <- function (summary_AUTO){
   fit_RF_ros                    <- randomForest::randomForest(Hit ~ ., data = train_ros                     , tuneLength=20, trControl=control)
   fit_RF_rus                    <- randomForest::randomForest(Hit ~ ., data = train_rus                     , tuneLength=20, trControl=control)
   fit_RF_smote                  <- randomForest::randomForest(Hit ~ ., data = train_smote                   , tuneLength=20, trControl=control)
-  fit_RF_borderline_smote_type1 <- randomForest::randomForest(Hit ~ ., data = train_borderline_smote_type1  , tuneLength=20, trControl=control)
-  fit_RF_borderline_smote_type2 <- randomForest::randomForest(Hit ~ ., data = train_borderline_smote_type2  , tuneLength=20, trControl=control)
-  #tuneLength : It allows system to tune algorithm automatically. It indicates the number of different values to try for each tunning parameter.
+  if(exists("train_borderline_smote_type1")){
+    fit_RF_borderline_smote_type1 <- randomForest::randomForest(Hit ~ ., data = train_borderline_smote_type1  , tuneLength=20, trControl=control)
+  }else{
+    fit_RF_borderline_smote_type1 <- NULL
+  }
+  if(exists("train_borderline_smote_type2")){
+    
+    fit_RF_borderline_smote_type2 <- randomForest::randomForest(Hit ~ ., data = train_borderline_smote_type2  , tuneLength=20, trControl=control)
+  }else{
+    fit_RF_borderline_smote_type2 <- NULL
+  }
+    #tuneLength : It allows system to tune algorithm automatically. It indicates the number of different values to try for each tunning parameter.
   #trControl : looks for the random search parameters established by caret::trainControl
   #plot(fit_RF_sbc)
   
@@ -183,9 +196,16 @@ fit_classifiers <- function (summary_AUTO){
   fit_SVM_ros                    <- svm(Hit ~ ., data = train_ros                    , scale = FALSE, kernel = "radial", cost = 5)
   fit_SVM_rus                    <- svm(Hit ~ ., data = train_rus                    , scale = FALSE, kernel = "radial", cost = 5)
   fit_SVM_smote                  <- svm(Hit ~ ., data = train_smote                  , scale = FALSE, kernel = "radial", cost = 5)
-  fit_SVM_borderline_smote_type1 <- svm(Hit ~ ., data = train_borderline_smote_type1 , scale = FALSE, kernel = "radial", cost = 5)
-  fit_SVM_borderline_smote_type2 <- svm(Hit ~ ., data = train_borderline_smote_type2 , scale = FALSE, kernel = "radial", cost = 5)
-  
+  if(exists("train_borderline_smote_type1")){
+    fit_SVM_borderline_smote_type1 <- svm(Hit ~ ., data = train_borderline_smote_type1 , scale = FALSE, kernel = "radial", cost = 5)
+  }else{
+    fit_SVM_borderline_smote_type1 <- NULL
+    }
+  if(exists("train_borderline_smote_type2")){
+    fit_SVM_borderline_smote_type2 <- svm(Hit ~ ., data = train_borderline_smote_type2 , scale = FALSE, kernel = "radial", cost = 5)
+  }else{
+    fit_SVM_borderline_smote_type2 <- NULL
+  }
   
   
   
@@ -262,7 +282,7 @@ fit_classifiers <- function (summary_AUTO){
         # ,fit_QDA_borderline_smote_type1 = fit_QDA_borderline_smote_type1
         # ,fit_QDA_borderline_smote_type2 = fit_QDA_borderline_smote_type2
         
-         fit_RF_all   = fit_RF_all
+        fit_RF_all   = fit_RF_all
         ,fit_RF_sbc   = fit_RF_sbc
         ,fit_RF_ros   = fit_RF_ros
         ,fit_RF_rus   = fit_RF_rus
@@ -299,7 +319,7 @@ predict_class <- function (summary_AUTO,BN_list,classifier){
   
   summary_LDA_vars <- data.frame()[1:nrow(summary_AUTO), ]
   for ( selected_variable in names(BN_list)){
-      summary_LDA_vars[selected_variable] <-                   predict(BN_list[[selected_variable]], newdata = summary_AUTO[,unlist(strsplit(selected_variable,split="\\."))[1]])
+    summary_LDA_vars[selected_variable] <-                   predict(BN_list[[selected_variable]], newdata = summary_AUTO[,unlist(strsplit(selected_variable,split="\\."))[1]])
   }  
   ###in very rare cases there may be a +Inf or -Inf produced in transformation. Replace those with NA
   summary_LDA_vars[summary_LDA_vars==-Inf] <- NA
@@ -345,7 +365,7 @@ quality_scores <- function(true_false_positive_negatives,beta){
   ### precision = positive predictive value https://en.wikipedia.org/wiki/Likelihood_ratios_in_diagnostic_testing#positive_likelihood_ratio
   # = proportion of detected groomings that are true groomings
   precision <- TP / (TP + FP)
-
+  
   ### True positive rate (TPR) =recall = sensitivity
   # = proportion of true groomings that are detected
   sensitivity <- TP / (TP + FN)

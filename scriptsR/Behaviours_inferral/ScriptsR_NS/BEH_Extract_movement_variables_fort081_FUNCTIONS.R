@@ -18,15 +18,24 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
     ###############################################################################
     
     ## locate the ant info file for REPLICATE
-    MyrmidonCapsuleFile <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T)
-    if (length(MyrmidonCapsuleFile)>0){
-      MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl(CAPSULE_FILE,MyrmidonCapsuleFile)]
+    MyrmidonCapsuleFiles <- list.files(path=DATADIR, pattern=REPLICATE, full.names=T)
+    MyrmidonCapsuleFiles <- MyrmidonCapsuleFiles[which(grepl("myrmidon",MyrmidonCapsuleFiles))]
+    
+    if (length(MyrmidonCapsuleFiles)>0){
+      MyrmidonCapsuleFile <- MyrmidonCapsuleFiles[grepl(CAPSULE_FILE,MyrmidonCapsuleFiles)]
+      # if (length(MyrmidonCapsuleFiles)>0){
+      #   MyrmidonCapsuleFile <- MyrmidonCapsuleFiles[grepl(gsub("Capsule","Cap",CAPSULE_FILE),MyrmidonCapsuleFiles)]
+      # }
     }else{
-      MyrmidonCapsuleFile <- list.files(path=file.path(DATADIR,gsub( "R", "REP"  ,     substr(REPLICATE,1,nchar(REPLICATE)-2))), pattern=REPLICATE, full.names=T)
-      MyrmidonCapsuleFile <- MyrmidonCapsuleFile[grepl(gsub("Capsule","Cap",CAPSULE_FILE),MyrmidonCapsuleFile)]
+      MyrmidonCapsuleFiles <- list.files(path=file.path(DATADIR,gsub( "R", "REP"  ,     substr(REPLICATE,1,nchar(REPLICATE)-2))), pattern=REPLICATE, full.names=T)
+      MyrmidonCapsuleFiles <- MyrmidonCapsuleFiles[which(grepl("myrmidon",MyrmidonCapsuleFiles))]
+      MyrmidonCapsuleFile <- MyrmidonCapsuleFiles[grepl(CAPSULE_FILE,MyrmidonCapsuleFiles)]
+      # if (length(MyrmidonCapsuleFiles)>0){
+      #   MyrmidonCapsuleFile <- MyrmidonCapsuleFiles[grepl(gsub("Capsule","Cap",CAPSULE_FILE),MyrmidonCapsuleFiles)]
+      # }
     }
     
-     # print(MyrmidonCapsuleFile)
+     print(MyrmidonCapsuleFile)
     e <- fmExperimentOpen(MyrmidonCapsuleFile)
 
     body_lengths <- get_body_lengths(e,all_body_lengths)
@@ -123,23 +132,23 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
       ######################################################################################
       ####First extract variables for manual interactions
       ## subset all hand-labelled bahavs for this behaviour type in this REPLICATE AND PERIOD
-      if (extract_movement_variables){
-        extracted_variables_MANUAL <- extract_from_object(annotations
-                                                          ,IF_frames
-                                                          ,positions
-                                                          ,BEH
-                                                          ,REPLICATE 
-                                                          ,PERIOD
-                                                          ,selected_variables
-        )
-        
-        summary_MANUAL     <- rbind(summary_MANUAL    ,extracted_variables_MANUAL[["summary_variables"]])
-      }else{
+      # if (extract_movement_variables){
+      #   extracted_variables_MANUAL <- extract_from_object(annotations
+      #                                                     ,IF_frames
+      #                                                     ,positions
+      #                                                     ,BEH
+      #                                                     ,REPLICATE 
+      #                                                     ,PERIOD
+      #                                                     ,selected_variables
+      #   )
+      #   
+      #   summary_MANUAL     <- rbind(summary_MANUAL    ,extracted_variables_MANUAL[["summary_variables"]])
+      # }else{
         ##ADD ant1 ant2
         annot_per_rep      <- annotations[which(annotations$Behaviour==BEH&annotations$REPLICATE==REPLICATE&annotations$PERIOD==PERIOD),]
         annot_per_rep$ant1 <- annot_per_rep$Actor; annot_per_rep$ant2 <- annot_per_rep$Receiver;annot_per_rep$pair <- apply(annot_per_rep[,c("ant1","ant2")],1,function(x){paste(sort(as.numeric(x)),collapse = "_") })
         summary_MANUAL     <- rbind(summary_MANUAL,annot_per_rep)   
-      }
+      # }
       # interaction_MANUAL <- rbind(interaction_MANUAL,extracted_variables_MANUAL[["stored_trajectories"]])
       
       #########################################################################################
@@ -244,8 +253,14 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
                                                         ,selected_variables
         )
         
-        
-        summary_AUTO     <- rbind(summary_AUTO    , extracted_variables_AUTO[["summary_variables"]])
+        if(!is.null(extracted_variables_AUTO[["summary_variables"]])){
+          summary_AUTO     <- rbind(summary_AUTO    , extracted_variables_AUTO[["summary_variables"]])
+        }else{
+          inter_list <- data.frame(REPLICATE=REPLICATE,PERIOD=PERIOD,Behaviour=BEH,interacts_AUTO_REP_PER,stringsAsFactors = F)
+          inter_list[names(summary_AUTO)[which(!names(summary_AUTO)%in%names(inter_list))]] <- NA
+          summary_AUTO     <- rbind(summary_AUTO    ,  inter_list[names(summary_AUTO)])
+          
+        }
         # interaction_AUTO <- rbind(interaction_AUTO, extracted_variables_AUTO[["stored_trajectories"]])
       }else{
         summary_AUTO     <- rbind(summary_AUTO    , data.frame(REPLICATE=REPLICATE,PERIOD=PERIOD,Behaviour=BEH,interacts_AUTO_REP_PER,stringsAsFactors = F))
@@ -357,7 +372,11 @@ extract_from_object <- function (  object, IF_frames, positions, BEH , REPLICATE
       
       ###prepare to store:
       names(traj)[which(names(traj)!="frame")] <- paste(AntType,names(traj)[which(names(traj)!="frame")],sep=".")
-      names(summary_individual_traj)           <- paste(names(summary_individual_traj),AntType,sep="_")
+      if (ncol(summary_individual_traj)>0){
+        names(summary_individual_traj)           <- paste(names(summary_individual_traj),AntType,sep="_")
+      }else{
+        summary_individual_traj <- NULL
+      }
       assign(paste("traj",AntType,sep="_"),traj); rm(list=c("traj"))
       assign(paste("summary_individual_traj",AntType,sep="_"),summary_individual_traj);rm(list=c("summary_individual_traj"))
     }

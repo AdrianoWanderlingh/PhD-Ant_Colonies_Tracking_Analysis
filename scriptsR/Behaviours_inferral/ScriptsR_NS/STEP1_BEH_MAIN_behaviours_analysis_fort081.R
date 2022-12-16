@@ -16,15 +16,47 @@ rm(list=ls())
 gc()
 
 ###parameter to set at start
-USER <- "Nathalie"#"Adriano"
-BEH <- "G"
-FRAME_RATE <- 8
+USER                       <- "Nathalie"#"Adriano"
+BEH                        <- "G"
+FRAME_RATE                 <- 8
+proportion_training_events <- 0.8 ##PROPORTION OF ANNOTATED INTERACTION WE WANT TO USE FOR TRAINING THE CLASSIFIER
+FOCAL                      <- T   ###if annotations focused on specific individuals, set to T - else if it was an all-occurrence sampling, set to F
+FLUSH                      <- F   ###set to T if you want to delete the existing Machine Learning output folder to start fresh    
+ITER                       <- 1
 ###TO DO: also edit the path to BODYLENGTH_FILE when defining folders from line 45 onwards
 
 if (BEH =="G"){
   interactions_of_interest <- list(c("head","body"))
   ###if interested in more than one type, list them as follows: interactions_of_interest <- c(list(c("head","body")),list(c("head","head")))
 }
+
+duplicate_annotations <- function(annotation_subset,time_limit){
+  ###time_limit will work well if those two events don't overlap
+  ###but if they do the corresponding lines will need to be duplicated with one event ending at time limit and one starting just after time_limit
+  ###first list events to duplicate (if any)
+  to_duplicate  <- annotation_subset[which(  (as.numeric(annotation_subset$T_start_UNIX)<=time_limit & as.numeric(annotation_subset$T_stop_UNIX)>time_limit) ),]
+  
+  ###perform duplication if necessary
+  if (nrow(to_duplicate)>=1){
+    
+    total_duplicated_events <- total_duplicated_events+nrow(to_duplicate)
+    
+    to_keep_as_is <- annotation_subset[which(!(as.numeric(annotation_subset$T_start_UNIX)<=time_limit & as.numeric(annotation_subset$T_stop_UNIX)>time_limit) ),]
+    to_duplicate_before             <-  to_duplicate
+    to_duplicate_before$T_stop_UNIX <- as.POSIXct(time_limit,  origin="1970-01-01", tz="GMT" )
+    to_duplicate_before$duration    <- as.numeric(to_duplicate_before$T_stop_UNIX - to_duplicate_before$T_start_UNIX)
+    
+    to_duplicate_after              <-  to_duplicate
+    to_duplicate_after$T_start_UNIX <- as.POSIXct(time_limit,  origin="1970-01-01", tz="GMT" )+1/FRAME_RATE
+    to_duplicate_after$duration     <- as.numeric(to_duplicate_after$T_stop_UNIX - to_duplicate_after$T_start_UNIX)
+    
+    annotation_subset <- rbind(to_keep_as_is,to_duplicate_before,to_duplicate_after)
+    annotation_subset <- annotation_subset[order(annotation_subset$T_start_UNIX),]
+  }
+  
+  return(annotation_subset)
+}
+
 
 ###############################################################################
 ###### GLOSSARY ###############################################################
@@ -41,27 +73,12 @@ if (BEH =="G"){
 ###############################################################################
 
 ####### navigate to folder containing myrmidon file
-if (USER=="Adriano") {
-  WORKDIR <- "/media/cf19810/DISK4/Ants_behaviour_analysis"
-  DATADIR <- paste(WORKDIR,"Data",sep="/")
-  SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
-  SAVEOUTPUT <- "/home/cf19810/Documents"
-  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="")
-}
-if (USER=="Tom")     {
-  WORKDIR <- "/media/tom/MSATA/Dropbox/Ants_behaviour_analysis"
-  DATADIR <- paste(WORKDIR,"Data",sep="/")
-  SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
-  SAVEOUTPUT <- "/home/bzniks/Documents"
-  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="/")
-}
-if (USER=="Nathalie"){
-  WORKDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis"
-  DATADIR <- paste(WORKDIR,"Data",sep="/")
-  SCRIPTDIR <- "/media/bzniks/DISK3/Ants_behaviour_analysis/ScriptsR"
-  SAVEOUTPUT <- "/media/bzniks/DISK1"
-  BODYLENGTH_FILE <- paste(DATADIR,"/Mean_ant_length_per_TrackingSystem.txt",sep="/")
-  }
+WORKDIR <- "/media/bzniks/Seagate\ Portable\ Drive/Ants_behaviour_analysis"
+DATADIR <- "/media/bzniks/Seagate\ Portable\ Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
+SCRIPTDIR <- "~/Desktop/ScriptsR"
+SAVEOUTPUT <- "/media/bzniks/DISK1"
+BODYLENGTH_FILE <- paste(WORKDIR,"Data","/Mean_ant_length_per_TrackingSystem.txt",sep="/")
+
 
 ###source function scripts
 print("Loading functions and libraries...")
@@ -103,8 +120,8 @@ max_gap                     <- fmHour(24*365)   ## important parameter to set! S
 
 DISAGREEMENT_THRESH <- 0.5
 ###Fixed parameter
-set.seed(2)       ###define I(arbitrary) seed so results can be reproduced over multiple runs of the program
-
+# set.seed(2)       ###define I(arbitrary) seed so results can be reproduced over multiple runs of the program
+set.seed(1)       ###define I(arbitrary) seed so results can be reproduced over multiple runs of the program
 
 ###############################################################################
 ###READ WHOLE ANNOTATIONS DATASET #############################################
@@ -112,7 +129,7 @@ set.seed(2)       ###define I(arbitrary) seed so results can be reproduced over 
 print("Loading manual annotations...")
 #the current annotation file FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv underwent cross-validation by Adriano
 # annotations_all <- read.csv(paste(DATADIR,"/R3SP_R9SP_All_data_FINAL_script_output_CROSSVAL_25PERC_AND_TROPH.csv",sep = ""), sep = ",")
-annotations_all <- read.csv(paste(DATADIR,"/Grooming_Classifier_CrossVal_ANNOTATIONS.csv",sep = ""), sep = ",")
+annotations_all <- read.csv(paste(WORKDIR,"Data","Grooming_Classifier_CrossVal_ANNOTATIONS.csv",sep = "/"), sep = ",")
 
 
 ##rename some columns
@@ -136,7 +153,7 @@ annotations_all$T_stop <- NULL
 ###create object that will contain time limits for annotations_all (contains all annotations for all behaviour so true time limit for period analysed)
 # time_window_all        <- merge(aggregate(T_start_UNIX ~ PERIOD + REPLICATE, FUN=min, data=annotations_all),aggregate(T_stop_UNIX  ~ PERIOD + REPLICATE, FUN=max, data=annotations_all))
 # names(time_window_all) <- c("PERIOD","REPLICATE","time_start","time_stop")
-metadata_info         <- read.csv(paste(DATADIR,"/Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU.csv",sep = ""), sep = ",")
+metadata_info         <- read.csv(paste(WORKDIR,"Data","Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU.csv",sep = "/"), sep = ",")
 time_window_all        <- data.frame(
   PERIOD = "post"
   ,REPLICATE = metadata_info$REP_treat
@@ -153,6 +170,7 @@ for (i in 1:nrow(annotations_all)){
   annotations_all[i,"T_start_UNIX"] <- max(annotations_all[i,"T_start_UNIX"],time_window_all[which(time_window_all$REPLICATE==annotations_all[i,"REPLICATE"]&time_window_all$PERIOD==annotations_all[i,"PERIOD"]),"time_start"]+1/FRAME_RATE)
 }
 annotations_all$duration      <- as.numeric(annotations_all$T_stop_UNIX - annotations_all$T_start_UNIX)
+annotations_all               <- annotations_all[which(annotations_all$duration>0),] 
 
 
 
@@ -179,6 +197,8 @@ time_window_training <- NULL
 time_window_test     <- NULL
 
 ###then loop over nb_events
+
+
 total_duplicated_events <- 0
 for (i in 1:nrow(nb_events)){
   ###subset annotations_all to period/replicate of interest
@@ -187,36 +207,29 @@ for (i in 1:nrow(nb_events)){
   annotation_subset <- annotations_all[which(annotations_all$Behaviour==BEH & annotations_all$PERIOD==PERIOD & annotations_all$REPLICATE==REPLICATE),]
   
   ### ensure annotation_subset is sorted by time start sec then define a time_limit in between two successive events corresponding to half the events for this period  
+  ### ensure annotation_subset is sorted by time start sec then define a time_limit in between two successive events corresponding to 3/4 of the events for this period  
   annotation_subset <- annotation_subset[order(annotation_subset$T_start_UNIX),]
-  time_limit <- min (c(as.numeric(annotation_subset[floor(nb_events[i,"Nb"]/2),"T_stop_UNIX"]),as.numeric(annotation_subset[1+floor(nb_events[i,"Nb"]/2),"T_start_UNIX"]) )) + (1/FRAME_RATE) * floor(round(abs(as.numeric(annotation_subset[floor(nb_events[i,"Nb"]/2),"T_stop_UNIX"])-as.numeric(annotation_subset[1+floor(nb_events[i,"Nb"]/2),"T_start_UNIX"]))/(1/FRAME_RATE))/2)          
-  
-  ###time_limit will work well if those two events don't overlap
-  ###but if they do the corresponding lines will need to be duplicated with one event ending at time limit and one starting just after time_limit
-  ###first list events to duplicate (if any)
-  to_duplicate  <- annotation_subset[which(  (as.numeric(annotation_subset$T_start_UNIX)<=time_limit & as.numeric(annotation_subset$T_stop_UNIX)>time_limit) ),]
-  
-  ###perform duplication if necessary
-  if (nrow(to_duplicate)>=1){
-    
-    total_duplicated_events <- total_duplicated_events+nrow(to_duplicate)
-    
-    to_keep_as_is <- annotation_subset[which(!(as.numeric(annotation_subset$T_start_UNIX)<=time_limit & as.numeric(annotation_subset$T_stop_UNIX)>time_limit) ),]
-    to_duplicate_before             <-  to_duplicate
-    to_duplicate_before$T_stop_UNIX <- as.POSIXct(time_limit,  origin="1970-01-01", tz="GMT" )
-    to_duplicate_before$duration    <- as.numeric(to_duplicate_before$T_stop_UNIX - to_duplicate_before$T_start_UNIX)
-    
-    to_duplicate_after              <-  to_duplicate
-    to_duplicate_after$T_start_UNIX <- as.POSIXct(time_limit,  origin="1970-01-01", tz="GMT" )+1/FRAME_RATE
-    to_duplicate_after$duration     <- as.numeric(to_duplicate_after$T_stop_UNIX - to_duplicate_after$T_start_UNIX)
-    
-    annotation_subset <- rbind(to_keep_as_is,to_duplicate_before,to_duplicate_after)
-    annotation_subset <- annotation_subset[order(annotation_subset$T_start_UNIX),]
-  }
   
   ### now we split annotation_subset in two chunks before and after time_limit,
   ### randomly allocate each time chunk to test or training dataset,
   ### and store the time windows for those time chunks
   if (runif(1,0,1)<0.5){
+    
+    time_limit <- min (c(as.numeric(annotation_subset[floor(proportion_training_events*nb_events[i,"Nb"]),"T_stop_UNIX"]),as.numeric(annotation_subset[1+proportion_training_events*floor(nb_events[i,"Nb"]),"T_start_UNIX"]) )) + (1/FRAME_RATE) * floor(round(abs(as.numeric(annotation_subset[floor(proportion_training_events*nb_events[i,"Nb"]),"T_stop_UNIX"])-as.numeric(annotation_subset[1+floor(proportion_training_events*nb_events[i,"Nb"]),"T_start_UNIX"]))/(1/FRAME_RATE))/2)          
+    if (length(time_limit)==0){
+      time_limit <- min (c(as.numeric(annotation_subset[floor(0.5*nb_events[i,"Nb"]),"T_stop_UNIX"]),as.numeric(annotation_subset[1+0.5*floor(nb_events[i,"Nb"]),"T_start_UNIX"]) )) + (1/FRAME_RATE) * floor(round(abs(as.numeric(annotation_subset[floor(0.5*nb_events[i,"Nb"]),"T_stop_UNIX"])-as.numeric(annotation_subset[1+floor(0.5*nb_events[i,"Nb"]),"T_start_UNIX"]))/(1/FRAME_RATE))/2)          
+      
+    }
+    ###time_limit will work well if those two events don't overlap
+    ###but if they do the corresponding lines will need to be duplicated with one event ending at time limit and one starting just after time_limit
+    ###first list events to duplicate (if any)
+    annotation_subset <- duplicate_annotations (annotation_subset,time_limit)
+    
+    
+    
+    
+    
+    
     annotations_training <- rbind( annotations_training , annotation_subset[which(annotation_subset$T_stop_UNIX<=time_limit),]  )
     annotations_test     <- rbind( annotations_test     , annotation_subset[which(annotation_subset$T_start_UNIX>time_limit),])
     time_window_training <- rbind( time_window_training , data.frame(PERIOD=PERIOD, 
@@ -231,6 +244,17 @@ for (i in 1:nrow(nb_events)){
                                                                      time_start = as.POSIXct(time_limit + 1/FRAME_RATE,origin="1970-01-01", tz="GMT") - 1/FRAME_RATE, 
                                                                      time_stop  = time_window_all[which(time_window_all$PERIOD==PERIOD & time_window_all$REPLICATE==REPLICATE),"time_stop"]))
   }else{
+    time_limit <- min (c(as.numeric(annotation_subset[floor((1-proportion_training_events)*nb_events[i,"Nb"]),"T_stop_UNIX"]),as.numeric(annotation_subset[1+(1-proportion_training_events)*floor(nb_events[i,"Nb"]),"T_start_UNIX"]) )) + (1/FRAME_RATE) * floor(round(abs(as.numeric(annotation_subset[floor((1-proportion_training_events)*nb_events[i,"Nb"]),"T_stop_UNIX"])-as.numeric(annotation_subset[1+floor((1-proportion_training_events)*nb_events[i,"Nb"]),"T_start_UNIX"]))/(1/FRAME_RATE))/2)          
+    if (length(time_limit)==0){
+      time_limit <- min (c(as.numeric(annotation_subset[floor(0.5*nb_events[i,"Nb"]),"T_stop_UNIX"]),as.numeric(annotation_subset[1+0.5*floor(nb_events[i,"Nb"]),"T_start_UNIX"]) )) + (1/FRAME_RATE) * floor(round(abs(as.numeric(annotation_subset[floor(0.5*nb_events[i,"Nb"]),"T_stop_UNIX"])-as.numeric(annotation_subset[1+floor(0.5*nb_events[i,"Nb"]),"T_start_UNIX"]))/(1/FRAME_RATE))/2)          
+      
+    }
+    
+    ###time_limit will work well if those two events don't overlap
+    ###but if they do the corresponding lines will need to be duplicated with one event ending at time limit and one starting just after time_limit
+    ###first list events to duplicate (if any)
+    annotation_subset <- duplicate_annotations (annotation_subset,time_limit)
+    
     annotations_training <- rbind( annotations_training, annotation_subset[which(annotation_subset$T_start_UNIX>time_limit),]  )
     annotations_test     <- rbind( annotations_test,annotation_subset[which(annotation_subset$T_stop_UNIX<=time_limit),])
     
@@ -271,14 +295,16 @@ Grooming_LDA_eachRun            <- data.frame()
 
 ###initialise general output folder
 ##remove folder if already exists to amke sure we don't mix things up
-# if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes"))){
-#   unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive=T)
-# }
-# ###create folder
-# dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes"),recursive = T)
+if(FLUSH){
+  if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations"))){
+    unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations"),recursive=T)
+  }
+}
+###create folder
+dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations"),recursive = T)
 
 ###define name of general output table containing quality scores
-output_name <- file.path(SAVEOUTPUT, "MachineLearning_outcomes","quality_scores_1.txt")
+output_name <- file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",paste("quality_scores_",ITER,".txt",sep=""))
 
 
 ###############################################################################
@@ -295,25 +321,18 @@ CAPSULE_FILE_LIST           <- c("CapsuleDef3","CapsuleDef4","CapsuleDef9","Caps
 # trim_length_sec             <- 1  ####all automated interactions that last trim_length_sec or less will be removed from the automated detection to fit the LDA as they increase noise!
 # DT_frame_THRESHOLD          <- 16  #arbitrary value #trajectories jumps/gaps thresholds to avoid getting skewed means summary values (see their use in params extraction scripts: BEH_Traj_from_Man_annotations_fort081.R and BEH_Parameters_Auto_fort081.R)
 ####
-###beta: relates to the calculation of the Fbeta score (https://en.wikipedia.org/wiki/F-score)
-###      This is how much we value recall (=sensitivity = TP / (TP+FN)) over precision (=positive predictive value = TP / (TP + FP))
-### if beta = 1 the score calculated is a F1 score
-### based on lab meeting discussion we felt that we valued precision (minimising FP) over sensitivity to decrease the noise / avoid detecting grooming when there are none
-### so we want a beta < 1
-### arbitrarily here, it is set at 0.5
-# beta <- 0.5 
 
 
 ####initialise Loop_ID
-Loop_ID       <- 1
-Trunk_Loop_ID  <- 1
+Loop_ID       <- (ITER-1)*1000+1
+Trunk_Loop_ID  <- (ITER-1)*1000+1
 # for (CAPSULE_FILE in CAPSULE_FILE_LIST) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
-  for (CAPSULE_FILE in CAPSULE_FILE_LIST[2]) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
-    #fmQueryComputeAntInteractions matcher for the max time interval in iteraction when the ant pair disengages the interaction. Specific for GROOMING
+for (CAPSULE_FILE in CAPSULE_FILE_LIST[ITER]) { #list of CAPUSLE FILES TO BE USED  ###NATH_FLAG: CAPSULE_FILE_LIST has not been defined
+  #fmQueryComputeAntInteractions matcher for the max time interval in iteraction when the ant pair disengages the interaction. Specific for GROOMING
   #Sequentially vary the interaction gap-filling to check what effect this has on the agreement between the MANUAL & AUTOMATIC interactions
   # for (MAX_INTERACTION_GAP in c(15,20,25)) { #IN SECONDS (5,10, 15 never selected)
-    for (MAX_INTERACTION_GAP in c(25,30,35)) { #IN SECONDS (5,10, 15 never selected)
-      trunk_loop_start_time <- Sys.time()
+  for (MAX_INTERACTION_GAP in c(25,30,35)) { #IN SECONDS (5,10, 15 never selected)
+    trunk_loop_start_time <- Sys.time()
     print(paste("TRUNK LOOP ID:",Trunk_Loop_ID))
     ##################################################################################
     ##################### EXTRACT VARIABLES FOR MANUAL AND AUTOMATIC INTERACTIONS ####
@@ -321,81 +340,89 @@ Trunk_Loop_ID  <- 1
     ###for these particular parameters, evaluate how successful the interaction detetection parameters are at detecting candidate frames
     ###extract interactions and manual annotations for the whole dataset
     print(paste("Evaluating quality of interaction parameters for trunk loop ID ",Trunk_Loop_ID,"...",sep=""))
-    all      <- extraction_loop("all",extract_movement_variables=F,all_body_lengths=all_body_lengths)
+    all      <- extraction_loop("all",extract_movement_variables=F,all_body_lengths=all_body_lengths,focal=FOCAL)
     
     ###Run auto_manual_agreement on all data to get an idea of how well the Loop performs in discovering the candidate interaction frames
     loop_interaction_detection_TPTNFPFN <- auto_manual_agreement (all[["summary_AUTO"]] , all[["summary_MANUAL"]], all[["list_IF_Frames"]] )[["true_false_positive_negatives"]]
-
+    
     ##THRESHOLD to exclude jitter in the individuals' movement (DISTANCE)
     # for (DT_dist_THRESHOLD_BL in c(0,0.0015,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
-      for (DT_dist_THRESHOLD_BL in c(0,0.0005,0.001,0.0015,0.002,0.0025,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
-        
+    for (DT_dist_THRESHOLD_BL in c(0,0.0005,0.001,0.0015,0.002,0.0025,0.003)) { #NOW EXPRESSED IN BODY LENGTHS RATHER THAN PIXELS#NOT HIGHER THAN 0.5 # tag length is 62 px approx (measured on full size pics in R9SP)
+      
       
       # Assign Hit based on threshold
       # maybe can be put somewhere better as it involves a later stage of the analysis
-        for (DT_frame_THRESHOLD in c(32,40,48)){
+      for (DT_frame_THRESHOLD in c(32,40,48)){
+        
+        ###for these particular parameters, calculate variables of interest for manual annotations and automatic interactions for each of training and test dataset
+        print("Extracting movement variables for manually-annotated data and automatic interactions:")
+        print("-training data...")
+        training <- extraction_loop("training",all_body_lengths=all_body_lengths,focal=FOCAL)
+        print("-test data...")
+        test     <- extraction_loop("test",all_body_lengths=all_body_lengths,focal=FOCAL)
+        
+        ##############################################################################
+        ######### MANUAL/AUTO AGREEMENT  ###################################
+        ##############################################################################
+        ###Run auto_manual_agreement on training data to define Hits and Misses
+        training[["summary_AUTO"]] <- auto_manual_agreement (training[["summary_AUTO"]] , training[["summary_MANUAL"]], training[["list_IF_Frames"]] )[["summary_AUTO"]]
+        
+        ##############################################################################
+        ######### FIT CLASSIFIERS WITH LDA/QDA/RF  ####################################
+        ##############################################################################
+        ###Note for Adriano:
+        ###For the fit of the classifiers I believe a lot can be gained from trimming the shortest interactions from summary_AUTO, as these will introduce noise
+        ####define to_keep variables to keep clearing memory between runs
+        to_keep <- c(ls(),c("to_keep","trim_length_sec"))
+        
+        # for (trim_length_sec in c(2,3)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
+        for (trim_length_sec in c(0,3,4,6)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
           
-          ###for these particular parameters, calculate variables of interest for manual annotations and automatic interactions for each of training and test dataset
-          print("Extracting movement variables for manually-annotated data and automatic interactions:")
-          print("-training data...")
-          training <- extraction_loop("training",all_body_lengths=all_body_lengths)
-          print("-test data...")
-          test     <- extraction_loop("test",all_body_lengths=all_body_lengths)
+          ###prepare output directories for Loop_ID
+          subDir <- paste0("Loop_ID_",Loop_ID)
+          if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",subDir))){
+            unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",subDir),recursive=T)
+          }
+          dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",subDir,"fits"),recursive = T)
           
-          ##############################################################################
-          ######### MANUAL/AUTO AGREEMENT  ###################################
-          ##############################################################################
-          ###Run auto_manual_agreement on training data to define Hits and Misses
-          training[["summary_AUTO"]] <- auto_manual_agreement (training[["summary_AUTO"]] , training[["summary_MANUAL"]], training[["list_IF_Frames"]] )[["summary_AUTO"]]
-          
-          ##############################################################################
-          ######### FIT CLASSIFIERS WITH LDA/QDA/RF  ####################################
-          ##############################################################################
-          ###Note for Adriano:
-          ###For the fit of the classifiers I believe a lot can be gained from trimming the shortest interactions from summary_AUTO, as these will introduce noise
-          ####define to_keep variables to keep clearing memory between runs
-          to_keep <- c(ls(),c("to_keep","trim_length_sec"))
-          
-          # for (trim_length_sec in c(2,3)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
-            for (trim_length_sec in c(3,4,6)){##This level of the loop is AFTER extracting movement variables for training and test to avoid unnecessary repetition of this slow step.
+          ###fit classifiers
+          print(paste("Perform Classification for Loop_ID ",Loop_ID,"...",sep=""))
+          classifiers <- fit_classifiers(
+            trim_short_interactions ( ######trim_short_interactions: function that cuts interactions shorter than a certain duration
+              training[["summary_AUTO"]] ######interaction table: summary_AUTO from training object 
+              ,trim_length_sec ### maximum duration of interactions that will be trimmed (set to 0 to trim nothing)
+              ,"duration_sec" ###name of the column that contains the duration of each interaction in seconds (could vary between object so specify it here)
               
-            ###prepare output directories for Loop_ID
-            subDir <- paste0("Loop_ID_",Loop_ID)
-            if (file.exists(file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir))){
-              unlink(file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir),recursive=T)
-            }
-            dir.create(file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"fits"),recursive = T)
-            
-            ###fit classifiers
-            print(paste("Perform Classification for Loop_ID ",Loop_ID,"...",sep=""))
-            classifiers <- fit_classifiers(
-              trim_short_interactions ( ######trim_short_interactions: function that cuts interactions shorter than a certain duration
-                training[["summary_AUTO"]] ######interaction table: summary_AUTO from training object 
-                ,trim_length_sec ### maximum duration of interactions that will be trimmed (set to 0 to trim nothing)
-                ,"duration_sec" ###name of the column that contains the duration of each interaction in seconds (could vary between object so specify it here)
-                
-              )
             )
-            
-            ###############################################################################
-            ###### SAVING LOOP-RELEVANT OBJECTS        ####################################
-            ###############################################################################
-            #save the SIRUS rules object
-            dput(classifiers[["SirusRules"]], file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"SirusRules.txt"))
-            
-            #save the BN_list object containing all information regarding the variables selected by RELIEF and the method to calculate them for new values
-            dput(classifiers[["selected_variables_BNobject_list"]], file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"BN_object_list.dat"))
-            
-            ####################################################################################################################
-            ###then for each classifier method, perform prediction on training and test data and get quality scores    #########
-            ####################################################################################################################
-            print(paste("Predict training and test data for Loop_ID ",Loop_ID,"...",sep=""))
-            
-            for (class_idx in 1:length(classifiers[["fits"]])){
+          )
+          
+          ###############################################################################
+          ###### SAVING LOOP-RELEVANT OBJECTS        ####################################
+          ###############################################################################
+          #save the SIRUS rules object
+          dput(classifiers[["SirusRules"]], file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",subDir,"SirusRules.txt"))
+          
+          #save the BN_list object containing all information regarding the variables selected by RELIEF and the method to calculate them for new values
+          dput(classifiers[["selected_variables_BNobject_list"]], file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",subDir,"BN_object_list.dat"))
+          
+          ####################################################################################################################
+          ###then for each classifier method, perform prediction on training and test data and get quality scores    #########
+          ####################################################################################################################
+          print(paste("Predict training and test data for Loop_ID ",Loop_ID,"...",sep=""))
+          
+          for (class_idx in 1:length(classifiers[["fits"]])){
+            if (!is.null(classifiers[["fits"]][[class_idx]])){#if non null
               classifier <- list(classifiers[["fits"]][[class_idx]]); names(classifier) <- names(classifiers[["fits"]])[class_idx]
               
               ##check match with manual 
               for (beta in c(0.5)){
+                ###beta: relates to the calculation of the Fbeta score (https://en.wikipedia.org/wiki/F-score)
+                ###      This is how much we value recall (=sensitivity = TP / (TP+FN)) over precision (=positive predictive value = TP / (TP + FP))
+                ### if beta = 1 the score calculated is a F1 score
+                ### based on lab meeting discussion we felt that we valued precision (minimising FP) over sensitivity to decrease the noise / avoid detecting grooming when there are none
+                ### so we want a beta < 1
+                ### arbitrarily here, it is set at 0.5
+                
                 quality_scores_pre_classifier       <- quality_scores(loop_interaction_detection_TPTNFPFN,beta)
                 if (class_idx==1){
                   print(paste("Automatic interaction detection in trunk loop ID ",Trunk_Loop_ID," had a sensitivity of ",round(quality_scores_pre_classifier["sensitivity"],digits=2)," and a precision of ",round(quality_scores_pre_classifier["precision"],digits=2)," PRE CLASSIFIER.",sep=""))
@@ -470,20 +497,20 @@ Trunk_Loop_ID  <- 1
                   write.table(Grooming_LDA_eachRun,file=output_name,append=F,col.names=T,row.names=F,quote=T)
                 }
               }
-
+              
               ###2. save fit
-              saveRDS(classifier[[names(classifier)]], file.path(SAVEOUTPUT, "MachineLearning_outcomes",subDir,"fits",paste(names(classifier),".rds",sep="")))
+              saveRDS(classifier[[names(classifier)]], file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",subDir,"fits",paste(names(classifier),".rds",sep="")))
               
-              
-            }#class_idx
-            
-            ###add 1 to Loop_ID counter
-            Loop_ID <- Loop_ID +  1
-            rm(   list   =  ls()[which(!ls()%in%to_keep)]    )
-            gc()
-          }#trim_length_sec
-        }#DT_frame_THRESHOLD
-
+            }#if non null
+          }#class_idx
+          
+          ###add 1 to Loop_ID counter
+          Loop_ID <- Loop_ID +  1
+          rm(   list   =  ls()[which(!ls()%in%to_keep)]    )
+          gc()
+        }#trim_length_sec
+      }#DT_frame_THRESHOLD
+      
     }#DT_dist_THRESHOLD_BL
     Trunk_Loop_ID <- Trunk_Loop_ID +1
     trunk_loop_end_time <- Sys.time()
