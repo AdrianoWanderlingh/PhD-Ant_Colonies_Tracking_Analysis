@@ -614,6 +614,10 @@ NetworkProp_individual <- NetworkProp_individual %>%
 NetworkProp_individual$Exposed <- as.factor(NetworkProp_individual$Exposed)
 levels(NetworkProp_individual$Exposed)[levels(NetworkProp_individual$Exposed)=="TRUE"] <- "treated"
 levels(NetworkProp_individual$Exposed)[levels(NetworkProp_individual$Exposed)=="FALSE"] <- "untreated"
+## order PERIOD levels
+NetworkProp_individual$period = factor(NetworkProp_individual$period, levels=c("pre","post"))
+
+
 #ASSIGN QUEEN LABEL TO QUEEN ISTEAD OF NURSE (SHOULD BE FIXED IN METADATA!!!)
 NetworkProp_individual[which(NetworkProp_individual$IsQueen==TRUE),"AntTask"] <- "queen"
 
@@ -637,7 +641,7 @@ DNA_Results_ColMeans <- merge(DNA_Results_ColMean, NetworkProp_ColMean, by=commo
 
 #calculate means by individual for stats (now in 3h blocks)
 #for aggregate dist
-NetworkProp_IndMean <- NetworkProp_individual %>% group_by(Colony, AntID, AntTask, Exposed, treatment) %>% summarize( mean_distance_to_queen = mean(aggregated_distance_to_queen))
+NetworkProp_IndMean <- NetworkProp_individual %>% group_by(period, Colony, AntID, AntTask, Exposed, treatment) %>% summarize( mean_distance_to_queen = mean(aggregated_distance_to_queen))
 # Remove duplicate rows
 NetworkProp_IndMean <- NetworkProp_IndMean[!duplicated(NetworkProp_IndMean), ]
 
@@ -648,9 +652,9 @@ DNA_Results_IndMean <- DNA_Results_IndMean[!duplicated(DNA_Results_IndMean), ]
 
 
 
-#### TEST correlation between LOAD and DISTANCE_to_queen
+#### TEST correlation between LOAD and DISTANCE_to_queen for PERIOD POST
 # # remove queens as distance is 0
-m.distance <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen * Ant_status + (1|Colony), data = DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"),]) # the "/" is for the nesting #  + (1|time_of_day) 
+m.distance <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen * Ant_status + (1|Colony), data = DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen" & DNA_Results_IndMean$period=="post"),]) # the "/" is for the nesting #  + (1|time_of_day) 
 output_lmer(m.distance)
 
 # 
@@ -733,26 +737,36 @@ DNA_Results_CLD_means <- DNA_Results_CLD_means[!duplicated(colnames(DNA_Results_
 
 
 
-# scatter Plot of mean_distance_to_queen VS MbruDNA per COLONY
-ggplot(DNA_Results_ColMeans[which(DNA_Results_ColMeans$Ant_status!="untreated queen"),], 
-       aes(x = log10(mean_MbruDNA+constant), y = mean_distance_to_queen)) + #, group = Treatment
-  geom_point(aes(colour=Treatment),size = 2) +
-  STYLE_CONT +
-  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_ColMeans[which(DNA_Results_ColMeans$Ant_status!="untreated queen"),], Treatment=="Big Pathogen"), method = "lm", formula = y ~ x ) + #+ I(x^2)
-  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_ColMeans[which(DNA_Results_ColMeans$Ant_status!="untreated queen"),], Treatment=="Small Pathogen"), method = "lm", formula = y ~ x) #+
-  #facet_grid(rows= vars(Ant_status)) +
-  #geom_text(data = DNA_Results_CLD_means, aes(x = log10(mean_MbruDNA+constant)+0.5, group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
-
-
 # scatter Plot of mean_distance_to_queen VS MbruDNA per INDIVIDUAL
-ggplot(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"),], 
-       aes(x = log10(MbruDNA+constant), y = mean_distance_to_queen)) + #, group = Treatment
-  geom_point(aes(colour=Treatment),size=1,alpha=0.4) +
+ggplot(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),], 
+       aes(x = mean_distance_to_queen , y = log10(MbruDNA+constant))) + #, group = Treatment
+  geom_point(aes(colour=Colony),size=1) +
+  #stat_ellipse(aes(colour=Colony)) +
   STYLE_CONT +
-  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"),], Treatment=="Big Pathogen"), method = "lm", formula = y ~ x ) + #+ I(x^2)
-  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"),], Treatment=="Small Pathogen"), method = "lm", formula = y ~ x) +
-  facet_grid(rows= vars(Ant_status)) #+
+  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),], Treatment=="Big Pathogen"), method = "lm", formula = y ~ x ) + #+ I(x^2)
+  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),], Treatment=="Small Pathogen"), method = "lm", formula = y ~ x) +
+  facet_grid(Ant_status~ period) #+
 #geom_text(data = DNA_Results_CLD_means, aes(x = log10(MbruDNA+constant)+0.5, group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
+
+
+for (   col_id in unique(DNA_Results_IndMean$Colony)  ){
+  
+  DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id),"MbruDNA_binned_per_colony"] <- as.numeric(  cut(log10(DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id),"MbruDNA"]+constant),breaks=10,ordered_result = T))
+  DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id&DNA_Results_IndMean$Ant_status!="untreated queen"),"mean_distance_to_queen_ordered"] <- as.numeric(  cut(DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id&DNA_Results_IndMean$Ant_status!="untreated queen"),"mean_distance_to_queen"],breaks=10,ordered_result = T))
+  
+
+}
+
+ggplot(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),], 
+       aes(x = mean_distance_to_queen_ordered , y = log10(MbruDNA+constant))) + #, group = Treatment
+  geom_point(aes(colour=Colony),size=1) +
+  stat_ellipse(aes(colour=Colony)) +
+  STYLE_CONT +
+  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),], Treatment=="Big Pathogen"), method = "lm", formula = y ~ x ) + #+ I(x^2)
+  geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),], Treatment=="Small Pathogen"), method = "lm", formula = y ~ x) +
+  facet_grid(Ant_status~ period) #+
+#
+
 
 
 ## Treatment:mean_distance_to_queen
