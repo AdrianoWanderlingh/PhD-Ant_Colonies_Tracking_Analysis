@@ -1,5 +1,5 @@
 
-#CLEAN UP
+##### CLEAN UP
 gc()
 mallinfo::malloc.trim(0L)
 
@@ -11,6 +11,8 @@ library(ggplot2)
 library(stringr)
 library(plotrix)
 library(mallinfo)
+library(scales) # for colours
+
 ## for stats
 library(performance)
 library(remotes)
@@ -39,25 +41,26 @@ library(DHARMa) # residual diagnostics (here used for binomial)
 #to avoid conflicts between lmer and anova results, set the contrasts globally: 
 afex::set_sum_contrasts()
 
-#functions
-RIGHT = function(x,n){
-  substring(x,nchar(x)-n+1)
-}
+#it is necessary to set the contrasts option in R. Because the multi-way ANOVA model is over-parameterised, it is necessary to choose a contrasts setting that sums to zero, otherwise the ANOVA analysis will give incorrect results with respect to the expected hypothesis. (The default contrasts type does not satisfy this requirement.)
+options(contrasts = c("contr.sum","contr.poly"))
 
 
-## COLOURS
+
+
+##### PLOT STYLES
 
 #Create a custom color scale FOR COLONIES + treatments
-myColorsSmall <- scales::viridis_pal(option = "D")(5)
-myColorsLarge <- scales::viridis_pal(option = "F")(5)
-Cols_treatments <- c("#440154FF","#31688EFF")
+FullPal <- scales::viridis_pal(option = "D")(20)
+myColorsSmall  <- tail(FullPal,5)
+myColorsLarge  <- head(FullPal,5) 
+Cols_treatments <- c("#440154FF","#FDE725FF") #"#31688EFF"
 myColors      <- c(myColorsLarge,myColorsSmall, Cols_treatments)
 names(myColors) <- c("R3BP","R5BP","R7BP","R8BP","R12BP","R1SP", "R2SP", "R5SP", "R7SP","R11SP","Big Pathogen","Small Pathogen")
 colScale <- scale_colour_manual(name = "Colony",values = myColors)
 fillScale <- scale_fill_manual(name = "Colony",values = myColors)
 
 
-# PLOT STYLE
+# ggplot PLOT STYLE
 STYLE <- list(colScale, fillScale,
               theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
               theme_bw(),
@@ -69,7 +72,14 @@ STYLE_CONT <- list(colScale, fillScale,
               theme_bw()
 )
 
-#
+
+##### FUNCTIONS
+
+#right function
+RIGHT = function(x,n){
+  substring(x,nchar(x)-n+1)
+}
+
 #function to test normality of residuals
 test_norm <- function(resids){
   print("Testing normality")
@@ -88,7 +98,7 @@ approach")
   }
 }
 
-#function to test normality of residuals
+#function to report a model output
 output_lmer <- function(model){
   print("------------RESIDUALS NORMALITY------------")
   test_norm(residuals(model))
@@ -99,6 +109,54 @@ output_lmer <- function(model){
   print("------------RSQUARED------------")
   print(r.squaredGLMM(model))
   tab_model(model)
+}
+
+## extras that could be added to function above
+# plot(m2)
+# qqnorm(residuals(m1))
+# qqline(residuals(m1))
+# hist(residuals(m1))
+#anova(m1)
+
+# function to perform posthocs
+posthoc_list <- list()
+compute_posthocs <- function(model){
+  #check taht there are significant outputs
+  if (length(row.names(Anova(model)[Anova(model)$'Pr(>Chisq)' < 0.05,]))==0){
+    print("there are no significant vars.")}else{
+  for (SIG.VAR in row.names(Anova(model)[Anova(model)$'Pr(>Chisq)' < 0.05,])) {
+    if (grepl(":", SIG.VAR)) {
+      warning(paste0(SIG.VAR, "is an interaction, currently this situation is not handled by the function."))
+    }else{
+    #check if the variable is not numeric . to do so, we need to access the dataframe from the model
+    if (!is.numeric(get(gsub("\\[.*","",as.character(model@call)[3]))[,SIG.VAR])) {
+    print(paste0("Performing posthocs for the significant var: ",SIG.VAR))
+    arg <- list("Tukey")
+    names(arg) <- SIG.VAR
+    # glht (mcp) : General linear hypotheses Testing (glht) and multiple comparisons for parametric models (mcp)
+    cmp <- do.call(mcp, arg)
+    posthoc_SIG.VAR <- summary(glht(model, linfct = cmp),test=adjusted("BH"))
+    # Set up a compact letter display of all pair-wise comparisons
+    model_means_cld <- cld(posthoc_SIG.VAR)
+    #create dataframe usable with ggplot geom_text
+    model_means_cld <- as.data.frame(t(t(model_means_cld$mcletters$Letters)))
+    # add column name
+    model_means_cld$newcol <- NA
+    colnames(model_means_cld)[which(names(model_means_cld) == "newcol")] <- SIG.VAR
+    model_means_cld[,SIG.VAR] <- row.names(model_means_cld)
+    rownames(model_means_cld) <- NULL
+    # add to list
+    posthoc_list <- c(posthoc_list, list(model_means_cld))
+    names(posthoc_list)[length(posthoc_list)] <- paste(deparse(substitute(model)),SIG.VAR,sep="_")
+    print(paste(deparse(substitute(model)),SIG.VAR,sep="_"))
+    print(model_means_cld)
+  } # SIG.VAR LOOP
+    } #check if is an interaction
+  } #check if numeric
+  print("call posthoc_list to get posthocs")
+  } # if significant vars exist
+  return(posthoc_list)
+  
 }
 
 
@@ -376,6 +434,13 @@ DNA_Results_annotated$Ant_status <- paste(DNA_Results_annotated$Exposed, DNA_Res
 ##################              STATS & PLOTS        ################################
 #####################################################################################
 
+### HIST OF ANTS THAT RECEIVED A LOAD BY TASK
+ggplot(DNA_Results_annotated, aes(x = log(MbruDNA),fill=Exposed)) +
+  geom_histogram(position = "identity", bins = 30,alpha=0.7) + facet_wrap(~Treatment)  +
+  xlab("LOG MbruDNA")  #+
+# scale_fill_discrete(labels=c('untreated', 'treated'))
+
+
 # maybe low Rsquared not relevant according to this: 
 # https://stats.stackexchange.com/questions/509933/is-there-such-a-thing-as-a-too-low-r-squared-when-running-multiple-linear-regres
 
@@ -383,45 +448,132 @@ DNA_Results_annotated$Ant_status <- paste(DNA_Results_annotated$Exposed, DNA_Res
 constant <- min ( DNA_Results_annotated$MbruDNA[  which(DNA_Results_annotated$MbruDNA!=0)  ]  ,na.rm=T  )/10
 
 #####################################################################################
-##### TEST DIFFERENCE BETWEEN SIZES FOR EACH Ant_status (ANTTASK*TREATMENT CONDITION)
+##### TEST DIFFERENCE OF MbruDNA.LOAD BETWEEN SIZES FOR EACH Ant_status (ANTTASK*TREATMENT CONDITION)
 
 m1 <- lmer(log10(MbruDNA+constant) ~ Treatment * Ant_status + (1|Colony), data = DNA_Results_annotated) # the "/" is for the nesting #  + (1|time_of_day) 
 output_lmer(m1)
 # for reporting: report sig. results from the Anova: " N=1040,  P<0.0001 (LMM, Ant_status)" 
 
-### POST-HOCs
-# within ant-status
-posthoc_Ant_status <- summary(glht( m1, linfct=mcp(Ant_status="Tukey")),test=adjusted("BH"))
+#plot the interaction terms
+#interaction.plot(DNA_Results_annotated$Treatment, DNA_Results_annotated$Ant_status, DNA_Results_annotated$MbruDNA, legend = TRUE, xlab = "Treatment", ylab = "MbruDNA", pch = 19)
+# produce post-hocs for significant 
+##IMPROVE: HOW TO SAVE IN posthoc_list WITHOUT EXPLICITLY CALLING IT? 
+posthoc_list <- compute_posthocs(m1)
 
 ### NOTE: No need for post-hocs if there is no significant interaction
-# POST-HOCs within Ant_status
-# posthoc_Treatment <- emmeans(m1, specs = pairwise ~  Treatment | Ant_status) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-# posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
-# print(posthoc_Treatment_summary)
 
-# # POST-HOCs for AntTask by treatment
-# posthoc_Ant_status <- emmeans(m1, specs = pairwise ~  Ant_status | Treatment) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-# posthoc_Ant_status_summary<-summary(posthoc_Ant_status$contrasts)
-# print(posthoc_Ant_status_summary)
+# ### POST-HOCs
+# # within ant-status
+# posthoc_Ant_status <- summary(glht( m1, linfct=mcp(Ant_status="Tukey")),test=adjusted("BH"))
+# 
+# model_means_cld <- cld(posthoc_Ant_status)
+# model_means_cld <- as.data.frame(t(t(model_means_cld$mcletters$Letters))); model_means_cld$Ant_status <- row.names(model_means_cld)
+# 
+# # show output
+# model_means_cld
 
-# add letters to each mean
-# model_means_cld <- cld(object = posthoc_Ant_status,
-#                        adjust = "Tukey",
-#                        Letters = letters,
-#                        alpha = 0.05)
-model_means_cld <- cld(posthoc_Ant_status)
-model_means_cld <- as.data.frame(t(t(model_means_cld$mcletters$Letters))); model_means_cld$Ant_status <- row.names(model_means_cld)
+############
+#### BOXPLOT | MbruDNA VS Ant_status BY TREATMENT
+p <- ggplot(DNA_Results_annotated,
+            aes(x = Ant_status, y = log(MbruDNA+constant))) + #,group = Exposed,color = Exposed
+  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
+  geom_boxplot(aes(colour=Treatment),lwd=0.8) + #lwd=0.8
+  geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.4)+ #,alpha= 0.8,stroke=0
+  #geom_point() +
+  STYLE +
+  #theme(legend.position = "none") +
+  labs(#title = "Pathogen Quantification Adriano",
+    #subtitle = "All ants",
+    y = "LOG  M. brunneum quantification ng/µL per ant",
+    #x="",
+    #caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) 
+  )+ 
+  geom_text(data = posthoc_list$m1_Ant_status, aes(x = Ant_status, y = 3,group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
 
-# show output
-model_means_cld
 
-
-### TEST DIFFERENCE BETWEEN SIZES ONLY FOR TREATED NURSES
+#####################################################################################
+##### TEST DIFFERENCE OF MbruDNA.LOAD BETWEEN SIZES ONLY FOR TREATED NURSES (ANTTASK*TREATMENT CONDITION)
 m3 <- lmer(log10(MbruDNA+constant) ~ Treatment + (1|Colony), data = DNA_Results_annotated[which(DNA_Results_annotated$Ant_status=="treated nurse"),]) # the "/" is for the nesting #  + (1|time_of_day) 
 output_lmer(m3)
+posthoc_list <- compute_posthocs(m3)
 
-### TEST DIFFERENCES BETWEEN EXPOSED AND UNEXPOSED AS COUNTS ("positive)
-# PROPORTION OF CLOSE TO 0 VALUES (binomial)
+
+#####################################################################################
+#### PERMUTATION TEST to check for difference in VARIANCE of MbruDNA.LOAD in TREATED NURSES by TREATMENT
+### Is the difference in variance depending only on the difference in sample size between Big and Small colonies?
+## permutation run in large colonies (~180) subsampled to small cols size (~30)
+number_permutations <- 1000
+
+## HERE ONLY FOR TREATED NURSES
+for (STATUS in c("treated nurse")) { # "untreated forager","untreated nurse"  ,
+  #subset data by colony size
+  STATUS_large <- DNA_Results_annotated[which(DNA_Results_annotated$Treatment=="Big Pathogen"&DNA_Results_annotated$Ant_status==STATUS),]
+  STATUS_small <- DNA_Results_annotated[which(DNA_Results_annotated$Treatment=="Small Pathogen"&DNA_Results_annotated$Ant_status==STATUS),]
+  
+  large_colonies_list <- unique(STATUS_large$Colony)
+  
+  #get the N of treated nurses in the small colonies
+  number_STATUS_small <- aggregate (  AntID ~ Treatment + Colony, FUN=length, data=STATUS_small)
+  
+  #set empty resampled df
+  overall_resampled_table <- NULL
+  
+  # set visual progress bar for permutations
+  pb = txtProgressBar(min = 0, max = number_permutations, initial = 0)  # set progress bar
+  
+  print(paste0("permutations for status: ", STATUS))
+  for (permutation in 1:number_permutations){
+    setTxtProgressBar(pb,permutation)
+    #####first randomly assign a small size to the large colonies
+    sampling_sizes         <- sample ( number_STATUS_small$AntID,  size = length(number_STATUS_small$AntID), replace = F  )
+    names(sampling_sizes)  <- large_colonies_list
+    
+    #resample from the large colonies using the randomly assigned size
+    resampled_table <- NULL
+    for (colony in large_colonies_list ){
+      STATUS_large_subset <- STATUS_large[which(STATUS_large$Colony==colony),]
+      sampled_indices      <- sample (  1:nrow(STATUS_large_subset),size =  sampling_sizes[colony], replace=F  )
+      resampled_table      <- rbind(resampled_table,STATUS_large_subset[sampled_indices,])
+    }
+    #generate permutation output
+    overall_resampled_table <- rbind(overall_resampled_table,data.frame(permutation=permutation,resampled_table))
+    # close progress bar
+    if (permutation == number_permutations) { close(pb) }
+  }
+  
+  #calculate SD per each permutation
+  standard_deviations_permuted <- aggregate ( log10(MbruDNA + constant) ~ Treatment + Colony + permutation,FUN=sd,data=overall_resampled_table     )
+  names(standard_deviations_permuted)[which(names(standard_deviations_permuted)=="log10(MbruDNA + constant)")] <- "sd"
+  mean_standard_deviations_permuted <- aggregate ( sd ~ permutation, FUN=mean, data=standard_deviations_permuted)
+  #produce histogram
+  hist(mean_standard_deviations_permuted$sd)
+  
+  observed_standard_deviations <- aggregate ( log10(MbruDNA + constant) ~ Treatment + Colony ,FUN=sd,data=treated_small     )
+  names(observed_standard_deviations)[which(names(observed_standard_deviations)=="log10(MbruDNA + constant)")] <- "sd"
+  mean_observed_sd_small <- mean(observed_standard_deviations$sd,na.rm=T)
+  abline(v=mean_observed_sd_small,col="red")
+  
+  prop_lower <- length (   which(mean_standard_deviations_permuted$sd< mean_observed_sd_small ))/length(mean_standard_deviations_permuted$sd)
+  prop_higher<- length (   which(mean_standard_deviations_permuted$sd> mean_observed_sd_small ))/length(mean_standard_deviations_permuted$sd)
+  prop_more_extreme <- min(prop_lower,prop_higher)
+  pval <- 2*prop_more_extreme
+  
+  CI_95 <- quantile(  mean_standard_deviations_permuted$sd, probs=c(0.025,0.975)    )
+  CI_95
+  mean_observed_sd_small
+  
+  #report results
+  print(paste0("N. permutations=",number_permutations," pval=",pval))
+  if (unname(CI_95["2.5%"]) < mean_observed_sd_small & mean_observed_sd_small < unname(CI_95["97.5%"])) {
+    print("the standard deviation of the SMALL colonies is INSIDE the distribution of permuted mean SD of the BIG colonies, therefore the observed difference in SD is only caused by the difference in sample sizes between Small and Big.")
+  }else{
+    print("the standard deviation of the SMALL colonies is OUTSIDE the distribution of permuted mean SD of the BIG colonies, therefore the observed difference in SD is REAL.")
+  }
+}# STATUS LOOP
+
+#####################################################################################
+##### TEST DIFFERENCE OF MbruDNA.LOAD BETWEEN SIZES FOR EACH Ant_status (ANTTASK*TREATMENT CONDITION)
+##### MbruDNA.LOAD AS BINARY FACTOR (1 = POSITIVE = non-zero load)
 DNA_Results_annotated$positive<- 1
 DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA==0),"positive"] <- 0
 m2 <- glmer(positive ~ Treatment * Ant_status + (1|Colony), data = DNA_Results_annotated,family=binomial) # the "/" is for the nesting #  + (1|time_of_day) 
@@ -438,24 +590,18 @@ plotResiduals(simulationOutput, fitted(m1), xlab = "fitted(m1)")
 
 ### POST-HOCs
 # within ant-status
-posthoc_Ant_status2 <- summary(glht(m2, linfct=mcp(Ant_status="Tukey")),test=adjusted("BH"))
-model_means_cld2 <- cld(posthoc_Ant_status2)
-model_means_cld2 <- as.data.frame(t(t(model_means_cld2$mcletters$Letters))); model_means_cld2$Ant_status <- row.names(model_means_cld2)
+posthoc_list <- compute_posthocs(m2)
+warning("posthoc_list shows only 1 letter in cld ")
 
-# show output
-model_means_cld2
+# posthoc_Ant_status2 <- summary(glht(m2, linfct=mcp(Ant_status="Tukey")),test=adjusted("BH"))
+# model_means_cld2 <- cld(posthoc_Ant_status2)
+# model_means_cld2 <- as.data.frame(t(t(model_means_cld2$mcletters$Letters))); model_means_cld2$Ant_status <- row.names(model_means_cld2)
+# # show output
+# model_means_cld2
 
-
-# plot(m2)
-# qqnorm(residuals(m1))
-# qqline(residuals(m1))
-# hist(residuals(m1))
-#anova(m1)
-
-##########################################################################
-#### PLOTTING
+############
+#### BARPLOT | PROPORTION OF ZERO LOAD VS Ant_status BY TREATMENT
 table(DNA_Results_annotated$positive,DNA_Results_annotated$Treatment)
-prop.table()
 
 DNA_Results_ColPropPos <- DNA_Results_annotated %>% group_by(AntTask, Exposed, treatment,Treatment, Ant_status) %>% summarise(count = n(), positive = sum(positive == 1))
 DNA_Results_ColPropPos$negative <- DNA_Results_ColPropPos$count - DNA_Results_ColPropPos$positive 
@@ -478,115 +624,12 @@ ggplot(DNA_Results_ColPropPos, aes(fill=Treatment, y=propZeros/100, x=Ant_status
     #caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) 
   )
 
-#p + geom_text(data = model_means_cld, aes(x = Ant_status, y = 3,group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
 
+#####################################################################################
+##### TEST DIFFERENCE OF MbruDNA.LOAD VS DISTANCE TO QUEEN BETWEEN SIZES FOR EACH Ant_status (ANTTASK*TREATMENT CONDITION)
 
+# load network data
 
-
-###########################################################################
-#### PERMUTATION TEST to check for difference in VARIANCE of TREATED NURSES IN BIG AND SMALL COLONIES
-
-
-# Difference in variances instead of means (is there a mixed effect model for that?) To couple with a permutation test to subsample large colonies
-
-number_permutations <- 1000
-
-treated_large <- DNA_Results_annotated[which(DNA_Results_annotated$Treatment=="Big Pathogen"&DNA_Results_annotated$Ant_status=="treated nurse"),]
-treated_small <- DNA_Results_annotated[which(DNA_Results_annotated$Treatment=="Small Pathogen"&DNA_Results_annotated$Ant_status=="treated nurse"),]
-
-large_colonies_list <- unique(treated_large$Colony)
-
-number_treated_small <- aggregate (  AntID ~ Treatment + Colony, FUN=length, data=treated_small)
-
-overall_resampled_table <- NULL
-
-pb = txtProgressBar(min = 0, max = number_permutations, initial = 0)  # set progress bar 
-
-
-for (permutation in 1:number_permutations){
-  
-  setTxtProgressBar(pb,permutation) 
-  
-  #####first randomly assign a small size to the large colonies
-  sampling_sizes         <- sample ( number_treated_small$AntID,  size = length(number_treated_small$AntID), replace = F  )
-  names(sampling_sizes)  <- large_colonies_list
-  
-  resampled_table <- NULL
-  for (colony in large_colonies_list ){
-    treated_large_subset <- treated_large[which(treated_large$Colony==colony),]
-    sampled_indices      <- sample (  1:nrow(treated_large_subset),size =  sampling_sizes[colony], replace=F  )
-    resampled_table      <- rbind(resampled_table,treated_large_subset[sampled_indices,])
-  }
-  overall_resampled_table <- rbind(overall_resampled_table,data.frame(permutation=permutation,resampled_table))
-  
-  
-  if (permutation == number_permutations) { close(pb) } 
-}
-
-standard_deviations_permuted <- aggregate ( log10(MbruDNA + constant) ~ Treatment + Colony + permutation,FUN=sd,data=overall_resampled_table     )
-names(standard_deviations_permuted)[which(names(standard_deviations_permuted)=="log10(MbruDNA + constant)")] <- "sd"
-mean_standard_deviations_permuted <- aggregate ( sd ~ permutation, FUN=mean, data=standard_deviations_permuted)
-hist(mean_standard_deviations_permuted$sd)
-
-observed_standard_deviations <- aggregate ( log10(MbruDNA + constant) ~ Treatment + Colony ,FUN=sd,data=treated_small     )
-names(observed_standard_deviations)[which(names(observed_standard_deviations)=="log10(MbruDNA + constant)")] <- "sd"
-mean_observed_sd_small <- mean(observed_standard_deviations$sd,na.rm=T)
-abline(v=mean_observed_sd_small,col="red")
-
-prop_lower <- length (   which(mean_standard_deviations_permuted$sd< mean_observed_sd_small ))/length(mean_standard_deviations_permuted$sd)
-prop_higher<- length (   which(mean_standard_deviations_permuted$sd> mean_observed_sd_small ))/length(mean_standard_deviations_permuted$sd)
-prop_more_extreme <- min(prop_lower,prop_higher)
-pval <- 2*prop_more_extreme
-
-CI_95 <- quantile(  mean_standard_deviations_permuted$sd, probs=c(0.025,0.975)    )
-CI_95
-mean_observed_sd_small
-
-#report results
-print(paste0("N. permutations=",number_permutations," pval=",pval))
-if (unname(CI_95["2.5%"]) < mean_observed_sd_small & mean_observed_sd_small < unname(CI_95["97.5%"])) {
-  print("the standard deviation of the SMALL colonies is INSIDE the distribution of permuted mean SD of the BIG colonies, therefore the observed difference in SD is only caused by the difference in sample sizes between Small and Big.")
-}else{
-  print("the standard deviation of the SMALL colonies is OUTSIDE the distribution of permuted mean SD of the BIG colonies, therefore the observed difference in SD is REAL.")
-}
-
-
-##########################################################################
-##################### PLOTTING ###########################################
-##########################################################################
-
-### HIST OF ANTS THAT RECEIVED A LOAD BY TASK
-ggplot(DNA_Results_annotated, aes(x = log(MbruDNA),fill=Exposed)) +
-  geom_histogram(position = "identity", bins = 30,alpha=0.7) + facet_wrap(~Treatment)  +
-  xlab("LOG MbruDNA")  #+
- # scale_fill_discrete(labels=c('untreated', 'treated'))
-
-
-####### BY Ant_status #####################################################
-
-## BOXPLOT | LOAD VS Ant_status BY TREATMENT
-p <- ggplot(DNA_Results_annotated,
-       aes(x = Ant_status, y = log(MbruDNA+constant))) + #,group = Exposed,color = Exposed
-  #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
-  geom_boxplot(aes(colour=Treatment),lwd=0.8) + #lwd=0.8
-  geom_point(aes(fill = Treatment,colour=Treatment),position = position_jitterdodge(),size=1,alpha=0.4)+ #,alpha= 0.8,stroke=0
-  #geom_point() +
-  STYLE +
-  #theme(legend.position = "none") +
-  labs(#title = "Pathogen Quantification Adriano",
-    #subtitle = "All ants",
-    y = "LOG  M. brunneum quantification ng/µL per ant",
-    #x="",
-    #caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) 
-    )
-
-p + geom_text(data = model_means_cld, aes(x = Ant_status, y = 3,group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
-  #facet_grid(~ AntTask) +
-
-
-####### BY LOAD VS DISTANCE TO QUEEN #####################################################
-
-#PLOT and STATS of NETWORK distance to queen (in network: aggregated_distance_to_queen) vs pathogen load to see if big and small cols have different slopes... (see graph in notebook). 
 #get average distance by colony removing isqueen =T. 
 #Network distance will depend on network size, so we will need to do randomisations to test for significance. plot actual data and re-sampled data (as Yuko ulrich did with 95% conficence interval and mean)
 
@@ -608,10 +651,8 @@ levels(NetworkProp_individual$Exposed)[levels(NetworkProp_individual$Exposed)=="
 ## order PERIOD levels
 NetworkProp_individual$period = factor(NetworkProp_individual$period, levels=c("pre","post"))
 
-
-#ASSIGN QUEEN LABEL TO QUEEN ISTEAD OF NURSE (SHOULD BE FIXED IN METADATA!!!)
+#ASSIGN QUEEN LABEL TO QUEEN INSTEAD OF NURSE (SHOULD BE FIXED IN METADATA!!!)
 NetworkProp_individual[which(NetworkProp_individual$IsQueen==TRUE),"AntTask"] <- "queen"
-
 #keep only colonies that have been subjected to qPCR
 NetworkProp_individual <- NetworkProp_individual[NetworkProp_individual$Colony %in% unique(DNA_Results_annotated$Colony), ]
 
@@ -629,7 +670,6 @@ NetworkProp_individual <- NetworkProp_individual[NetworkProp_individual$Colony %
 # common_col_names2 <- intersect(names(DNA_Results_ColMean), names(NetworkProp_ColMean))
 # DNA_Results_ColMeans <- merge(DNA_Results_ColMean, NetworkProp_ColMean, by=common_col_names2, all.x=TRUE)
 
-
 #calculate means by individual for stats (now in 3h blocks)
 #for aggregate dist
 NetworkProp_IndMean <- NetworkProp_individual %>% group_by(period, Colony, AntID, AntTask, Exposed, treatment) %>% summarize( mean_distance_to_queen = mean(aggregated_distance_to_queen),  mean_distance_to_treated = mean(mean_aggregated_distance_to_treated))
@@ -641,11 +681,6 @@ common_col_names3 <- intersect(names(DNA_Results_annotated), names(NetworkProp_I
 DNA_Results_IndMean <- dplyr::left_join(DNA_Results_annotated, NetworkProp_IndMean, by=common_col_names3)
 DNA_Results_IndMean <- DNA_Results_IndMean[!duplicated(DNA_Results_IndMean), ]
 
-##PUT UPPER IN THE SCRIPT, USE IT AS A GENERAL RULE FOR ALL!
-##order factor Colony for colour matching
-DNA_Results_IndMean$Colony <- factor(DNA_Results_IndMean$Colony, levels=c("R3BP","R5BP","R7BP","R8BP","R12BP","R1SP", "R2SP", "R5SP", "R7SP","R11SP"),ordered = T)
-
-
 #CREATE BINS for distance to Q and to Treated nurses
 for (   col_id in unique(DNA_Results_IndMean$Colony)  ){
   DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id),"MbruDNA_binned_per_colony"] <- as.numeric(  cut(log10(DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id),"MbruDNA"]+constant),breaks=100,ordered_result = T))
@@ -653,83 +688,87 @@ for (   col_id in unique(DNA_Results_IndMean$Colony)  ){
   DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id&DNA_Results_IndMean$Ant_status!="treated nurse"),"mean_distance_to_treated_ordered"] <- as.numeric(  cut(DNA_Results_IndMean[which(DNA_Results_IndMean$Colony==col_id&DNA_Results_IndMean$Ant_status!="treated nurse"),"mean_distance_to_treated"],breaks=100,ordered_result = T))
 }
 
-#############################################################
-#### TEST correlation between LOAD and DISTANCE_to_queen for PERIOD POST
-# # remove queens as distance is 0
-m.distance <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen * Ant_status + (1|Colony), data = DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen" & DNA_Results_IndMean$period=="post"),]) # the "/" is for the nesting #  + (1|time_of_day) 
-output_lmer(m.distance)
+#####################################################################################
+##### TEST correlation between MbruDNA.LOAD and DISTANCE_to_queen for PERIOD POST
+##### PLOT and STATS of NETWORK distance to queen (in network: aggregated_distance_to_queen) vs pathogen load to see if big and small cols have different slopes... (see graph in notebook). 
+# # remove queens as distance is 0 + load only makes sense for post
+## data subset NO Q, NO T
+DNA_Results_IndMean_NoQ_post <- DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen" & DNA_Results_IndMean$period=="post"),]
 
-#### TEST correlation between LOAD and BINNED DISTANCE_to_queen for PERIOD POST
+m.loadVSdistanceQ <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen * Ant_status + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.loadVSdistanceQ)
 
-#MODEL
-m.distance_BIN <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen_ordered * Ant_status + (1|Colony), data = DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen" & DNA_Results_IndMean$period=="post"),]) # the "/" is for the nesting #  + (1|time_of_day) 
-output_lmer(m.distance_BIN)
+posthoc_list <- compute_posthocs(m.loadVSdistanceQ)
 
-# 
-# ### post-hocs
-# posthoc_Qdist_Ant_status <- summary(glht( m.distance, linfct=mcp(Ant_status="Tukey")),test=adjusted("BH"))
-# print(cld(posthoc_Qdist_Ant_status))
-# 
-# posthoc_Qdist_treat<- summary(glht(m.distance, linfct=mcp(Treatment="Tukey")), test=adjusted("BH"))
-# print(cld(posthoc_Qdist_treat))
+#####################################################################################
+##### TEST correlation between MbruDNA.LOAD and BINNED DISTANCE_to_queen for PERIOD POST
 
-####
-#### MODIFY IT TO SPLIT PRE and POST!!!
+#model
+m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen_ordered * Ant_status + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.loadVSdistanceQ_BIN)
+
+posthoc_list <- compute_posthocs(m.loadVSdistanceQ_BIN)
+
+#### LOAD ONLY MAKES SENSE FOR THE POST
+#### MODIFY IT TO SPLIT PRE and POST???
 #####
 
 ##### post-hocs for interactions
 ## following this: https://stats.stackexchange.com/questions/5250/multiple-comparisons-on-a-mixed-effects-model
-DNA_Results_IndMean$Treat_Status <- interaction(DNA_Results_IndMean$Treatment, DNA_Results_IndMean$Ant_status)
-m.distance_Treat_Status <- lmer(log10(MbruDNA+constant) ~ Treat_Status * mean_distance_to_queen + (1|Colony), data = DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"),]) 
-output_lmer(m.distance_Treat_Status)
+DNA_Results_IndMean_NoQ_post$Treat_Status <- interaction(DNA_Results_IndMean_NoQ_post$Treatment, DNA_Results_IndMean_NoQ_post$Ant_status)
+m.loadVSdistanceQ_Treat_Status <- lmer(log10(MbruDNA+constant) ~ Treat_Status * mean_distance_to_queen_ordered + (1|Colony), data = DNA_Results_IndMean_NoQ_post) 
+output_lmer(m.loadVSdistanceQ_Treat_Status)
 
-### post-hocs
-comp.Treat_Status <- glht(m.distance_Treat_Status, linfct=mcp(Treat_Status="Tukey"),test=adjusted("BH")) 
-print(cld(comp.Treat_Status))
+##perform post-hocs
+posthoc_list <- compute_posthocs(m.loadVSdistanceQ_Treat_Status)
 
-# add letters to each mean
-Treat_Status_means_cld <- cld(comp.Treat_Status)
-Treat_Status_means_cld <- as.data.frame(t(t(Treat_Status_means_cld$mcletters$Letters))); Treat_Status_means_cld$Ant_status <- row.names(Treat_Status_means_cld)
+# ### post-hocs
+# comp.Treat_Status <- glht(m.loadVSdistanceQ_Treat_Status, linfct=mcp(Treat_Status="Tukey"),test=adjusted("BH")) 
+# print(cld(comp.Treat_Status))
+# # add letters to each mean
+# Treat_Status_means_cld <- cld(comp.Treat_Status)
+# Treat_Status_means_cld <- as.data.frame(t(t(Treat_Status_means_cld$mcletters$Letters))); Treat_Status_means_cld$Ant_status <- row.names(Treat_Status_means_cld)
 
-Treat_Status_means_cld <- tidyr::separate(data = Treat_Status_means_cld, col = Ant_status, into = c("Treatment", "Ant_status"), sep = "\\.")
+#modify to split the interaction terms
+posthoc_list$m.loadVSdistanceQ_Treat_Status <- tidyr::separate(data = posthoc_list$m.loadVSdistanceQ_Treat_Status, col = Treat_Status, into = c("Treatment", "Ant_status"), sep = "\\.")
 
-DNA_Results_CLD_means <- DNA_Results_ColMeans %>% group_by(Ant_status, treatment) %>% summarize(mean_distance_to_queen = mean(mean_distance_to_queen), mean_MbruDNA = mean(mean_MbruDNA))
-DNA_Results_CLD_means <- DNA_Results_CLD_means[which(DNA_Results_CLD_means$Ant_status!="untreated queen"),]
-DNA_Results_CLD_means <- cbind(Treat_Status_means_cld,DNA_Results_CLD_means)
+DNA_Results_CLD_means <- DNA_Results_IndMean_NoQ_post %>% group_by(Ant_status, treatment) %>% summarize(mean_distance_to_queen_ordered = mean(mean_distance_to_queen_ordered), MbruDNA = mean(MbruDNA))
+DNA_Results_CLD_means <- cbind(posthoc_list$m.loadVSdistanceQ_Treat_Status ,DNA_Results_CLD_means)
 # Remove Duplicate Column Names
 DNA_Results_CLD_means <- DNA_Results_CLD_means[!duplicated(colnames(DNA_Results_CLD_means))]
-#####
 
-# ### NOTE: No need for post-hocs if there is no significant interaction
-
+## DATA SUBSETS FOR PLOTTING
 ## data subset NO Q, NO T
 DNA_Results_IndMean_NoQ_NoT <- DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),]
 ## data subset NO Q
 DNA_Results_IndMean_NoQ <- DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"),]
 
 for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered" )) {
-  
+  warning("DNA_Results_CLD_means now only works for binned data!")
+  warning("FIX DNA_Results_CLD_means to include empty lettering for the pre period")
   # scatter Plot of mean_distance_to_queen VS MbruDNA per INDIVIDUAL (regression line per TREATMENT)
  print( ggplot(DNA_Results_IndMean_NoQ_NoT, 
                aes(x = DNA_Results_IndMean_NoQ_NoT[,DISTANCE_TO_Q] , y = log10(MbruDNA+constant))) + #, group = Treatment
     #stat_ellipse(aes(colour=Colony)) +
-    geom_point(aes(colour=Colony),size=1, alpha=0.4) +
+    geom_point(aes(colour=Colony),size=1, alpha=0.6) +
     geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),]), method = "lm", formula = y ~ x ) + #+ I(x^2)
     STYLE_CONT +
-    facet_grid(Ant_status~ period) +
-      labs(caption = "regression line per Treatment",
-        x = DISTANCE_TO_Q)
-  #geom_text(data = DNA_Results_CLD_means, aes(x = log10(MbruDNA+constant)+0.5, group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
+    facet_grid(Ant_status ~ period) + 
+      labs(subtitle = "for period PRE there is NO LOAD, it is here reported \n to see differences in behavioral patterns",
+        caption = "regression line per Treatment",
+        x = DISTANCE_TO_Q) +
+  geom_text(data = DNA_Results_CLD_means[which(DNA_Results_CLD_means$Ant_status!="treated nurse"),], aes(x = log10(MbruDNA+constant)+0.5, group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
  )
   
   # scatter Plot of mean_distance_to_queen VS MbruDNA per INDIVIDUAL (regression line per COLONY)
   print( ggplot(DNA_Results_IndMean_NoQ_NoT, 
          aes(x = DNA_Results_IndMean_NoQ_NoT[,DISTANCE_TO_Q] , y = log10(MbruDNA+constant))) + #, group = Treatment
-    geom_point(aes(colour=Colony),size=1) +
+    geom_point(aes(colour=Colony),size=1,alpha=0.6) +
     geom_smooth(aes(colour=Colony),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),]), method = "lm", formula = y ~ x ) + #+ I(x^2)
     STYLE_CONT +
-    facet_grid(Ant_status~ period)+
-      labs(caption = "regression line per Colony",
+    facet_grid(Ant_status~ period + Treatment) +
+      labs(subtitle = "for period PRE there is NO LOAD, it is here reported \n to see differences in behavioral patterns",
+           caption = "regression line per Colony, faceted by Col",
         x = DISTANCE_TO_Q)
   )
   
@@ -738,7 +777,7 @@ for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered
     print( ggplot(data= DNA_Results_IndMean_NoQ,
                   aes(x = Ant_status, y = DNA_Results_IndMean_NoQ[,DISTANCE_TO_Q])) + #,group = Exposed,color = Exposed
              #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
-             geom_point(aes(colour=Colony),position = position_jitterdodge(),size=1,alpha=0.4)+ #,alpha= 0.8,stroke=0
+             geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.6)+ #,alpha= 0.8,stroke=0
              geom_boxplot(aes(colour=Treatment),lwd=0.8,alpha = 0.3) + #lwd=0.8
              STYLE +
              facet_grid(. ~ period)+
@@ -749,24 +788,11 @@ for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered
 }
 
 
-
-### CREATE DISTINCT COLOUR LABELS FOR THE TWO COLS, NAMED, THEN DELETE THIS PLOT AS IT IS ALREAD INCLUDED IN LOOP
-# scatter Plot of  BINNED mean_distance_to_queen VS MbruDNA per INDIVIDUAL (regression line per COLONY) 
-ggplot(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),], 
-       aes(x = mean_distance_to_queen_ordered , y = log10(MbruDNA+constant))) + #, group = Treatment
-  geom_point(aes(colour=Colony),size=1) +
-  geom_smooth(aes(colour=Colony),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),]), method = "lm", formula = y ~ x ) + #+ I(x^2)
-  STYLE_CONT +
-  facet_grid(Ant_status ~ period + Treatment)
-
-
 #############################################################
 #### TEST correlation between DISTANCE_to_treated and DISTANCE_to_queen for PERIOD POST
 # # remove queens as distance is 0
 
-##### ADD MODEL ONLY AFTER HAVING FIXED THE PREVIOUS MODEL (LOAD VS DISTANCE TO QUEEN) INCLUDING THE PERIOD PRE-POST, NOT JUST POST!!!!!!
-
-
+##### ADD MODEL. DIFFERNT FROM PREVIOUS AS SHOULD INCLUDE PERIOD IN FACTORS!
 
 # scatter Plot of mean_distance_to_queen VS MbruDNA per INDIVIDUAL (regression line per TREATMENT)
 print( ggplot(DNA_Results_IndMean_NoQ_NoT, 
@@ -892,9 +918,44 @@ print( ggplot(DNA_Results_IndMean_NoQ_NoT,
 
 
 
+# EXTRAS ##################################################
 
 
 
+#-------------------------------- 
+### EMMEANS POSTHOCS
+
+# POST-HOCs within Ant_status
+# posthoc_Treatment <- emmeans(m1, specs = pairwise ~  Treatment | Ant_status) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+# posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
+# print(posthoc_Treatment_summary)
+
+# # POST-HOCs for AntTask by treatment
+# posthoc_Ant_status <- emmeans(m1, specs = pairwise ~  Ant_status | Treatment) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+# posthoc_Ant_status_summary<-summary(posthoc_Ant_status$contrasts)
+# print(posthoc_Ant_status_summary)
+
+# add letters to each mean
+# model_means_cld <- cld(object = posthoc_Ant_status,
+#                        adjust = "Tukey",
+#                        Letters = letters,
+#                        alpha = 0.05)
+
+
+
+#--------------------------------
+# 
+# ### post-hocs
+# posthoc_Qdist_Ant_status <- summary(glht( m.loadVSdistanceQ, linfct=mcp(Ant_status="Tukey")),test=adjusted("BH"))
+# print(cld(posthoc_Qdist_Ant_status))
+# 
+# posthoc_Qdist_treat<- summary(glht(m.loadVSdistanceQ, linfct=mcp(Treatment="Tukey")), test=adjusted("BH"))
+# print(cld(posthoc_Qdist_treat))
+
+
+
+
+#--------------------------------
 
 
 # ### keep ant task
