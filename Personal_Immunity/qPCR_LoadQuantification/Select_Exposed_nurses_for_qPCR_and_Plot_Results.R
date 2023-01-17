@@ -487,11 +487,11 @@ posthoc_list <- compute_posthocs(m1)
 
 ############
 #### BOXPLOT | MbruDNA VS Ant_status BY TREATMENT
-p <- ggplot(DNA_Results_annotated,
+ggplot(DNA_Results_annotated,
             aes(x = Ant_status, y = log(MbruDNA+constant))) + #,group = Exposed,color = Exposed
   #geom_text(position = position_jitter(seed = 5),fontface = "bold",aes(alpha = ifelse(MbruDNA == 0, 0.5, 1)))+
-  geom_boxplot(aes(colour=Treatment),lwd=0.8) + #lwd=0.8
   geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.4)+ #,alpha= 0.8,stroke=0
+  geom_boxplot(aes(colour=Treatment),lwd=0.8,alpha=0.3) + #lwd=0.8
   #geom_point() +
   STYLE +
   #theme(legend.position = "none") +
@@ -612,9 +612,13 @@ warning("posthoc_list shows only 1 letter in cld ")
 # # show output
 # model_means_cld2
 
+
+
+
+
 ############
 #### BARPLOT | PROPORTION OF ZERO LOAD VS Ant_status BY TREATMENT
-table(DNA_Results_annotated$positive,DNA_Results_annotated$Treatment)
+table(DNA_Results_annotated$positive,DNA_Results_annotated$Treatment,DNA_Results_annotated$Ant_status)
 
 DNA_Results_ColPropPos <- DNA_Results_annotated %>% group_by(AntTask, Exposed, treatment,Treatment, Ant_status) %>% summarise(count = n(), positive = sum(positive == 1))
 DNA_Results_ColPropPos$negative <- DNA_Results_ColPropPos$count - DNA_Results_ColPropPos$positive 
@@ -627,12 +631,12 @@ DNA_Results_ColPropPos <- DNA_Results_ColPropPos[,c("Treatment","Ant_status","pr
 # #table useless? not possible to test percentages...
 # DNA_Results_ColPropPosTABLE <- tapply(DNA_Results_ColPropPos$propZeros, list(DNA_Results_ColPropPos$Treatment, DNA_Results_ColPropPos$Ant_status), mean)
 
-ggplot(DNA_Results_ColPropPos, aes(fill=Treatment, y=propZeros/100, x=Ant_status)) + 
+ggplot(DNA_Results_ColPropPos, aes(fill=Treatment, y=propZeros, x=Ant_status)) + 
   geom_bar(position="dodge", stat="identity") +
   STYLE +
   labs(#title = "Pathogen Quantification Adriano",
     #subtitle = "All ants",
-    y = "proportion of close to 0 values",
+    y = "% of close to 0 values",
     #x="",
     #caption = paste("Threshold cycle (Ct) missing for", N_ants_NoCt , "ants in cols", No_CT_REPs) 
   )
@@ -718,7 +722,9 @@ for (   col_id in unique(DNA_Results_IndMean$Colony)  ){
 # # remove queens as distance is 0 + load only makes sense for post
 ## data subset NO Q, NO T
 DNA_Results_IndMean_NoQ_post <- DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen" & DNA_Results_IndMean$period=="post"),]
+DNA_Results_IndMean_NoQ <- DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"),]
 
+#NON NORMALISED DISTANCES, NOT RELIABLE
 m.loadVSdistanceQ <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen * Ant_status + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
 output_lmer(m.loadVSdistanceQ)
 
@@ -733,29 +739,63 @@ output_lmer(m.loadVSdistanceQ_BIN)
 
 posthoc_list <- compute_posthocs(m.loadVSdistanceQ_BIN)
 
-##### post-hocs for interactions
-## following this: https://stats.stackexchange.com/questions/5250/multiple-comparisons-on-a-mixed-effects-model
-DNA_Results_IndMean_NoQ_post$Treat_Status <- interaction(DNA_Results_IndMean_NoQ_post$Treatment, DNA_Results_IndMean_NoQ_post$Ant_status)
-m.loadVSdistanceQ_Treat_Status <- lmer(log10(MbruDNA+constant) ~ Treat_Status * mean_distance_to_queen_ordered + (1|Colony), data = DNA_Results_IndMean_NoQ_post) 
-output_lmer(m.loadVSdistanceQ_Treat_Status)
+#picture of post-hoc tab
+p<- gridExtra::tableGrob(posthoc_list$m.loadVSdistanceQ_BIN_Ant_status); gridExtra::grid.arrange(p)
 
-##perform post-hocs
-posthoc_list <- compute_posthocs(m.loadVSdistanceQ_Treat_Status)
+# if m.loadVSdistanceQ_BIN results in some significant interactions, re-make model to determine posthocs:
+for (SIG.VAR in row.names(Anova(m.loadVSdistanceQ_BIN)[Anova(m.loadVSdistanceQ_BIN)$'Pr(>Chisq)' < 0.05,])) {
+  if (grepl(":", SIG.VAR)) {
+    print(paste0(SIG.VAR, "is an interaction."))
+    ##### post-hocs for interactions
+    ## following this: https://stats.stackexchange.com/questions/5250/multiple-comparisons-on-a-mixed-effects-model
+    DNA_Results_IndMean_NoQ_post$Treat_Status <- interaction(DNA_Results_IndMean_NoQ_post$Treatment, DNA_Results_IndMean_NoQ_post$Ant_status)
+    m.loadVSdistanceQ_Treat_Status <- lmer(log10(MbruDNA+constant) ~ Treat_Status * mean_distance_to_queen_ordered + (1|Colony), data = DNA_Results_IndMean_NoQ_post) 
+    output_lmer(m.loadVSdistanceQ_Treat_Status)
+    ##perform post-hocs
+    posthoc_list <- compute_posthocs(m.loadVSdistanceQ_Treat_Status)
+    #modify to split the interaction terms
+    posthoc_list$m.loadVSdistanceQ_Treat_Status_Treat_Status <- tidyr::separate(data = posthoc_list$m.loadVSdistanceQ_Treat_Status_Treat_Status, col = Treat_Status, into = c("Treatment", "Ant_status"), sep = "\\.")
+    DNA_Results_CLD_means <- DNA_Results_IndMean_NoQ_post %>% group_by(Ant_status, treatment) %>% summarize(mean_distance_to_queen_ordered = mean(mean_distance_to_queen_ordered), MbruDNA = mean(MbruDNA))
+    DNA_Results_CLD_means <- cbind(posthoc_list$m.loadVSdistanceQ_Treat_Status_Treat_Status ,DNA_Results_CLD_means)
+    # Remove Duplicate Column Names
+    DNA_Results_CLD_means <- DNA_Results_CLD_means[!duplicated(colnames(DNA_Results_CLD_means))]
+    #picture of post-hoc tab
+    #p<- gridExtra::tableGrob(DNA_Results_CLD_means[,1:3]); gridExtra::grid.arrange(p)
+    }else{ print("No significant interaction terms")}
+}
 
-# ### post-hocs
-# comp.Treat_Status <- glht(m.loadVSdistanceQ_Treat_Status, linfct=mcp(Treat_Status="Tukey"),test=adjusted("BH")) 
-# print(cld(comp.Treat_Status))
-# # add letters to each mean
-# Treat_Status_means_cld <- cld(comp.Treat_Status)
-# Treat_Status_means_cld <- as.data.frame(t(t(Treat_Status_means_cld$mcletters$Letters))); Treat_Status_means_cld$Ant_status <- row.names(Treat_Status_means_cld)
 
-#modify to split the interaction terms
-posthoc_list$m.loadVSdistanceQ_Treat_Status <- tidyr::separate(data = posthoc_list$m.loadVSdistanceQ_Treat_Status, col = Treat_Status, into = c("Treatment", "Ant_status"), sep = "\\.")
+#####################################################################################
+##### TEST correlation between BINNED DISTANCE_to_queen and Status
 
-DNA_Results_CLD_means <- DNA_Results_IndMean_NoQ_post %>% group_by(Ant_status, treatment) %>% summarize(mean_distance_to_queen_ordered = mean(mean_distance_to_queen_ordered), MbruDNA = mean(MbruDNA))
-DNA_Results_CLD_means <- cbind(posthoc_list$m.loadVSdistanceQ_Treat_Status ,DNA_Results_CLD_means)
-# Remove Duplicate Column Names
-DNA_Results_CLD_means <- DNA_Results_CLD_means[!duplicated(colnames(DNA_Results_CLD_means))]
+#model
+m.distanceQ_BIN <- lmer(mean_distance_to_queen_ordered ~ Treatment * Ant_status * period + (1|Colony), data = DNA_Results_IndMean_NoQ) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.distanceQ_BIN)
+
+posthoc_list <- compute_posthocs(m.distanceQ_BIN)
+
+# if m.loadVSdistanceQ_BIN results in some significant interactions, re-make model to determine posthocs:
+for (SIG.VAR in row.names(Anova(m.distanceQ_BIN)[Anova(m.distanceQ_BIN)$'Pr(>Chisq)' < 0.05,])) {
+  if (grepl(":", SIG.VAR)) {
+    print(paste0(SIG.VAR, "is an interaction."))
+    print(paste0("CURRENTLY LOOP CHRASHES AT THE SECOND RUN BUT HERE ALL INTERACTIONS HAVE BEEN CONCATENATED, IDK IF RIGHT.."))
+    ##### post-hocs for interactions
+    ## following this: https://stats.stackexchange.com/questions/5250/multiple-comparisons-on-a-mixed-effects-model
+    DNA_Results_IndMean_NoQ$Treat_Status_per <- interaction(DNA_Results_IndMean_NoQ$Treatment, DNA_Results_IndMean_NoQ$Ant_status,DNA_Results_IndMean_NoQ$period)
+    m.distanceQ_BIN_Treat_Status_per <- lmer(mean_distance_to_queen_ordered ~ Treat_Status_per  + (1|Colony), data = DNA_Results_IndMean_NoQ) 
+    output_lmer(m.distanceQ_BIN_Treat_Status_per)
+    ##perform post-hocs
+    posthoc_list <- compute_posthocs(m.distanceQ_BIN_Treat_Status_per)
+    #modify to split the interaction terms
+    posthoc_list$m.distanceQ_BIN_Treat_Status_per_Treat_Status_per <- tidyr::separate(data = posthoc_list$m.distanceQ_BIN_Treat_Status_per_Treat_Status_per, col = Treat_Status_per, into = c("Treatment", "Ant_status","period"), sep = "\\.")
+    DNA_Results_CLD_means_dist <- DNA_Results_IndMean_NoQ %>% group_by(Ant_status, treatment,period) %>% summarize(mean_distance_to_queen_ordered = mean(mean_distance_to_queen_ordered))
+    DNA_Results_CLD_means_dist <- cbind(posthoc_list$m.distanceQ_BIN_Treat_Status_per_Treat_Status_per ,DNA_Results_CLD_means_dist)
+    # Remove Duplicate Column Names
+    DNA_Results_CLD_means_dist <- DNA_Results_CLD_means_dist[!duplicated(colnames(DNA_Results_CLD_means_dist))]
+    #picture of post-hoc tab
+    #p<- gridExtra::tableGrob(DNA_Results_CLD_means_dist[,1:3]); gridExtra::grid.arrange(p)
+  }else{ print("No significant interaction terms")}
+}
 
 ## DATA SUBSETS FOR PLOTTING
 ## data subset NO Q, NO T
@@ -774,10 +814,10 @@ for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered
     geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),]), method = "lm", formula = y ~ x ) + #+ I(x^2)
     STYLE_CONT +
     facet_grid(Ant_status ~ period) + 
-      labs(subtitle = "for period PRE there is NO LOAD, it is here reported \n to see differences in behavioral patterns",
-        caption = "regression line per Treatment",
-        x = DISTANCE_TO_Q) +
-  geom_text(data = DNA_Results_CLD_means[which(DNA_Results_CLD_means$Ant_status!="treated nurse"),], aes(x = log10(MbruDNA+constant)+0.5, group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
+      labs(#subtitle = "for period PRE there is NO LOAD, it is here reported \n to see differences in behavioral patterns",
+        caption = "For period PRE there is NO LOAD, it is here reported to see differences in behavioral patterns. \n Regression line per Treatment",
+        x = DISTANCE_TO_Q) #+
+  #geom_text(data = DNA_Results_CLD_means[which(DNA_Results_CLD_means$Ant_status!="treated nurse"),], aes(x = log10(MbruDNA+constant)+0.5, group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
  )
   
   # scatter Plot of mean_distance_to_queen VS MbruDNA per INDIVIDUAL (regression line per COLONY)
@@ -787,8 +827,8 @@ for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered
     geom_smooth(aes(colour=Colony),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),]), method = "lm", formula = y ~ x ) + #+ I(x^2)
     STYLE_CONT +
     facet_grid(Ant_status~ period + Treatment) +
-      labs(subtitle = "for period PRE there is NO LOAD, it is here reported \n to see differences in behavioral patterns",
-           caption = "regression line per Colony, faceted by Col",
+      labs(
+        caption = "For period PRE there is NO LOAD, it is here reported to see differences in behavioral patterns. \n regression line per Colony, faceted by Col",
         x = DISTANCE_TO_Q)
   )
   
@@ -802,7 +842,9 @@ for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered
              STYLE +
              facet_grid(. ~ period)+
              labs(#caption = "regression line per Colony",
-                  y = DISTANCE_TO_Q)
+                  y = DISTANCE_TO_Q) #+
+             #geom_text(data = DNA_Results_CLD_means_dist, aes(x = mean_distance_to_queen_ordered+0.5, group=Ant_status, label = V1,cex=2,fontface="bold"),show.legend = FALSE)#+ ,position = position_jitterdodge()
+             
     )
 }
 
