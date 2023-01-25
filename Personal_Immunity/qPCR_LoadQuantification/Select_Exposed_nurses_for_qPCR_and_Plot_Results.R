@@ -369,7 +369,8 @@ DNA_Results_annotated <- merge(DNA_Results, plate_positions, by=common_col_names
 metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-12.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 #rename cols to match the DNA results
 colnames(metadata)[which(colnames(metadata)=="REP_treat")] <- "Colony"
-colnames(metadata)[which(colnames(metadata)=="antID")] <- "AntID"
+# MERGE BASED ON TAG ID AS THE PLATE POSTION ANTidS ARE NOT RELIABLE (misalignment issue spotted for Q of R4BP, which had right TagID=228, but wrong antID (153 instead of 152). )
+colnames(metadata)[which(colnames(metadata)=="tagIDdecimal")] <- "TagID"
 
 #Merge info file of plate positions with the DNA results
 common_col_names1 <- intersect(names(DNA_Results_annotated), names(metadata))
@@ -423,6 +424,8 @@ DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean >36),"MbruDNA"] <- 0
 
 #remove  dead ants
 DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$AntTask)),]
+#remove extra cols
+DNA_Results_annotated <- DNA_Results_annotated[ , !(names(DNA_Results_annotated) %in% c("X.ScanTime","tagIDdecimal","surviv_time","ExpStart","ExpEnd","Comment","TagID","tagIDdecimal","qPCR_Plate","qPCR_Well","Sample_Plate","Sample_position","Date","fileName","identifStart","identifEnd"))]
 
 # #extract info from plot for making mean of different colour
 # p <- ggplot(DNA_Results_annotated,
@@ -652,13 +655,38 @@ ggplot(DNA_Results_ColPropPos, aes(fill=Treatment, y=propZeros, x=Ant_status)) +
 NetworkProp_individual <- read.table(paste(WORKDIR,"/Data/NetworkProp_individual.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
 # add space Usage info
 SpaceUsage <- read.table(paste(WORKDIR,"/Data/Space_Usage.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+#SpaceUsage <- SpaceUsage[ , !(names(SpaceUsage) %in% c("From","To"))]
+
+
+
+##TEMP
+# Test1 <- subset(NetworkProp_individual, select= - c(randy, antID,aggregated_distance_to_queen, mean_aggregated_distance_to_treated, From,To,degree))
+# Test2 <- subset(SpaceUsage, select= - c(randy, colony_size, antID, tag_hex_ID,nb_frames_outside,nb_frames_inside,  From,To))
+#     
+# #check if df is complete or there are NAs
+# freqList = lapply(Test2, 
+#                   function(x) {
+#                     
+#                     my_lst = data.frame(table(x))
+#                     names(my_lst) = c("level", "n")
+#                     
+#                     return(my_lst) 
+#                   }
+# )
+# freqList
+
+#REMOVE DEAD ANTS
+SpaceUsage <- SpaceUsage[which(!is.na(SpaceUsage$AntTask)),]
+NetworkProp_individual <- NetworkProp_individual[which(!is.na(NetworkProp_individual$AntTask)),]
+
 
 #Merge network data with the DNA results INDIVIDUAL MEANS
 common_col_names_NetSpace <- intersect(names(NetworkProp_individual), names(SpaceUsage))
 NetworkProp_individual <- dplyr::left_join(NetworkProp_individual, SpaceUsage, by=common_col_names_NetSpace)
 
-# remove ants with NA exposur status
-NetworkProp_individual <- NetworkProp_individual[which(!is.na(NetworkProp_individual$Exposed)),]
+#check nas
+sapply(NetworkProp_individual, function(x) sum(is.na(x)))
+
 #rename vars to match DNA_results
 NetworkProp_individual <- NetworkProp_individual %>% 
   rename(
@@ -681,6 +709,11 @@ NetworkProp_individual$time_of_day = factor(NetworkProp_individual$time_of_day, 
 NetworkProp_individual[which(NetworkProp_individual$IsQueen==TRUE),"AntTask"] <- "queen"
 #keep only colonies that have been subjected to qPCR
 NetworkProp_individual <- NetworkProp_individual[NetworkProp_individual$Colony %in% unique(DNA_Results_annotated$Colony), ]
+
+
+# remove excess info
+NetworkProp_individual <- NetworkProp_individual[ , !(names(NetworkProp_individual) %in% c("From","To","tag_hex_ID","AntTask_num","randy"))]
+
 
 # #calculate means by colony for plotting
 # #for aggregate dist
@@ -736,6 +769,55 @@ posthoc_list <- compute_posthocs(m.loadVSdistanceQ)
 #model
 m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen_ordered * Ant_status + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
 output_lmer(m.loadVSdistanceQ_BIN)
+
+
+m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~  Treatment 
+                                                        + mean_distance_to_queen_ordered 
+                                                        + Ant_status 
+                                                        + Treatment:mean_distance_to_queen_ordered
+                                                        + Treatment:Ant_status
+                                                        + Ant_status:mean_distance_to_queen_ordered
+                                                        + Treatment:mean_distance_to_queen_ordered:Ant_status
+                              
+                              
+                              
+                              + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.loadVSdistanceQ_BIN)
+
+
+
+m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~  Treatment 
+                              + mean_distance_to_queen_ordered 
+                              + Ant_status 
+                              + Treatment:mean_distance_to_queen_ordered
+                              + Treatment:Ant_status
+                              + Ant_status:mean_distance_to_queen_ordered
+                              + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.loadVSdistanceQ_BIN)
+
+m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~  Treatment 
+                              + mean_distance_to_queen_ordered 
+                              + Ant_status 
+                              + Treatment:mean_distance_to_queen_ordered
+                              + Ant_status:mean_distance_to_queen_ordered
+                              + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.loadVSdistanceQ_BIN)
+
+m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~  Treatment 
+                              + mean_distance_to_queen_ordered 
+                              + Ant_status 
+                              + Ant_status:mean_distance_to_queen_ordered
+                              + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.loadVSdistanceQ_BIN)
+
+m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~  mean_distance_to_queen_ordered 
+                              + Ant_status 
+                              + Ant_status:mean_distance_to_queen_ordered
+                              + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+output_lmer(m.loadVSdistanceQ_BIN)
+
+
+
 
 posthoc_list <- compute_posthocs(m.loadVSdistanceQ_BIN)
 
@@ -807,13 +889,13 @@ for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered
   warning("DNA_Results_CLD_means now only works for binned data!")
   warning("FIX DNA_Results_CLD_means to include empty lettering for the pre period")
   # scatter Plot of mean_distance_to_queen VS MbruDNA per INDIVIDUAL (regression line per TREATMENT)
- print( ggplot(DNA_Results_IndMean_NoQ_NoT, 
-               aes(x = DNA_Results_IndMean_NoQ_NoT[,DISTANCE_TO_Q] , y = log10(MbruDNA+constant))) + #, group = Treatment
+ print( ggplot(DNA_Results_IndMean_NoQ, 
+               aes(x = DNA_Results_IndMean_NoQ[,DISTANCE_TO_Q] , y = log10(MbruDNA+constant))) + #, group = Treatment
     #stat_ellipse(aes(colour=Colony)) +
     geom_point(aes(colour=Colony),size=1, alpha=0.6) +
-    geom_smooth(aes(colour=Treatment),data=subset(DNA_Results_IndMean[which(DNA_Results_IndMean$Ant_status!="untreated queen"&DNA_Results_IndMean$Ant_status!="treated nurse"),]), method = "lm", formula = y ~ x ) + #+ I(x^2)
-    STYLE_CONT +
-    facet_grid(Ant_status ~ period) + 
+    geom_smooth(aes(colour=Ant_status),data=DNA_Results_IndMean_NoQ, method = "lm", formula = y ~ x ) + #+ I(x^2)
+    #STYLE_CONT +
+    facet_grid(~ period) + 
       labs(#subtitle = "for period PRE there is NO LOAD, it is here reported \n to see differences in behavioral patterns",
         caption = "For period PRE there is NO LOAD, it is here reported to see differences in behavioral patterns. \n Regression line per Treatment",
         x = DISTANCE_TO_Q) #+
@@ -857,8 +939,34 @@ for (DISTANCE_TO_Q in c("mean_distance_to_queen","mean_distance_to_queen_ordered
 ##### 3H BLOCK DIST TO QUEEN
 #Merge network data with the DNA results INDIVIDUAL
 common_col_names4 <- intersect(names(DNA_Results_annotated), names(NetworkProp_individual))
-DNA_Results_IndNet <- dplyr::left_join(DNA_Results_annotated, NetworkProp_individual, by=common_col_names4)
-# DNA_Results_IndNet <- DNA_Results_IndNet[!duplicated(DNA_Results_IndNet), ]
+DNA_Results_IndNet <- dplyr::left_join(DNA_Results_annotated,NetworkProp_individual, by=common_col_names4)
+#DNA_Results_IndNet <- DNA_Results_IndNet[!duplicated(DNA_Results_IndNet), ]
+
+########################
+######################
+########################
+######################
+########################
+######################
+########################
+######################
+
+#Save output for Nathalie
+
+write.table(DNA_Results_IndNet,file="/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/DNA_Results_IndNet.txt",append=F,col.names=T,row.names=F,quote=T,sep=",")
+
+
+########################
+######################
+########################
+######################
+########################
+######################
+########################
+######################
+
+
+
 
 #CREATE BINS for distance to Q and to Treated nurses
 for (   col_id in unique(DNA_Results_IndNet$Colony)  ){
@@ -902,13 +1010,50 @@ for (   col_id in unique(DNA_Results_IndNet_DELTA$Colony)  ){
 ## FIX DISTRIBUTION
 
 hist(DNA_Results_IndNet_DELTA[which(DNA_Results_IndNet_DELTA$Ant_status!="untreated queen"),"Norm_Qdist_postpre_diff"])
+importeddata <- DNA_Results_IndNet_DELTA[which(DNA_Results_IndNet_DELTA$Ant_status!="untreated queen"),"Norm_Qdist_postpre_diff"]
+
 # try the following: https://stats.stackexchange.com/questions/338868/fitting-a-distribution-to-skewed-data-with-negative-values
 
-PercDistQ <- lmer(Norm_Qdist_postpre_diff ~ Treatment * Ant_status + (1|Colony), data = DNA_Results_IndNet_DELTA[which(DNA_Results_IndNet_DELTA$Ant_status!="untreated queen"),]) # the "/" is for the nesting #  + (1|time_of_day) 
+library(fitdistrplus) #package rmutil has the skewed laplace distribution
+library(gamm4)
+library(mgcViz)
+
+
+descdist(importeddata[!is.na(importeddata)],boot=1000)
+
+#fitdist(importeddata,"weibull",start=list(shape=1,scale=1))
+
+# PercDistQ <- lmer(Norm_Qdist_postpre_diff ~ Treatment * Ant_status + (1|Colony), data = DNA_Results_IndNet_DELTA[which(DNA_Results_IndNet_DELTA$Ant_status!="untreated queen"),]) # the "/" is for the nesting #  + (1|time_of_day) 
+PercDistQ <- lmer((aggregated_distance_to_queen) ~ Treatment * Ant_status*period + (1|Colony), data = DNA_Results_IndNet[which(DNA_Results_IndNet$Ant_status!="untreated queen"),]) # the "/" is for the nesting #  + (1|time_of_day) 
 output_lmer(PercDistQ)
 
-posthoc_list <- compute_posthocs(PercDistQ)
+hist(resid(PercDistQ))
 
+
+#GAMM
+#PercDistQ1 <- gamm(Norm_Qdist_postpre_diff ~ Treatment * Ant_status, random = list(Colony = ~1), data = DNA_Results_IndNet_DELTA[which(DNA_Results_IndNet_DELTA$Ant_status!="untreated queen"),])
+PercDistQ1 <- mgcViz::gammV(Norm_Qdist_postpre_diff ~ Treatment * Ant_status, random = list(Colony = ~1), data = DNA_Results_IndNet_DELTA[which(DNA_Results_IndNet_DELTA$Ant_status!="untreated queen"),])
+
+
+summary(PercDistQ1$lme)
+summary(PercDistQ1$gam)
+
+plot(PercDistQ1$lme)
+plot(PercDistQ1$gam)
+
+Anova(PercDistQ1$gam)
+Anova(PercDistQ1$lme)
+
+skewness(resid(PercDistQ1$gam))
+kurtosis(resid(PercDistQ1$gam))
+
+skewness(resid(PercDistQ1$lme))
+kurtosis(resid(PercDistQ1$lme))
+
+hist(resid(PercDistQ1$gam))
+
+
+posthoc_list <- compute_posthocs(PercDistQ)
 
 
 # PREP DATA FOR BARPLOT INSTEAD OF BOXPLOT
@@ -993,7 +1138,6 @@ ggplot(DNA_Results_IndNet_summ_DELTA[which(DNA_Results_IndNet_summ_DELTA$Ant_sta
   #facet_grid(. ~ Ant_status) +
   labs(caption = "Percentage difference in distance to Q, calculated as ((post-pre)/pre)*100",
        y = "% difference in distance to Q after exposure")
-
 
 
 # BARPLOT BY time_of_day
