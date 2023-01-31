@@ -1,3 +1,11 @@
+###
+###
+###
+###
+### CLEAN THIS SCRIPT, RENAME IT, REMOVE EXTRA STUFF, ETC
+
+
+
 
 ##### CLEAN UP
 gc()
@@ -416,7 +424,7 @@ ggplot(DNA_Results_annotated,
 # #-----------------
 
 #filter values above detection threshold
-DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean >36),"MbruDNA"] <- 0
+DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean >37),"MbruDNA"] <- 0
 
 # #check objects with no values
 # No_CT_REPs <- toString(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
