@@ -7,6 +7,44 @@ library(tidyverse)
 library(platetools) # to plot plate
 library(naniar) # show missing points
 library(reshape2) # for melt
+library(scales) # for colours
+
+# #Create a custom color scale FOR COLONIES + treatments
+# FullPal <- scales::viridis_pal(option = "D")(20)
+# myColorsSmall  <- tail(FullPal,5)
+# myColorsLarge  <- head(FullPal,5) 
+# Cols_treatments <- c("#440154FF","#FDE725FF") #"#31688EFF"
+# myColors      <- c(myColorsLarge,myColorsSmall, Cols_treatments)
+# names(myColors) <- c("R3BP","R5BP","R7BP","R8BP","R12BP","R1SP", "R2SP", "R5SP", "R7SP","R11SP","Big Pathogen","Small Pathogen")
+# colScale <- scale_colour_manual(name = "Colony",values = myColors,drop=TRUE)
+# fillScale <- scale_fill_manual(name = "Colony",values = myColors,drop=TRUE)
+
+######## UPDATED VERSION!
+#Create a custom color scale FOR COLONIES + treatments
+show_col(scales::viridis_pal(option = "D")(4))
+# myColorsSmall  <- tail(FullPal,5)
+# myColorsLarge  <- head(FullPal,5)
+Cols_treatments <- c("#440154FF","#31688EFF","#35B779FF","#FDE725FF") #"#31688EFF"
+myColors      <- c(Cols_treatments)
+names(myColors) <- c("Big Pathogen","Big Sham","Small Pathogen","Small Sham")
+
+colScale <- scale_colour_manual(name = "Colony",values = myColors,drop=TRUE)
+fillScale <- scale_fill_manual(name = "Colony",values = myColors,drop=TRUE)
+
+
+
+
+# ggplot PLOT STYLE
+STYLE <- list(colScale, fillScale,
+              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+              theme_bw(),
+              scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
+)
+
+STYLE_CONT <- list(colScale, fillScale,
+                   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
+                   theme_bw()
+)
 
 
 
@@ -175,6 +213,11 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   # #remove  dead ants
   # DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$AntTask)),]
   
+  names(genes_Results_annotated)[which(names(genes_Results_annotated)=="treatment")] <- "Treatment"
+  # Rename by name
+  genes_Results_annotated$Treatment <- as.factor(genes_Results_annotated$Treatment)
+  levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment)=="BS"] <- "Big Sham"
+  levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment)=="SS"] <- "Small Sham"
   
   # write the dataframe to a csv file
   write.csv(genes_Results_annotated, paste(DATADIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"), row.names = FALSE)
@@ -204,8 +247,28 @@ ggplot(genes_data, aes(x = gene, y = mean_Ct, color = Sample_Plate)) +
   geom_boxplot(aes(colour = Sample_Plate), lwd = 0.8, alpha = 0.3)
 
 
-# Using the delta-delta-Ct method
-# One common way of analysing qPCR data is to use the “delta-delta-Ct” method. This involves calculating the difference between the Ct of the housekeeping gene and the test gene, then calculating the difference between the treated samples and the control.
+##### ISOLATE SUSPICIOUS DATAPOINTS (CONTAMINATIONS, BAD EXTRACTIONS, ETC)
+# Calculate standard deviation by group
+stdev_by_group <- genes_data %>%
+  group_by(gene) %>%
+  summarize(st.dev_mean_Ct = sd(mean_Ct,na.rm = T),grand_mean_Ct = mean(mean_Ct,na.rm = T))
+
+# filter rows with mean_Ct value greater than 2*st.dev mean_Ct value for each group
+outliers <- genes_data %>%
+  inner_join(stdev_by_group, by = "gene") %>%
+  filter(mean_Ct < grand_mean_Ct - 2*st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2*st.dev_mean_Ct)
+
+# plot a scatterplot with lines connecting Ct values between groups
+ggplot(outliers, aes(x = gene, y = mean_Ct, group = Code)) +
+  geom_point(aes(color = gene)) +
+  geom_line(alpha=0.1) +
+  ggtitle("Scatterplot of mean_Ct values by group gene with lines connecting values") +
+  xlab("Group") +
+  ylab("mean_Ct value") #+
+  #scale_color_discrete(name = "Group", labels = unique(outliers$gene))
+
+##### DELTA-Ct METHOD
+# “delta-Ct”: difference between the Ct of the housekeeping gene and the test gene
 # split test genes from housekeeping
 test_gene_data <- genes_data %>%
   filter(gene != "EF1")
@@ -215,51 +278,67 @@ ref_gene_data <- genes_data %>%
   rename("housekeeping" = "gene", "ref_Ct" = "mean_Ct", "ref_Tm" = "mean_Tm")
 
 # recombine data
-genes_data <- left_join(test_gene_data, ref_gene_data, by = c("Sample_Well", "Sample_Plate"))
+common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
+genes_data <- left_join(test_gene_data, ref_gene_data, by = common_col_names4)
 
 # create a new column containing the delta Ct between the housekeeping gene and our gene of interest, and plot the delta Ct for each treatment and replicate.
 genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
 
+# plot delta_Ct
+ggplot(genes_data, aes(x = gene, y = delta_Ct,fill=Treatment)) +
+  geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3)
+# 
+# # Calculate the mean delta Ct for each treatment.
+# treatment_summary <- genes_data %>%
+#   group_by(gene) %>%
+#   summarise(mean_delta_Ct = mean(delta_Ct, na.rm = TRUE))
 
-# ref_Ct
+
+##### REMOVE HOUSEKEEPING GENE'S EXPRESSION OVER THRESHOLD
+# EF1alpha is expected () to show expression values ranging between 25+-2 (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
+# given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
+# we then discard samples with EF1 mean_ct > 32 as they are probably low quality samples (bad extraction, bad crushing, etc)
+
+# filter rows with mean_Ct value greater than 32 for group EF1
+genes_data_EF1_crop <- genes_data %>%
+  filter(ref_Ct < 32)
 
 # plot delta_Ct
-ggplot(genes_data, aes(x = gene, y = delta_Ct)) +
+ggplot(genes_data_EF1_crop, aes(x = gene, y = delta_Ct)) +
   geom_boxplot(aes(colour = Sample_Plate), lwd = 0.8, alpha = 0.3)
 
-# Calculate the mean delta Ct for each treatment.
-treatment_summary <- genes_data %>%
-  group_by(gene) %>%
-  summarise(mean_delta_Ct = mean(delta_Ct, na.rm = TRUE))
+# Calculating relative DNA concentration
+# to calculate the relative DNA concentration, you can use the fact that the amount of cDNA theoretically doubles every cycle.
+#PRIMERS EFFICIENCY 
+primers_eff <- data.frame(gene = c("EF1","HYM","DEF", "PO"), efficiency = c(1.99 ,1.99 ,2, 1.94))
+# add primers efficiency data
+genes_data <- left_join(genes_data, primers_eff, by = c("gene"))
 
+# as EF1 efficiency is 1.99, it is used as baseline for normalisation
+genes_data <- genes_data %>%
+  mutate(rel_conc = (2*(efficiency/1.99))^-delta_Ct)
 
-
-# Calculate mean and standard deviation
-mean_vec <- mean(ref_gene_data$ref_Ct, na.rm = TRUE)
-std_vec <- sd(ref_gene_data$ref_Ct, na.rm = TRUE)
-
-# Select values larger than 1 standard deviation from mean
-result <- ref_gene_data$ref_Ct[ref_gene_data$ref_Ct > mean_vec + 2*std_vec | ref_gene_data$ref_Ct < mean_vec - 2*std_vec]
-
-# Print result
-print(result)
-
-
-
-
-########## TODOS
-
-# plot stuff
+# plot the relative concentration.
+ggplot(genes_data, aes(x = gene, y = rel_conc,fill=Treatment)) +
+  geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3) +
+  scale_y_continuous(labels = scales::percent,trans='log10') 
 
 
 
 
+ggplot(data= genes_data,
+  aes(x = AntTask, y = rel_conc)) + #,group = Exposed,color = Exposed
+  geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.6)+ #,alpha= 0.8,stroke=0
+  geom_boxplot(aes(colour=Treatment),lwd=0.8,alpha = 0.3) + 
+  STYLE_CONT +
+  scale_y_continuous(labels = scales::percent,trans='log10') +
+  facet_grid(. ~ gene) # +
+         # labs( y = DISTANCE_TO_Q) 
 
 
 
-
-
-
+##### DELTA-DELTA-Ct METHOD
+# One common way of analysing qPCR data is to use the “delta-delta-Ct” method. This involves calculating the difference between the Ct of the housekeeping gene and the test gene, then calculating the difference between the treated samples and the control.
 # # https://liz-is.github.io/qpcr-analysis-with-r/aio.html
 # # Now we can calculate the delta delta Ct of each replicate compared to the mean of the control sample.
 # mean_control <- filter(treatment_summary, RNAi == "Control") %>% pull(mean_delta_Ct)
@@ -270,14 +349,7 @@ print(result)
 # ggplot(genes_data, aes(x = RNAi, y = delta_delta_Ct)) +
 #   geom_point()
 #
-# # Calculating relative DNA concentration
-# # If you want to calculate the relative DNA concentration, you can use the fact that the amount of cDNA theoretically doubles every cycle.
-# combined_data <- combined_data %>%
-#   mutate(rel_conc = 2^-delta_delta_Ct)
-# # We can now plot the relative concentration.
-# ggplot(combined_data, aes(x = RNAi, y = rel_conc)) +
-#   geom_point() +
-#   scale_y_continuous(labels = scales::percent, limits = c(0, 1.3))
+
 
 
 # # should be split by gene and rep
@@ -295,3 +367,26 @@ print(result)
 # a = slope of the standard curve
 # b = intercept of the standard curve
 # genesDNA <- 10^(slope*average(Ct1-Ct2)+intercept))
+
+
+##### SCRAPS
+
+# 
+# # calculate mean of b for group A
+# mean_A <- d %>%
+#   filter(c == "A") %>%
+#   summarize(mean_b = mean(b))
+# 
+# # filter rows with mean_Ct value greater than 2*st.dev_mean_Ct value for group EF1
+# outliers_highlight <- genes_data %>%
+#   filter(gene == "EF1") %>%
+#   filter(b > mean_A$mean_b)
+# 
+# # plot a scatterplot with lines connecting b values between groups
+# ggplot(genes_data, aes(x = c, y = b, group = id)) +
+#   geom_point(aes(color = c)) +
+#   geom_line() +
+#   geom_point(data = outliers_highlight, shape = 21, size = 5, fill = "red") +
+#   ggtitle("Scatterplot of b values by group c with highlighted lines") +
+#   xlab("Group") +
+#   ylab("b value")
