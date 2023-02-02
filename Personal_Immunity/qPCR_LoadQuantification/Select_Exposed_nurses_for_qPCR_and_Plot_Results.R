@@ -24,7 +24,6 @@ library(scales) # for colours
 ## for stats
 library(performance)
 library(remotes)
-library(remotes)
 #install_version("MuMIn", "1.46.0")
 library(MuMIn)
 library(multcomp)

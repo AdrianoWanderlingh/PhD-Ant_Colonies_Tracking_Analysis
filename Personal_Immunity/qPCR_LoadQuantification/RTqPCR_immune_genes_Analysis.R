@@ -9,6 +9,27 @@ library(naniar) # show missing points
 library(reshape2) # for melt
 library(scales) # for colours
 
+## for stats
+library(performance)
+library(remotes)
+#install_version("MuMIn", "1.46.0")
+library(MuMIn) # multi-model inference
+library(multcomp)
+library(multcompView)
+library(blmeco)
+library(sjPlot)
+library(lsmeans)
+library(lme4)
+library(blmeco) # check dispersion for glmer
+library(emmeans) #post-hoc comparisons
+library(e1071) #calc skewness and other stuff
+library(lawstat) #for levene test (homogeneity of variance)
+library(lmPerm) # for permutations
+library(lmerTest)
+library(car)
+library(nlme) #lme
+library(afex)
+
 # #Create a custom color scale FOR COLONIES + treatments
 # FullPal <- scales::viridis_pal(option = "D")(20)
 # myColorsSmall  <- tail(FullPal,5)
@@ -46,7 +67,81 @@ STYLE_CONT <- list(colScale, fillScale,
                    theme_bw()
 )
 
+#function to test normality of residuals
+test_norm <- function(resids){
+  print("Testing normality")
+  if (length(resids)<=300){
+    print("Fewer than 300 data points so performing Shapiro-Wilk's test")
+    print(shapiro.test(resids))
+    print("below 0.05, the data significantly deviate from a normal distribution")
+  }else{
+    print("More than 300 data points so using the skewness and kurtosis
+approach")
+    print("Skewness should be between -3 and +3 (best around zero")
+    print(skewness(resids))
+    print("")
+    print("Excess kurtosis (i.e. absolute kurtosis -3) should be less than 4; ideally around zero")
+    print(kurtosis(resids))
+  }
+}
 
+#function to report a model output
+output_lmer <- function(model){
+  print("------------RESIDUALS NORMALITY------------")
+  test_norm(residuals(model))
+  print("------------SUMMARY------------")
+  print(summary(model))
+  print("------------ANOVA------------")
+  print(Anova(model))
+  print("------------RSQUARED------------")
+  print(r.squaredGLMM(model))
+  tab_model(model)
+}
+
+
+# function to perform posthocs
+posthoc_list <- list()
+compute_posthocs <- function(model){
+  #check taht there are significant outputs
+  if (length(row.names(Anova(model)[Anova(model)$'Pr(>Chisq)' < 0.05,]))==0){
+    print("there are no significant vars.")}else{
+      for (SIG.VAR in row.names(Anova(model)[Anova(model)$'Pr(>Chisq)' < 0.05,])) {
+        if (grepl(":", SIG.VAR)) {
+          warning(paste0(SIG.VAR, "is an interaction, currently this situation is not handled by the function."))
+        }else{
+          #check if the variable is not numeric . to do so, we need to access the dataframe from the model
+          if (!is.numeric(get(gsub("\\[.*","",as.character(model@call)[3]))[,SIG.VAR])) {
+            print(paste0("Performing posthocs for the significant var: ",SIG.VAR))
+            arg <- list("Tukey")
+            names(arg) <- SIG.VAR
+            # glht (mcp) : General linear hypotheses Testing (glht) and multiple comparisons for parametric models (mcp)
+            cmp <- do.call(mcp, arg)
+            posthoc_SIG.VAR <- summary(glht(model, linfct = cmp),test=adjusted("BH"))
+            # Set up a compact letter display of all pair-wise comparisons
+            model_means_cld <- cld(posthoc_SIG.VAR)
+            #create dataframe usable with ggplot geom_text
+            model_means_cld <- as.data.frame(t(t(model_means_cld$mcletters$Letters)))
+            # add column name
+            model_means_cld$newcol <- NA
+            colnames(model_means_cld)[which(names(model_means_cld) == "newcol")] <- SIG.VAR
+            model_means_cld[,SIG.VAR] <- row.names(model_means_cld)
+            rownames(model_means_cld) <- NULL
+            # add to list
+            posthoc_list <- c(posthoc_list, list(model_means_cld))
+            if (exists("ID_model")) {
+              names(posthoc_list)[length(posthoc_list)] <- paste(ID_model,deparse(substitute(model)),SIG.VAR,sep="-")
+            }else{
+              names(posthoc_list)[length(posthoc_list)] <- paste(deparse(substitute(model)),SIG.VAR,sep="-")
+            }
+            print(paste(deparse(substitute(model)),SIG.VAR,sep="_"))
+            print(model_means_cld)
+          } # SIG.VAR LOOP
+        } #check if is an interaction
+      } #check if numeric
+      print("call posthoc_list to get posthocs")
+    } # if significant vars exist
+  return(posthoc_list)
+}
 
 ##################################################################
 ################## QUALITY CHECK #################################
@@ -211,7 +306,7 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   # #remove extra columns
   genes_Results_annotated <- genes_Results_annotated[ , !(names(genes_Results_annotated) %in% c("X.ScanTime","surviv_time","ExpStart","ExpEnd","Comment","TagID","tagIDdecimal","Ori_Plate","Ori_Well","fileName","identifStart","identifEnd"))]
   # #remove  dead ants
-  # DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$AntTask)),]
+  # genes_data <- genes_data[which(!is.na(genes_data$AntTask)),]
   
   names(genes_Results_annotated)[which(names(genes_Results_annotated)=="treatment")] <- "Treatment"
   # Rename by name
@@ -234,6 +329,18 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
 # read the csv file
 genes_data <- read.csv(paste(DATADIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"))
 genes_data$Sample_Plate <- as.factor(genes_data$Sample_Plate)
+
+##remove rows which contain NAs for Ct
+genes_data <- genes_data[!is.na(genes_data$mean_Ct), ]
+
+# Relevel Exposed
+genes_data$Exposed <- as.factor(genes_data$Exposed)
+levels(genes_data$Exposed)[levels(genes_data$Exposed)=="TRUE"] <- "treated"
+levels(genes_data$Exposed)[levels(genes_data$Exposed)=="FALSE"] <- "untreated"
+# Create new Status category
+genes_data$Ant_status <- paste(genes_data$Exposed, genes_data$AntTask)
+#remove non-categorised ants
+genes_data <- genes_data[which(genes_data$IsAlive==TRUE),]
 
 # save controls aside
 controls_gene_data <- genes_data %>%
@@ -297,15 +404,16 @@ ggplot(genes_data, aes(x = gene, y = delta_Ct,fill=Treatment)) +
 ##### REMOVE HOUSEKEEPING GENE'S EXPRESSION OVER THRESHOLD
 # EF1alpha is expected () to show expression values ranging between 25+-2 (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
 # given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
+# check outliers min upper threshold
+outliers_limit <- min(outliers %>%
+  filter(gene == "EF1") %>%
+  filter(mean_Ct > grand_mean_Ct + 2*st.dev_mean_Ct) %>%
+  pull(mean_Ct))
+
 # we then discard samples with EF1 mean_ct > 32 as they are probably low quality samples (bad extraction, bad crushing, etc)
-
 # filter rows with mean_Ct value greater than 32 for group EF1
-genes_data_EF1_crop <- genes_data %>%
-  filter(ref_Ct < 32)
-
-# plot delta_Ct
-ggplot(genes_data_EF1_crop, aes(x = gene, y = delta_Ct)) +
-  geom_boxplot(aes(colour = Sample_Plate), lwd = 0.8, alpha = 0.3)
+genes_data <- genes_data %>%
+  filter(ref_Ct < outliers_limit)
 
 # Calculating relative DNA concentration
 # to calculate the relative DNA concentration, you can use the fact that the amount of cDNA theoretically doubles every cycle.
@@ -318,25 +426,169 @@ genes_data <- left_join(genes_data, primers_eff, by = c("gene"))
 genes_data <- genes_data %>%
   mutate(rel_conc = (2*(efficiency/1.99))^-delta_Ct)
 
-# plot the relative concentration.
-ggplot(genes_data, aes(x = gene, y = rel_conc,fill=Treatment)) +
-  geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3) +
-  scale_y_continuous(labels = scales::percent,trans='log10') 
-
-
-
+# # plot the relative concentration.
+# ggplot(genes_data, aes(x = gene, y = rel_conc,fill=Treatment)) +
+#   geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3) +
+#   scale_y_continuous(labels = scales::percent,trans='log10')
 
 ggplot(data= genes_data,
   aes(x = AntTask, y = rel_conc)) + #,group = Exposed,color = Exposed
-  geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.6)+ #,alpha= 0.8,stroke=0
+  geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.3)+ #,alpha= 0.8,stroke=0
   geom_boxplot(aes(colour=Treatment),lwd=0.8,alpha = 0.3) + 
   STYLE_CONT +
   scale_y_continuous(labels = scales::percent,trans='log10') +
-  facet_grid(. ~ gene) # +
-         # labs( y = DISTANCE_TO_Q) 
+  facet_grid(. ~ gene) # 
+
+### How to treat Queens
+# Queens' larger amount of tissue makes the Ct values for EF1 much lower (high expression). 
+# this is not a problem as each sample housekeeping gene EF1 Ct value is used to normalise the test genes, but: 
+# as queens have different metabolic rates (whic are known to impact EF1 expression), the Ct values for EF1 will not be comparable, 
+# therefore QUEENS HAVE TO BE ANALYSED SEPARATELY
+
+# Queen data
+genes_data_Q <- genes_data %>%
+  filter(IsQueen == TRUE)
+# Queen data
+genes_data_EXP <- genes_data %>%
+  filter(Exposed == "treated")
+# unexposed data
+genes_data <- genes_data %>%
+  filter(IsQueen == FALSE & Exposed == "untreated")
+
+#list for ease of plotting
+genes_data_list <- list(genes_data_Q=genes_data_Q, genes_data_EXP= genes_data_EXP,genes_data=genes_data)
+
+for (DF in genes_data_list) {
+print(
+ggplot(data= DF,
+       aes(x = gene, y = rel_conc)) + #,group = Exposed,color = Exposed
+  geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.3)+ #,alpha= 0.8,stroke=0
+  geom_boxplot(aes(colour=Treatment),lwd=0.8,alpha = 0.3) + #
+  STYLE +
+  ggtitle(paste(unique(DF$Ant_status),collapse=", ")) +
+  scale_y_continuous(labels = scales::percent,trans='log10') #+
+  #facet_grid(. ~ gene)
+)
+  }
+
+#####################################################################################
+##################              STATS & PLOTS        ################################
+#####################################################################################
+
+#####################################################################################
+##### TEST DIFFERENCE OF MbruDNA.LOAD BETWEEN SIZES FOR EACH Ant_status (ANTTASK*TREATMENT CONDITION)
+
+for (GENE in unique(genes_data$gene)) {
+  #select subset for 1 gene
+  GENE_data <- genes_data[which(genes_data$gene==GENE),]
+  #create constant to make values below zeros a small number
+  GENE_cost <- min ( GENE_data$rel_conc ,na.rm=T ) * 1.1
+  
+  #hist(log10(GENE_data$rel_conc+GENE_cost))
+  
+  # #-----------------
+  # m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~ Treatment * mean_distance_to_queen_ordered * Ant_status + (1|Colony), data = DNA_Results_IndMean_NoQ_post) # the "/" is for the nesting #  + (1|time_of_day) 
+  # output_lmer(m.loadVSdistanceQ_BIN)
+  # 
+  # 
+  # m.loadVSdistanceQ_BIN <- lmer(log10(MbruDNA+constant) ~  Treatment 
+  #                               + mean_distance_to_queen_ordered 
+  #                               + Ant_status 
+  #                               + Treatment:mean_distance_to_queen_ordered
+  #                               + Treatment:Ant_status
+  #                               + Ant_status:mean_distance_to_queen_ordered
+  #                               + Treatment:mean_distance_to_queen_ordered:Ant_status )
+  # #-----------------
+  
+  #First, fit 4 candidate linear models to explain variation in density
+  mod1<-lmer(log10(rel_conc+GENE_cost) ~ Treatment * Ant_status + (1|Colony), data = GENE_data)
+  mod2<-lmer(log10(rel_conc+GENE_cost) ~ Treatment + Ant_status + (1|Colony), data = GENE_data)
+  
+  print(GENE)
+  output_lmer(mod1)
+  output_lmer(mod2)
+  #We can now use the mod.sel to conduct model selection. The default model selection criteria is Akaike’s information criteria (AIC) with small sample bias adjustment, AICc
+  out.put<-model.sel(mod1,mod2)
+  # delta AICc, and the model weights
+  out.put
+  
+  #models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc 
+  # cclean output
+  sel.table<-round(as.data.frame(out.put)[-c(1:5)],3)
+  # number of parameters (df) should be K
+  names(sel.table)[1] = "K"
+  sel.table$Model<-rownames(sel.table)
+  rownames(sel.table) <- NULL
+  # replace Model name with formulas
+  for(i in 1:nrow(sel.table)) sel.table$formula[i]<- as.character(formula(get(sel.table$Model[i])))[3]
+  print(GENE)
+  print(sel.table)
+  
+  #compute posthocs
+  selected_model <- get(sel.table[which.max(sel.table$weight),"Model"])
+  ID_model <- GENE # to assign name to posthoc's list element
+  posthoc_list <- compute_posthocs(selected_model)
+}
+
+#add information to post_hoc list
+# MIGHT BE INCLUDED IN THE POSTHOC FUNCTION
+for (i in seq_along(posthoc_list)) {
+  posthoc_list[[i]]$gene <- sub("-.*", "", names(posthoc_list[i]))
+  posthoc_list[[i]]$variable <- sub(".*-", "", names(posthoc_list[i]))
+}
 
 
+label_status <- bind_rows(posthoc_list[grepl("Ant_status", names(posthoc_list))], .id = "column_label")
+label_treatment <- bind_rows(posthoc_list[grepl("Treatment", names(posthoc_list))], .id = "column_label")
 
+
+## plot by Treatment (size)
+    ggplot(data= genes_data,
+           aes(x = gene, y = rel_conc,colour=Treatment)) + #,group = Exposed,color = Exposed
+      geom_point(aes(fill = Treatment,colour=Colony),position = position_jitterdodge(),size=1,alpha=0.3)+ #,alpha= 0.8,stroke=0
+      geom_boxplot(lwd=0.8,alpha = 0.3) + #
+      STYLE +
+      scale_y_continuous(labels = scales::percent,trans='log10') +
+      geom_text(data = label_treatment, aes(x = gene , y = 10, group=Treatment,label = V1,fontface = "bold"),position = position_jitterdodge(seed = 2))# jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+    #facet_grid(. ~ gene)
+    
+    
+## plot by Treatment (size)
+    ggplot(data= genes_data,
+           aes(x = Ant_status, y = rel_conc,colour=Ant_status)) + #,group = Exposed,color = Exposed
+      geom_point(aes(colour=Colony),position = position_jitterdodge(),size=1,alpha=0.3)+ #,alpha= 0.8,stroke=0
+      geom_boxplot(lwd=0.8,alpha = 0.3) + #
+      STYLE +
+      scale_y_continuous(labels = scales::percent,trans='log10') +
+      geom_text(data = label_status, aes(x = Ant_status , y = 10, group=Ant_status,label = V1,fontface = "bold"),position = position_jitterdodge(seed = 2)) + # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+    facet_grid(. ~ gene)
+
+
+    
+    ## TODO!!!
+    
+##### analyze treated nurses and QUEENS!!
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 ##### DELTA-DELTA-Ct METHOD
 # One common way of analysing qPCR data is to use the “delta-delta-Ct” method. This involves calculating the difference between the Ct of the housekeeping gene and the test gene, then calculating the difference between the treated samples and the control.
 # # https://liz-is.github.io/qpcr-analysis-with-r/aio.html
