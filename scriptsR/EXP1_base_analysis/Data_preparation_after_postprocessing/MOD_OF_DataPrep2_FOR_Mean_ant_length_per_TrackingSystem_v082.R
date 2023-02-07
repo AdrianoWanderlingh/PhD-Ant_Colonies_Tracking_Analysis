@@ -46,8 +46,8 @@ sourceCpp("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/determine_angle_a
 ### directory of data and myrmidon files
 #dir_data <- '/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA'
 #dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
-#dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
-dir_data  <- "/media/cf19810/Seagate Portable Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
+dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
+#dir_data  <- "/media/cf19810/Seagate Portable Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
 
 
 #### ACCESS FILES
@@ -67,8 +67,15 @@ for (REP.n in 1:length(files_list)) {
   
   for (variable in REP.files) {
     
+    # Split the string into a vector based on "_"
+    input_vector <- strsplit(variable, "_")[[1]]
+    # Extract the first 2 elements of the vector
+    # Use grep to find the element containing "R"
+    REP_treat_name <- input_vector[grep("R", input_vector[1:2])]
+    
     #get substring in variable until R9BS_
-    REP_treat_name <- sub("\\_.*", "", variable)
+    #REP_treat_name <- sub("\\_.*", "", variable)
+
     treat_name = substr(REP_treat_name,(nchar(REP_treat_name)+1)-2,nchar(REP_treat_name))
     
     #find first folder of the experiment
@@ -76,7 +83,7 @@ for (REP.n in 1:length(files_list)) {
     REP.data_folder <- REP.data_folder[!grepl(REP.data_folder,pattern="myrmidon")]
     
     INFO.folder <- paste(REP.folder,REP.data_folder,sep="/")
-    INFO.file <- list.files(path=INFO.folder,pattern=glob2rx(paste0("*.INFO*")))
+    INFO.file <- list.files(path=INFO.folder,pattern=glob2rx(paste0("*.INFO")))
       
     INFO.file <-  paste(INFO.folder,INFO.file,sep="/")
     
@@ -152,6 +159,8 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
     for (ant in oriented_ants){
       ###extract ant length and capsules
       ant_length_px <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_px)
+      ant_length_mm <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_mm)
+      
       capsules      <- ant$capsules
       for (caps in 1:length(capsules)){
         capsule_name  <- capsule_names[[capsules[[caps]]$type]]
@@ -190,6 +199,7 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
                                                                 x_ant_coord      = id$antPosition[1]*cos(-id$antAngle) - id$antPosition[2]*sin(-id$antAngle),
                                                                 y_ant_coord      = id$antPosition[1]*sin(-id$antAngle) + id$antPosition[2]*cos(-id$antAngle),
                                                                 length_px        = ant_length_px,
+                                                                length_mm    = ant_length_mm,
                                                                 stringsAsFactors = F))
       }
     }
@@ -214,9 +224,10 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
   mean_y_ant_coord <- 0 ##set it to zero manually because we don't expect there to be a consistent bias in deviation
   ###Furthermore, get the average worker length from the data
   mean_worker_length_px <- mean(oriented_metadata$length_px)
+  mean_worker_length_mm <- mean(oriented_metadata$length_mm)
   
 
-  length_info <- data.frame(mean_worker_length_px=mean_worker_length_px, TS=TS,myrmidon_file=myrmidon_file)  
+  length_info <- data.frame(mean_worker_length_px=mean_worker_length_px,mean_worker_length_mm=mean_worker_length_mm, TS=TS,myrmidon_file=myrmidon_file)  
   
   ###Finally, get information on each capsule
   # for (caps in 1:length(capsule_list)){
