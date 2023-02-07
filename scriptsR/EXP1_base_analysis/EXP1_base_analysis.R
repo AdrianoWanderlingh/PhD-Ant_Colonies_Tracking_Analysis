@@ -5,8 +5,6 @@ rm(list=ls())
 # treatment is ("Pathogen","Sham"), not ("pathogen","sham")
 # status is linked to size of the colony, not ("treated","untreated") ant
 
-# missing:
-# - prop_time_outside (not calculated but data is there from SpaceUse) X
 #to do in JAN 2023
 # - proportion_time_active  
 # - average_bout_speed_pixpersec
@@ -38,16 +36,16 @@ rm(list=ls())
 
 # ########### DEFINE ZONES PROPERLY - DEFINED INSIDE THE ANT TASKS FUNCTION, SHOULD DO SAME FOR NEST USE
 # #### EXPAND THIS TO EXTRACT ALL ZONES (WATER, SUGAR, ETC)
-# zones <- exp$spaces[[1]]$zones #function to show the Zones present in the Space
+# zones <- e$spaces[[1]]$zones #function to show the Zones present in the Space
 # zones_tab <- data.frame(ID =c(zones[[1]]$ID, zones[[2]]$ID), name=c(zones[[1]]$name, zones[[2]]$name))
 # foraging_zone <- zones_tab[which(grepl("forag",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
 # nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
 # print(paste("Foraging zone = zone",foraging_zone, "& Nest zone = zone",nest_zone))
 
-# change window_shift to actual date? As per Grooming (new exact data info to be gathered)  
+# change window_shift to actual date? As per Grooming (new exact data info to be gathered)
+# THE EXACT DATE IS IN /home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data/Grooming_Classifier_CrossVal_Adriano2022_RETURN_EXP_TIME_ZULU.csv
 
-#little improvement to do
-#RENAME THE EXP TO \"e\", NOT \"exp\" (FUNCTIONS' VARIABLE NAME)
+
 
 
 ##############################################################################
@@ -72,17 +70,38 @@ library(mallinfo)
 library(reshape)
 library(dplyr)
 
-#### PARAMETERS
-TimeWind        <- 3600 ## in seconds (3600 is an hour)
-gap             <- fmSecond(10) # for ComputeGraph function
-Time_dictionary <- data.frame(time_hours= -36:35, time_of_day= rep(0:23,3)) #time_hours= time since exposure (negatives pre-exposire, positive post exposure), time_of_day=time hour slot of the day
-Time_dictionary <- Time_dictionary[which(Time_dictionary$time_hours<=21 & Time_dictionary$time_hours>=-27),]
+#starting params
+USER <- "Adriano"
 
-## TIME WINDOW SHIFT. WARNING: THIS IS AN APPROXIMATION. IN THE FUTURE, THE TIME OF EXP ANTS RETURN PER TRACKING SYSTEM SHOULD BE USED! 
-window_shift <- 60*15 #approx N of minutes that where given at the end as leeway, minutes can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
+#### ACCESS FILES
+if (USER=="Adriano") {
+  WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
+  DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
+  SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+  metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-20.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+  BODYLENGTH_FILE <- paste("/home/cf19810/Documents/scriptsR/Ants_behaviour_analysis/ScriptsR/Mean_ant_length_per_TrackingSystem.txt",sep="/")
+}
+
+if (USER=="Supercomputer") {
+  WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
+  DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
+  SCRIPTDIR <- "/home/cf19810/Documents/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis/EXP1_analysis_scripts" #"/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+  metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-20.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+  BODYLENGTH_FILE <- paste(some_directory,"Data","/Mean_ant_length_per_TrackingSystem.txt",sep="/")
+  
+}
+
+###source function scripts
+print("Loading functions and libraries...")
+source(paste(SCRIPTDIR,"SpaceUse_v082.R",sep="/")) # SPACE_USE
+source(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/")) # NET_properties collective + individual
+source("/home/cf19810/Documents/scriptsR/Ants_behaviour_analysis/ScriptsR/interaction_detection.R")
+source("/home/cf19810/Documents/scriptsR/Ants_behaviour_analysis/ScriptsR/old/BEH_collisions_fort081_FUNCTIONS.R")
+#list.functions.in.file(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/"), alphabetic = TRUE)
+
 
 #### FUNCTIONS
-#list files recursive up to a certain level (level defined by "n" parameter)
+# list files recursive up to a certain level (level defined by "n" parameter)
 list.dirs.depth.n <- function(p, n) {
   res <- list.dirs(p, recursive = FALSE)
   if (n > 1) {
@@ -93,30 +112,40 @@ list.dirs.depth.n <- function(p, n) {
   }
 }
 
-
-#starting params
-USER <- "Supercomputer"
-
-#### ACCESS FILES
-if (USER=="Adriano") {
-WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
-DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
-SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
-metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-20.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+# body_lenghts
+get_body_lengths <- function(e,all_body_lengths) {
+  ###check how many spaces there are
+  space_list <- e$spaces
+  body_lengths <- NULL
+  
+  for (space_ID in 1:length(space_list)){
+    body_lengths <- rbind(body_lengths,data.frame(space_ID        = space_list[[space_ID]]$ID,
+                                                  tracking_system = space_list[[space_ID]]$name,
+                                                  body_length_px     = all_body_lengths[which(all_body_lengths$TS==space_list[[space_ID]]$name),"mean_worker_length_px"],
+                                                  body_length_mm     = all_body_lengths[which(all_body_lengths$TS==space_list[[space_ID]]$name),"mean_worker_length_mm"]
+    ))
+  }
+  return(body_lengths)
 }
 
-if (USER=="Supercomputer") {
-  WORKDIR   <- "/media/cf19810/DISK4/ADRIANO"
-  DATADIR   <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
-  SCRIPTDIR <- "/home/cf19810/Documents/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis/EXP1_analysis_scripts" #"/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
-  metadata <- read.table(paste(DATADIR,"/Metadata_Exp1_2021_2022-10-20.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-}
 
-###source function scripts
-print("Loading functions and libraries...")
-source(paste(SCRIPTDIR,"SpaceUse_v082.R",sep="/")) # SPACE_USE
-source(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/")) # NET_properties collective + individual
-#list.functions.in.file(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/"), alphabetic = TRUE)
+
+#### PARAMETERS
+all_body_lengths <-read.table(BODYLENGTH_FILE,header=T,stringsAsFactors = F,sep=",") ###body length information
+TimeWind        <- 3600 ## in seconds (3600 is an hour)
+MAX_INTERACTION_GAP             <- fmSecond(10) # the maximum gap in tracking before cutting the interactions in two different object.  Used in ComputeGraph function
+MAX_DIST_GAP_MM <- 0.6
+
+
+interactions_of_interest <- list(c("head","body"))
+###if interested in more than one type, list them as follows: interactions_of_interest <- c(list(c("head","body")),list(c("head","head")))
+
+
+Time_dictionary <- data.frame(time_hours= -36:35, time_of_day= rep(0:23,3)) #time_hours= time since exposure (negatives pre-exposire, positive post exposure), time_of_day=time hour slot of the day
+Time_dictionary <- Time_dictionary[which(Time_dictionary$time_hours<=21 & Time_dictionary$time_hours>=-27),]
+
+## TIME WINDOW SHIFT. WARNING: THIS IS AN APPROXIMATION. IN THE FUTURE, THE TIME OF EXP ANTS RETURN PER TRACKING SYSTEM SHOULD BE USED! 
+window_shift <- 60*15 #approx N of minutes that where given at the end as leeway, minutes can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
 
 
 #list subdirectories in parent folder EXPERIMENT_DATA
@@ -167,15 +196,18 @@ for (REP.n in 1:length(files_list)) {
     
     print(REP.FILES) ##}}
     #open experiment
-    exp <- fmExperimentOpen(REP.FILES)
-    # exp.Ants <- exp$ants
+    e <- fmExperimentOpen(REP.FILES)
+    # e.Ants <- e$ants
     print(paste0("Processing ",basename(REP.FILES)))
-    exp_end <- fmQueryGetDataInformations(exp)$end - window_shift
+    exp_end <- fmQueryGetDataInformations(e)$time_stop - window_shift
+    
+    ### get body length
+    body_lengths <- get_body_lengths(e,all_body_lengths)
     
     ## get in R the spaceID / name correspondance
     ##PROBABLY NOT NEEDED. ANYWAY, IT WORKS DIFFERNTLY THAN IN FLORA-bee
-    # BoxCodes <- exp$spaces[[1]]$zones
-    # BoxCodes <- data.frame(space=c(BoxCodes[[1]]$name, BoxCodes[[2]]$name), box=c(exp$spaces[[1]]$name), stringsAsFactors = F )
+    # BoxCodes <- e$spaces[[1]]$zones
+    # BoxCodes <- data.frame(space=c(BoxCodes[[1]]$name, BoxCodes[[2]]$name), box=c(e$spaces[[1]]$name), stringsAsFactors = F )
     
     
     #base file info
@@ -189,17 +221,17 @@ for (REP.n in 1:length(files_list)) {
     #TIME_HOURS zero is the moment of exposed ants return
     for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)] ){  ## increments by 3 hours for 48 hours
       # HOUR <- seq(from=0, to=48, by=3)
-      # From  <- fmQueryGetDataInformations(exp)$end - 51*TimeWind + (HOUR * TimeWind) - window_shift
-      # To    <- fmQueryGetDataInformations(exp)$end - 48*TimeWind + (HOUR * TimeWind) - window_shift
+      # From  <- fmQueryGetDataInformations(e)$time_stop - 51*TimeWind + (HOUR * TimeWind) - window_shift
+      # To    <- fmQueryGetDataInformations(e)$time_stop - 48*TimeWind + (HOUR * TimeWind) - window_shift
       # 
-      From  <- fmQueryGetDataInformations(exp)$end + (TIME_HOURS - 24)*TimeWind - window_shift
-      To    <- fmQueryGetDataInformations(exp)$end + (TIME_HOURS - 21)*TimeWind - window_shift
+      From  <- fmQueryGetDataInformations(e)$time_stop + (TIME_HOURS - 24)*TimeWind - window_shift
+      To    <- fmQueryGetDataInformations(e)$time_stop + (TIME_HOURS - 21)*TimeWind - window_shift
       #############################
       
       print(paste0("computing hour ",TIME_HOURS))
       print(paste("Time window, from", From, "to", To))
-      start <- fmTimeCreate(offset=From) #end minus 48 hours plus incremental time
-      end   <- fmTimeCreate(offset=To) #end minus 45 hours plus incremental time
+      time_start <- fmTimeCreate(offset=From) #time_stop minus 48 hours plus incremental time
+      time_stop   <- fmTimeCreate(offset=To) #time_stop minus 45 hours plus incremental time
       
       #base file information
       #PERIOD
@@ -220,7 +252,7 @@ for (REP.n in 1:length(files_list)) {
   ############ NETWORK PROPERTIES: INDIVIDUAL & COLONY LEVEL ##########################    
       
   # COMPUTE NETWORK
-  Graph               <- compute_G(exp = exp, start = start, end=end, gap=gap)
+  Graph               <- compute_G(e = e, start = time_start, end=time_stop, gap=MAX_INTERACTION_GAP)
   # COMPUTE NETWORK PROPERTIES (collective and individual)
   Network_summ_prop_hour   <- NetProperties(graph=Graph)
   
@@ -242,7 +274,7 @@ for (REP.n in 1:length(files_list)) {
   
   ############ SPACE USE: INDIVIDUAL ##########################    
   # SPACE USAGE
-  SpaceUsage_hour     <- SpaceUse(exp = exp, start = start, end=end)
+  SpaceUsage_hour     <- SpaceUse(e = e, start = time_start, end=time_stop)
   
   #Add metadata info
   SpaceUsage_hour   <- cbind(data.frame(randy=REP.FILES,REP_treat=REP_TREAT,colony_size=COLONY_SIZE,period=PERIOD,time_hours=TIME_HOURS, time_of_day=TIME_OF_DAY,From, To,
@@ -343,9 +375,9 @@ print (paste("loop took ",as.numeric(difftime(loop_end_time, loop_start_time, un
 ###############################################################################################################
 
 # ########## GET EXPOSED ANTS from METADATA
-# exp.Ants <- exp$ants
+# e.Ants <- e$ants
 # metadata$Exposed <- "no"
-# for (ant in exp.Ants){
+# for (ant in e.Ants){
 #   individual  <- ant$ID
 #   #print(ant)
 #     if (TRUE %in% ant$getValues("Exposed")[,"values"]) { metadata[individual,"Exposed"] <- "exposed" }
@@ -353,7 +385,7 @@ print (paste("loop took ",as.numeric(difftime(loop_end_time, loop_start_time, un
 # 
 # ########## GET QUEENS 
 # metadata$IsQueen <- "no"
-# for (ant in exp.Ants){
+# for (ant in e.Ants){
 #   individual  <- ant$ID
 #   #print(ant)
 #   if (TRUE %in% ant$getValues("IsQueen")[,"values"]) { metadata[individual,"IsQueen"] <- "queen" }

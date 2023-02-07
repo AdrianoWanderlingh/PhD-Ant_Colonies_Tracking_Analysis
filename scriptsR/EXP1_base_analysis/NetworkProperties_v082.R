@@ -4,23 +4,121 @@
 
 # it requires a "gap" to be defined, should be required by the function
 #Gap is 10 seconds as these are interactions (he maximum gap in tracking before cutting the trajectory or interactions in two different object.)
-compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nest_focus, frm_rate
+compute_G <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_duration , link_type, nest_focus, frm_rate
   print(paste0("Computing networks"))
-  
   
   #required packages
   require(igraph)
   require(FortMyrmidon)
   
-  Interactions <- fmQueryComputeAntInteractions(exp, start, end, maximumGap=gap, singleThreaded=FALSE, reportFullTrajectories = F)
+  ### initialise variables
+  list_IF_Frames          <- list()
+  
+  
+  ###############################################################################
+  ###### IDENTIFY FRAMES ########################################################
+  ###############################################################################
+  
+  #Because of various issues raised, including the ones reported here https://github.com/formicidae-tracker/myrmidon/issues/240 ,
+  #the analysis is performed not using UNIX_time but using frames. Every new queried file will then show a part including FRAME assignment.
+  #Frames are then used for any trajectory cutting later on in the sub-scripts
+  IdentifyFrames      <- fmQueryIdentifyFrames(e,start=time_start, end=time_stop,showProgress = FALSE)
+  IF_frames           <- IdentifyFrames$frames
+  # Assign a frame to each time since start and use it as baseline for all matching and computation
+  IF_frames$frame_num <- as.numeric(seq.int(nrow(IF_frames)))
+  
+  # assign a time in sec to match annotation time (UNIX hard to use for class mismatch)
+  IF_frames$time_sec <- round(as.numeric(IF_frames$time),N_DECIMALS)
+  
+  ###NATH_FLAG
+  # deduce FRAME_RATE from IF_frames
+  # FRAME_RATE <- rev(c(1:30))[match.closest(x=median(diff(IF_frames$time_sec)),table=rev(1/c(1:30)))]
+  
+  #assign frame numbering to annotations 
+  ###NATH_FLAG: why do you not create a new object that subsets the annotations for the replicate and period you want?
+  ### here you have an object with lots of irrelevant rows
+  
+  # annotations$frame_start <- match.closest(x = annotations$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
+  # annotations$frame_stop  <- match.closest(x = annotations$T_stop_sec,  table = IF_frames$time_sec, tolerance = 0.05)
+  # 
+  # Creating a new zeroed-time since the start of the exp by  summing the cumulated differences between each pair of consecutive frames (to account for the time mismatch)
+  IF_frames$cum_diff <- c(0, with(IF_frames, diff(time)))
+  IF_frames$cum_diff <- cumsum(IF_frames$cum_diff)
+  
+  
+  ###############################################################################
+  ###### READING TRAJECTORIES ###################################################
+  ###############################################################################
+  
+  # I believe I don't need tis section from BEH_extract_movement_variables_xxxxx.R
+  
+  #########################################################################################
+  ###### READING AUTOMATIC INTERACTIONS ###################################################
+  #########################################################################################
+  
+  #Interactions <- fmQueryComputeAntInteractions(e, time_start, time_stop, maximumGap=gap, singleThreaded=FALSE, reportFullTrajectories = F)
+  
+  #Get info on the capules shapes and use the relevant ones in the ant interaction query
+  capsules  <- e$antShapeTypeNames
+  names(capsules) <- as.character( 1:length(capsules))
+  
+  ALL_CAPS_MATCHERS <- list()
+  for (interaction_of_interest in interactions_of_interest){
+    caps_matcher <- c()
+    for (caps in interaction_of_interest[c(1:2)]){
+      caps_matcher <- c(caps_matcher,as.numeric(names(capsules)[[which(capsules==caps)]]) )
+    }
+    ALL_CAPS_MATCHERS <- c(ALL_CAPS_MATCHERS,list(caps_matcher))
+  }
+
+  
+  # COMPUTE INTERACTIONS, using the same parameters as in Stroeymeyt et al., Science 2018
+  # interaction_detection call merge_interactions.cpp to fix interactions splitting issue
+  Interactions            <- interaction_detection (e=e
+                                                   ,start=time_start
+                                                   ,end=time_stop
+                                                   ,max_time_gap = MAX_INTERACTION_GAP
+                                                   ,max_distance_moved = (body_lengths$body_length_px / body_lengths$body_length_mm) * MAX_DIST_GAP_MM
+                                                   ,capsule_matcher=ALL_CAPS_MATCHERS
+                                                   ,IF_frames=IF_frames
+  )
+
+
+######
+  
+  # LIST OF TO DOs:
+  
+  # calculation of IF_FRAMES
+  
+  # RUN IT ON MINI SET TO CHECK THAT IT WORKS
+
+  # TRUNCATION
+  # After interactions extraction, truncate interactions over 2 mins 
+  # TO DO SO, CHECK THE CURRENT SCRIPT OUTPUT
+  
+  ### SAVE OUTPUT IN SCIENCE 2018 COMPATIBLE FORMAT
+  # list of interactions (expected format is frame,box,IDant1,IDant2,x1,y1,a1,x2,y2,a2) - HOW IS THAT COMPATIBLE TO THE CURRENT FUNCTIONS?
+  # * \param a Angle of ant modeled as trapezoid
+  # * \param x X-coordinate of interaction point 
+  # * \param y Y-coordinate of interaction point
+  
+  #### BEST PRACTICE:
+  # SEPARATE THE INTERACTION CREATION SCRIPT FROM THE NETWORK SCRIPT AND SAVE ITS OUTPUT.
+  # IF THE OUTPUT IS ALREADY PRESENT, THEN LOAD THE INTERACTIONS FILE
+  
+  
+  
+  
+  
+  
   # Interactions$ant_ID1 <- paste("ant_",Interactions$ant1,sep="") ##creates a ID string for each ant: ant1, ant2,...
   # Interactions$ant_ID2 <- paste("ant_",Interactions$ant2,sep="")
-  exp.Ants <- exp$ants
+  e.Ants <- e$ants
   Ant_IDs <- NULL
   # Number of ants
-  for (ant in 1:length(exp.Ants)) {Ant_IDs <- c(Ant_IDs, exp.Ants[[ant]]$ID)}
+  for (ant in 1:length(e.Ants)) {Ant_IDs <- c(Ant_IDs, e.Ants[[ant]]$ID)}
   Max_antID <- max(Ant_IDs)
-  # N_ants <- length(exp.Ants)    
+  # N_ants <- length(e.Ants)    
   
   # initialise adj-matrix
   adj_matrix <- matrix(0L,nrow=Max_antID, ncol=Max_antID) #np.zeros((N_ants, N_ants))
@@ -35,12 +133,12 @@ compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nes
     #Choose “link as number of interactions”:
     adj_matrix[ANT1, ANT2] <- adj_matrix[ANT1, ANT2] + 1
     #or “link as total duration of interactions”:
-    #  adj_matrix[ant_ID1, ant_ID2] = adj_matrix[ant_ID1, ant_ID2] + int$end – int$start
+    #  adj_matrix[ant_ID1, ant_ID2] = adj_matrix[ant_ID1, ant_ID2] + int$time_stop – int$time_start
     
     # if link_type == 'length_inter':
     #   # OPT1
     #   # WEIGHTS: cumulative interaction time
-    #   adj_mat[i.IDs[0]-1, i.IDs[1]-1] += (TimeToFrame[fm.Time.ToTimestamp(i.End)] - TimeToFrame[fm.Time.ToTimestamp(i.Start)]) * 1 / frm_rate
+    #   adj_mat[i.IDs[0]-1, i.IDs[1]-1] += (TimeToFrame[fm.Time.ToTimestamp(i.End)] - TimeToFrame[fm.Time.ToTimestamp(i.time_start)]) * 1 / frm_rate
     # elif link_type == '#inter':
     #   # OPT2
     #   # WEIGHTS: number of interactions
@@ -64,7 +162,7 @@ compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nes
   #                        'inv_weight')
   
   #### add a column contaning interaction duration in min
-  Interactions["duration_min"] <- as.numeric(difftime(Interactions$end, Interactions$start, units = "mins") + 0.125) ###duration in minutes (one frame = 0.125 second)
+  Interactions["duration_min"] <- as.numeric(difftime(Interactions$time_stop, Interactions$time_start, units = "mins") + 0.125) ###duration in minutes (one frame = 0.125 second)
   ### add edge weights
   E(G)$weight <- Interactions[,"duration_min"]
   ###simplify graph (merge all edges involving the same pair of ants into a single one whose weight = sum of these weights)
@@ -78,7 +176,7 @@ compute_G <- function(exp, start, end, gap){ # min_cum_duration , link_type, nes
   ################# assign vertex attributes
   #subset metadata
   METADATA <- subset(metadata,metadata$REP_treat==REP_TREAT)
-  #create matching of vertices with ants (there could be less ants in a 3-hours window than in the full exp)
+  #create matching of vertices with ants (there could be less ants in a 3-hours window than in the full e)
 
   ############# Assign vertex types: "AntTask_num"
   if ("AntTask" %in% colnames(metadata)) {
@@ -207,16 +305,16 @@ NetProperties <- function(graph){
  # --------
     #Get complete list of Ants
     AntID_list <- NULL
-  for (ant in   1: length(exp$ants)) {
-    AntID_list <- c(AntID_list,exp$ants[[ant]]$ID)}
+  for (ant in   1: length(e$ants)) {
+    AntID_list <- c(AntID_list,e$ants[[ant]]$ID)}
     
     # #add missing ants
     missing_ants <- subset(AntID_list, !(AntID_list %in% individual$antID))
   missing_ants_table <- data.frame()
   
   for (MISSING in missing_ants) {
-    for (id in length(exp$ants[[MISSING]]$identifications)) {
-      #print ( exp$ants[[MISSING]]$identifications[[id]]$tagValue )
+    for (id in length(e$ants[[MISSING]]$identifications)) {
+      #print ( e$ants[[MISSING]]$identifications[[id]]$tagValue )
       missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING))
     }}
   

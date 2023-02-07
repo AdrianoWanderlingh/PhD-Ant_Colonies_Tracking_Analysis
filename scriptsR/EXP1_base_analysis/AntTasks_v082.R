@@ -1,6 +1,6 @@
 
 ################## GET ANT TASK ###################################
-AntTasks <- function(exp){
+AntTasks <- function(e){
   print("Computing AntTasks based on 48h time-window before exposure")
   
   #required packages
@@ -15,7 +15,7 @@ AntTasks <- function(exp){
 
   #define zones
   #### EXPAND THIS TO EXTRACT ALL ZONES (WATER, SUGAR, ETC)
-  zones <- exp$spaces[[1]]$zones #function to show the Zones present in the Space
+  zones <- e$spaces[[1]]$zones #function to show the Zones present in the Space
   zones_tab <- data.frame(ID =c(zones[[1]]$ID, zones[[2]]$ID), name=c(zones[[1]]$name, zones[[2]]$name))
   foraging_zone <- zones_tab[which(grepl("forag",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
   nest_zone <- zones_tab[which(grepl("nest",zones_tab$name)),"ID"]##fool-proofing - this way we are sure to always select the right zone
@@ -23,8 +23,8 @@ AntTasks <- function(exp){
   
   #Get complete list of Ants
   AntID_list <- NULL
-  for (ant in   1: length(exp$ants)) {
-    AntID_list <- c(AntID_list,exp$ants[[ant]]$ID)}
+  for (ant in   1: length(e$ants)) {
+    AntID_list <- c(AntID_list,e$ants[[ant]]$ID)}
 
   positions_summaries_list <- list()
   loop_N <- 0
@@ -35,16 +35,16 @@ AntTasks <- function(exp){
     
     ## get 2 12Hours window for the Task calculation
     ## calcualte the task BEFORE the EXPOSURE
-    start <- fmQueryGetDataInformations(exp)$end - HOUR_start*3600
-    #start <- fmQueryGetDataInformations(exp)$start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
-    time_start <- fmTimeCreate(offset=start)
-    #time_start <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end - 24*3600)####last time in tracking minus 24 hours
-    stop <- fmQueryGetDataInformations(exp)$end - (HOUR_start-TimeWindow)*3600
-    #stop  <- fmQueryGetDataInformations(exp)$start + 45*3600 ####pre-tracking period 
+    time_start <- fmQueryGetDataInformations(e)$time_stop - HOUR_start*3600
+    #time_start <- fmQueryGetDataInformations(e)$time_start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
+    time_start <- fmTimeCreate(offset=time_start)
+    #time_start <- fmTimeCPtrFromAnySEXP(e$getDataInformations()$time_stop - 24*3600)####last time in tracking minus 24 hours
+    stop <- fmQueryGetDataInformations(e)$time_stop - (HOUR_start-TimeWindow)*3600
+    #stop  <- fmQueryGetDataInformations(e)$time_start + 45*3600 ####pre-tracking period 
     time_stop   <- fmTimeCreate(offset=stop)
-    #time_stop  <- fmTimeCPtrFromAnySEXP(exp$getDataInformations()$end) ####last time in tracking
+    #time_stop  <- fmTimeCPtrFromAnySEXP(e$getDataInformations()$time_stop) ####last time in tracking
     ###QUERY 3: fmQueryComputeAntTrajectories()
-    positions                 <- fmQueryComputeAntTrajectories(exp,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
+    positions                 <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
     positions_summaries       <- positions$trajectories_summary
     positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
     positions_list            <- positions$trajectories
@@ -70,7 +70,7 @@ AntTasks <- function(exp){
       }
     }
     #match antID and tagID (live tracking gives tagID). 
-    IDs <- exp$identificationsAt(fmTimeNow()) #this skips dead ants
+    IDs <- e$identificationsAt(fmTimeNow()) #this skips dead ants
     IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
     IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
     positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
@@ -86,7 +86,7 @@ AntTasks <- function(exp){
     positions_summaries_list[[loop_N]] <-  positions_summaries_LOOP
     
     
-    rm(list=ls()[which(!ls()%in%c("positions_summaries_list","exp","foraging_zone","nest_zone","AntID_list","hour_chunk_start","TimeWindow","loop_N"))]) #close experiment
+    rm(list=ls()[which(!ls()%in%c("positions_summaries_list","e","foraging_zone","nest_zone","AntID_list","hour_chunk_start","TimeWindow","loop_N"))]) #close experiment
     gc()
     mallinfo::malloc.trim(0L)
     
@@ -129,9 +129,9 @@ AntTasks <- function(exp){
   missing_ants_table <- data.frame()
   
   for (MISSING in missing_ants) {
-  for (id in length(exp$ants[[MISSING]]$identifications)) {
-   #print ( exp$ants[[MISSING]]$identifications[[id]]$tagValue )
-    missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING, tag_hex_ID= exp$ants[[MISSING]]$identifications[[id]]$tagValue ,AntTask=NA))
+  for (id in length(e$ants[[MISSING]]$identifications)) {
+   #print ( e$ants[[MISSING]]$identifications[[id]]$tagValue )
+    missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING, tag_hex_ID= e$ants[[MISSING]]$identifications[[id]]$tagValue ,AntTask=NA))
   }}
   
   AntTasks <- rbind(AntTasks, missing_ants_table)
@@ -143,7 +143,7 @@ AntTasks <- function(exp){
   AntTasks[which(AntTasks$AntTask=="forager"),"AntTask_num"] <- 2
   AntTasks <- AntTasks[order(AntTasks$antID),]
   
-  rm(list=ls()[which(!ls()%in%c("positions_summaries_list","positions_SUMS","exp","foraging_zone","AntID_list","AntTasks"))]) #close experiment
+  rm(list=ls()[which(!ls()%in%c("positions_summaries_list","positions_SUMS","e","foraging_zone","AntID_list","AntTasks"))]) #close experiment
   gc()
   mallinfo::malloc.trim(0L)
   
