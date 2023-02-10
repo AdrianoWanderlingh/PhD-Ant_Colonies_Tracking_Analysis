@@ -90,7 +90,7 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
 
   # combine all the duplicates to have Ct1, Ct2, Tm1, Tm2
 
-  # remove all the No_Ct values
+  #assign NA to no_Ct values, then (in a later stage) assign very low value to relative expression
   genes_data[which(genes_data$Ct == "No Ct"), "Ct"] <- NA
   genes_data$Ct <- as.numeric(genes_data$Ct)
 
@@ -152,6 +152,8 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   # #Merge info file of plate positions with the DNA results
   common_col_names <- intersect(names(plate_positions_data), names(summarised_data))
   summarised_data <- merge(summarised_data, plate_positions_data, by = common_col_names, all.x = TRUE)
+  # remove wells that never contained a sample (no code assigned in the battleplan references_PLATE)
+  summarised_data <- summarised_data[!is.na(summarised_data$Code),]
   # fix missing labels
   summarised_data$Ori_Well <- sub(".*\\-", "", summarised_data$Code)
   summarised_data$Ori_Plate <- sub("\\-.*", "", summarised_data$Code)
@@ -166,6 +168,13 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
     dat
   }))
 
+  # REMOVE DUPLICATES!
+  plate_positions <- plate_positions[!grepl("DUPLI", plate_positions$Comment), ]
+  # REMOVE AntIDs as they can be misleading
+  # (misalignment issue spotted for Q of R4BP, which had right TagID=228, but wrong antID (153 instead of 152). )
+  # ALSO: some antIDs are missing from the data (i.e. when the myrmidon file was not loaded), while tagIDs are always present
+  plate_positions$AntID <- NULL
+  
   colnames(plate_positions)[which(colnames(plate_positions) == "Comment")] <- "Ori_Well"
   # extract col and plaque info
   plate_positions$Ori_Plate <- sub("\\_.*", "", plate_positions$fileName)
@@ -177,10 +186,15 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   genes_Results_annotated <- merge(summarised_data, plate_positions, by = common_col_names2, all.x = TRUE)
 
   ### clean up of empty wells (NA)
-  genes_Results_annotated <- genes_Results_annotated[!is.na(genes_Results_annotated$Ori_Well), ]
+  #genes_Results_annotated <- genes_Results_annotated[!is.na(genes_Results_annotated$Ori_Well), ]
   # these ants have not been included in this analysis (used for pre-tests), the wells were empty
   missing_ants <- c("1-E1", "2-D6", "20-D3", "20-C4", "55-B7", "54-H6", "59-B1", "59-H7", "56-B2", "56-E2", "27-B11", "26-E10", "46-H11", "47-H1", "11-H5", "11-C7", "33-D1", "33-A2")
   genes_Results_annotated <- filter(genes_Results_annotated, !(Code %in% missing_ants))
+  
+  # general fixes 
+  # Plate RT9, well 8H filled with less milliQwater than needed, likely to be discarded for all genes
+  genes_Results_annotated <- genes_Results_annotated[which( ! genes_Results_annotated$Code %in% c("27-H8","27-H1","27-H12")),]
+  
   ### relabel controls (NoT)
   # needed?
 
@@ -189,6 +203,7 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   # rename cols to match the DNA results
   colnames(metadata)[which(colnames(metadata) == "REP_treat")] <- "Colony"
   # MERGE BASED ON TAG ID AS THE PLATE POSTION ANTidS ARE NOT RELIABLE (misalignment issue spotted for Q of R4BP, which had right TagID=228, but wrong antID (153 instead of 152). )
+  # ALSO: some antIDs are missing from the data (i.e. when the myrmidon file was not loaded), while tagIDs are always present
   colnames(metadata)[which(colnames(metadata) == "tagIDdecimal")] <- "TagID"
 
   # Merge info file of plate positions with the DNA results
@@ -209,7 +224,7 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment) == "SS"] <- "Small Sham"
 
   # write the dataframe to a csv file
-  write.csv(genes_Results_annotated, paste(DATADIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"), row.names = FALSE)
+  write.csv(genes_Results_annotated, paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"), row.names = FALSE)
 
 
   to_keep <- c(to_keep, "genes_Results_annotated", "controls_gene_data")
@@ -220,11 +235,11 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
 
 ##### READ STARTING FILE
 # read the csv file
-genes_data <- read.csv(paste(DATADIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"))
+genes_data <- read.csv(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"))
 genes_data$Sample_Plate <- as.factor(genes_data$Sample_Plate)
 
 ## remove rows which contain NAs for Ct
-genes_data <- genes_data[!is.na(genes_data$mean_Ct), ]
+#genes_data <- genes_data[!is.na(genes_data$mean_Ct), ]
 
 # Relevel Exposed
 genes_data$Exposed <- as.factor(genes_data$Exposed)
@@ -233,8 +248,6 @@ levels(genes_data$Exposed)[levels(genes_data$Exposed) == "FALSE"] <- "untreated"
 # Create new Status category
 genes_data$Ant_status <- paste(genes_data$Exposed, genes_data$AntTask)
 genes_data[which(genes_data$Ant_status=="untreated queen" ),"Ant_status"] <- "queen"
-# remove non-categorised ants
-genes_data <- genes_data[which(genes_data$IsAlive == TRUE), ]
 
 # save controls aside
 controls_gene_data <- genes_data %>%
@@ -242,6 +255,10 @@ controls_gene_data <- genes_data %>%
 # keep housekeeping and test genes data
 genes_data <- genes_data %>%
   filter(!is.na(Colony))
+
+# remove non-categorised ants
+genes_data <- genes_data[which(genes_data$IsAlive == TRUE), ]
+
 
 # plot RAW data
 ggplot(genes_data, aes(x = gene, y = mean_Ct, color = Sample_Plate)) +
@@ -298,6 +315,9 @@ genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
 ##### REMOVE HOUSEKEEPING GENE'S EXPRESSION OVER THRESHOLD
 # EF1alpha is expected () to show expression values ranging between 25+-2 (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
 # given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
+#
+#remove the EF1 No_Ct values, as we are excluding EF1 values over threshold
+genes_data <- genes_data[!is.na(genes_data$ref_Ct),]
 # check outliers min upper threshold
 outliers_limit <- min(outliers %>%
   filter(gene == "EF1") %>%
@@ -308,6 +328,7 @@ outliers_limit <- min(outliers %>%
 # filter rows with mean_Ct value greater than 32 for group EF1
 genes_data <- genes_data %>%
   filter(ref_Ct < outliers_limit)
+
 
 # Calculating relative DNA concentration
 # to calculate the relative DNA concentration, you can use the fact that the amount of cDNA theoretically doubles every cycle.
@@ -320,21 +341,17 @@ genes_data <- left_join(genes_data, primers_eff, by = c("gene"))
 genes_data <- genes_data %>%
   mutate(rel_conc = (2 * (efficiency / 1.99))^-delta_Ct)
 
-# # plot the relative concentration.
-# ggplot(genes_data, aes(x = gene, y = rel_conc,fill=Treatment)) +
-#   geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3) +
-#   scale_y_continuous(labels = scales::percent,trans='log10')
+#assing value smaller than the minimum to the rel_conc NAs, which are caused by No_Ct values
+# it has been assigned in a similar fashion as in the pathogen load but here applied to the rel-concenrtation instead of load (non present)
+# this may flatten the result, but it is not straightforward to assign an arbitrarly high value to CT for missing values....
+## OPTION: ASSING AS VALUE THE CT DETECTION THRESHOLD, I.E. WHERE THE CT INFELXION POINT HAPPENS PER EACH GENE
+#min(genes_data$rel_conc,na.rm=T)
+genes_data[is.na(genes_data$rel_conc),"rel_conc"] <- 1e-06
 
-ggplot(
-  data = genes_data,
-  aes(x = AntTask, y = rel_conc)
-) + # ,group = Exposed,color = Exposed
-  geom_point(aes(fill = Treatment, colour = Colony), position = position_jitterdodge(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
-  geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.3) +
-  STYLE_CONT +
-  scale_y_continuous(labels = scales::percent, trans = "log10") +
-  facet_grid(. ~ gene) #
-
+# plot the relative concentration.
+ggplot(genes_data, aes(x = gene, y = rel_conc,fill=Treatment)) +
+  geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3) +
+  scale_y_continuous(labels = scales::percent,trans='log10')
 
 # # Queen data
 # genes_data_Q <- genes_data %>%
@@ -347,12 +364,50 @@ ggplot(
 #   filter(IsQueen == FALSE & Exposed == "untreated")
 # 
 
+###############
+# clean debris
+remove_debris <- c("stdev_by_group", "outliers", "test_gene_data", "ref_gene_data", "common_col_names4", "outliers_limit", "primers_eff")
+# cleaning
+rm(list = ls()[which(ls() %in% remove_debris)])
+gc()
+
 ################
 # INSTEAD OF SEPARATING THE GROUPS, ADD A GROUP LABEL BASED OFF ANT_STATUS (3 GROUPS) TO RUN THE ANALYSES AND DO THE PLOTS!!
 genes_data$GROUP <- NA
 genes_data[which(genes_data$Ant_status=="queen"),"GROUP"] <- "QUEEN"
 genes_data[which(genes_data$Ant_status=="treated nurse"),"GROUP"] <- "TREATED_W"
 genes_data[which(genes_data$Ant_status %in% c("untreated forager","untreated nurse")),"GROUP"] <- "UNTREATED_W"
+
+ggplot(
+  data = genes_data,
+  aes(x = Ant_status, y = rel_conc, color = Treatment)
+) + # ,group = Exposed,color = Exposed
+  #geom_point(aes(fill = Treatment, colour = Colony), position = position_jitter() , size = 1, alpha = 0.3, show.legend = FALSE) + # # ,alpha= 0.8,stroke=0
+  geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
+  #colScale_Colony +
+  # new_scale_color() +
+  # new_scale_fill() +
+  geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  #geom_violinhalf(aes(fill = Treatment), trim = FALSE, scale = "width", adjust = 1, draw_quantiles = c(0.25, 0.75)) + 
+  colScale_Treatment +
+  #geom_boxplot(aes( color=alpha("black",0.3)), lwd = 0.8, alpha = 0.3)+
+  STYLE +
+  scale_y_continuous(labels = scales::percent, trans = "log10") +
+  facet_grid(. ~ gene) 
+
+
+# library(see) # for half violin plots
+
+
+# ggplot(
+#   data = genes_data,
+#   aes(x = Ant_status, y = rel_conc)
+# ) + 
+#   geom_jitter(aes(group = Treatment, colour = Colony), size = 1, alpha = 0.3, width = 0.2, height = 0, show.legend = FALSE) +
+#   colScale_Colony +
+#   STYLE +
+#   scale_y_continuous(labels = scales::percent, trans = "log10") +
+#   facet_grid(. ~ gene) 
 
 
 # for (GROUP in unique(genes_data$GROUP)) {
@@ -370,16 +425,16 @@ genes_data[which(genes_data$Ant_status %in% c("untreated forager","untreated nur
 #   )
 # }
 
-ggplot(
-        data = genes_data,
-        aes(x = Ant_status, y = rel_conc)
-      ) + # ,group = Exposed,color = Exposed
-        geom_point(aes(fill = Treatment, colour = Colony), position = position_jitterdodge(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
-        geom_boxplot( lwd = 0.8, alpha = 0.3) + #
-        STYLE +
-        ggtitle(paste(unique(genes_data[,"Ant_status"]), collapse = ", ")) +
-        scale_y_continuous(labels = scales::percent, trans = "log10") +
-       facet_grid(. ~ gene)
+# ggplot(
+#         data = genes_data,
+#         aes(x = Ant_status, y = rel_conc)
+#       ) + # ,group = Exposed,color = Exposed
+#         geom_point(aes(fill = Treatment, colour = Colony), position = position_jitter(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
+#         geom_boxplot( lwd = 0.8, alpha = 0.3) + #
+#         STYLE +
+#         ggtitle(paste(unique(genes_data[,"Ant_status"]), collapse = ", ")) +
+#         scale_y_continuous(labels = scales::percent, trans = "log10") +
+#        facet_grid(. ~ gene)
 
 
 #####################################################################################
@@ -428,8 +483,8 @@ for (GENE in unique(genes_data$gene)) {
   #### TREATED INDIVIDUALS (no status grouping)
 if (unique(GENE_data$GROUP)=="TREATED_W") {
   # Calculate the weights based on the imbalance in the sample sizes
-  GENE_data$weights <- calculate_weights(GENE_data$Treatment)
-  # First, fit 4 candidate linear models to explain variation in density
+  #GENE_data$weights <- calculate_weights(GENE_data$Treatment)
+  # First, fit linear models to explain variation in density
   mod1 <- lmer(log10(rel_conc + GENE_cost) ~ Treatment + (1 | Colony), data = GENE_data) # ,weights = weights
   print(GENE)
   output_lmer(mod1)
@@ -449,20 +504,42 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   }
   #### QUEENS (no status grouping, no random)
   else if (unique(GENE_data$GROUP)=="QUEEN") {
-    #given the timy group size, and the non-relevance of the random factor Colony, use a non-parametric test
-    #  Wilcoxon rank-sum test (also known as the Mann-Whitney U test)
-    mod_Q <- rstatix::wilcox_test(rel_conc ~ Treatment, data = GENE_data, alternative = "two.sided")
-    #save test information
-    mod_Q_list <- c(mod_Q_list, list(mod_Q))
+    
+    mod1 <- glm(log10(rel_conc + GENE_cost) ~ Treatment, data = GENE_data) # ,weights = weights
+    print(GENE)
+    output_lmer(mod1)
+    # run anova and store the significant variables in the object SIG
+    SIG <- as.data.frame(Anova(mod1)[Anova(mod1)$"Pr(>Chisq)" < 0.05])
+    if (ncol(SIG)==0) {
+      SIG <- data.frame(LR.Chisq=NA,Df=NA,Pr="n.s.")
+    }else{
+    SIG$Pr <- round(SIG$"Pr(>Chisq)",3)
+    SIG$"Pr(>Chisq)" <- NULL
+    
+    SIG$LR.Chisq <- SIG$"LR Chisq"
+    SIG$"LR Chisq" <- NULL
+    
+    }
+    
+    # #save test information
+    mod_Q_list <- c(mod_Q_list, list(SIG))
     ID_model <- paste(GROUP,GENE,sep="-")
     names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
+    
+    #given the tiny group size, and the non-relevance of the random factor Colony, use a non-parametric test
+    #  Wilcoxon rank-sum test (also known as the Mann-Whitney U test)
+    #mod_Q <- rstatix::wilcox_test(rel_conc ~ Treatment, data = GENE_data, alternative = "two.sided")
+    # #save test information
+    # mod_Q_list <- c(mod_Q_list, list(mod_Q))
+    # ID_model <- paste(GROUP,GENE,sep="-")
+    # names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
     #mod_Q_list[length(mod_Q_list)]
   
   }
   #### UNTREATED INDIVIDUALS
   else{
     # Calculate the weights based on the imbalance in the sample sizes
-    GENE_data$weights <- calculate_weights(GENE_data$Treatment)
+    #GENE_data$weights <- calculate_weights(GENE_data$Treatment)
   # First,fir candidate linear models to explain variation in density
   mod1 <- lmer(log10(rel_conc + GENE_cost) ~ Treatment * Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
   mod2 <- lmer(log10(rel_conc + GENE_cost) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
@@ -490,7 +567,9 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   
   }
 
-} }
+} 
+  
+}
   
 #### PREPARE post hoc LABELS FOR THE PLOTS
   
@@ -509,63 +588,82 @@ label_treatment <- bind_rows(posthoc_list[grepl("Treatment", names(posthoc_list)
 for (i in seq_along(mod_Q_list)) {
   # posthoc_list[[i]]$GROUP <- sub("-.*", "", names(posthoc_list[i]))
   # posthoc_list[[i]]$variable <- sub(".*-", "", names(posthoc_list[i]))
-  mod_Q_list[[i]][c("GROUP", "gene")] <- as.data.frame(str_split_fixed(names(posthoc_list[i]), '-', 2))
+  mod_Q_list[[i]][c("GROUP", "gene")] <- as.data.frame(str_split_fixed(names(mod_Q_list[i]), '-', 2))
 }
 
 
 mod_Q <- do.call(rbind.data.frame, mod_Q_list)
 
-if (unique(GENE_data$GROUP)=="TREATED_W") {
+if (unique(GENE_data$GROUP)==c("TREATED_W")) {
+  
   
   ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc, colour = Treatment)
-  ) + # ,group = Exposed,color = Exposed
-    geom_point(aes(fill = Treatment, colour = Colony), position = position_jitterdodge(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
-    geom_boxplot(lwd = 0.8, alpha = 0.3) + #
+    aes(x = gene, y = rel_conc, color = Treatment)
+  ) + 
+    geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
+    geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+    colScale_Treatment +
+    STYLE +
+    ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+    scale_y_continuous(labels = scales::percent, trans = "log10")
+  #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  
+}else if (unique(GENE_data$GROUP)=="QUEEN"){
+  
+  # separated from the above as the label is assigned differently!
+  ggplot(
+    data = genes_data[which(genes_data$GROUP==GROUP),],
+    aes(x = gene, y = rel_conc, color = Treatment)
+  ) + 
+    geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
+    geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+    colScale_Treatment +
     STYLE +
     ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
-    geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-  # facet_grid(. ~ gene)
-  
+  #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+    #geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = Pr, fontface = "bold")) #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+
   
 }else if (unique(GENE_data$GROUP)=="UNTREATED_W"){
   # PLOT FOR NON-TREATED ANTS
   ## plot by Treatment (size)
   ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc, colour = Treatment)
-  ) + # ,group = Exposed,color = Exposed
-    geom_point(aes(fill = Treatment, colour = Colony), position = position_jitterdodge(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
-    geom_boxplot(lwd = 0.8, alpha = 0.3) + #
+    aes(x = gene, y = rel_conc, color = Treatment)
+  ) + 
+    geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
+    geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+    colScale_Treatment +
     STYLE +
     ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
     geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-  # facet_grid(. ~ gene)
   
+
   # PLOT FOR NON-TREATED ANTS
   ## plot by Treatment (size)
   ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
-    aes(x = Ant_status, y = rel_conc, colour = Ant_status)
-  ) + # ,group = Exposed,color = Exposed
-    geom_point(aes(colour = Colony), position = position_jitterdodge(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
-    geom_boxplot(lwd = 0.8, alpha = 0.3) + #
+    aes(x = Ant_status, y = rel_conc, color = treatment)
+  ) + 
+    geom_point(aes(colour = Colony),position=position_jitterdodge(), size = 1, alpha = 0.3) +
+    geom_boxplot(lwd = 0.8, alpha = 0.2) +
+    colScale_Treatment +
     STYLE +
     ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
-    geom_text(data = label_status[which(label_treatment$GROUP==GROUP),], aes(x = Ant_status, y = 10, group = Ant_status, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) + # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-    facet_grid(. ~ gene)
-  
+    facet_grid(. ~ gene) +
+    geom_text(data = label_status[which(label_treatment$GROUP==GROUP),], aes(x = Ant_status, y = 10, group = Ant_status, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+
   
 }
 
 
 
-
 #########################
+
 
 
 
