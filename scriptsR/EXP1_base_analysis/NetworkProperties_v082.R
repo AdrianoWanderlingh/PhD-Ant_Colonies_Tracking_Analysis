@@ -1,19 +1,28 @@
 ##################################################################
-################## COMPUTE NETWORK ###############################
+################## COMPUTE INTERACTIONS ##########################
 ##################################################################
 
 # it requires a "gap" to be defined, should be required by the function
 #Gap is 10 seconds as these are interactions (he maximum gap in tracking before cutting the trajectory or interactions in two different object.)
-compute_G <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_duration , link_type, nest_focus, frm_rate
-  print(paste0("Computing networks"))
+compute_Interactions <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_duration , link_type, nest_focus, frm_rate
+  print(paste0("Computing interactions"))
+  
+  if (!exists("FRAME_RATE")) {
+    stop("FRAME_RATE not defined, can't compute the interactions' duration. Define a frame rate (fps), it will likely be one of these values: 2,4,6,8. ")
+  }
+  if (!exists("interaction_of_interest")) {
+    warning("No fmMatcherInteractionType defined, interactions computed over all of ant shape overlaps combinations. \n If interested in querying interactions only for specific body parts overlaps, list them as follows:\n interactions_of_interest <- c(list(c(\"head\",\"body\")),list(c(\"head\",\"head\")))
+")
+  }
+  
+  #general
+  N_DECIMALS                  <- 3 ## when assigning time in seconds, the number of decimals to preserve when rounding to match between interactions & collisions
   
   #required packages
-  require(igraph)
   require(FortMyrmidon)
   
   ### initialise variables
   list_IF_Frames          <- list()
-  
   
   ###############################################################################
   ###### IDENTIFY FRAMES ########################################################
@@ -50,11 +59,13 @@ compute_G <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_
   ###### READING TRAJECTORIES ###################################################
   ###############################################################################
   
-  # I believe I don't need tis section from BEH_extract_movement_variables_xxxxx.R
+  # I believe I don't need this section from BEH_extract_movement_variables_xxxxx.R
   
   #########################################################################################
   ###### READING AUTOMATIC INTERACTIONS ###################################################
   #########################################################################################
+  
+  # Adapted from BEH_Extract_movement_variables_fort081_FUNCTIONS.R
   
   #Interactions <- fmQueryComputeAntInteractions(e, time_start, time_stop, maximumGap=gap, singleThreaded=FALSE, reportFullTrajectories = F)
   
@@ -73,7 +84,8 @@ compute_G <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_
 
   
   # COMPUTE INTERACTIONS, using the same parameters as in Stroeymeyt et al., Science 2018
-  # interaction_detection call merge_interactions.cpp to fix interactions splitting issue
+  # interaction_detection calls merge_interactions.cpp to fix interactions splitting issue
+  # interaction_detection automatically performs the analysis on large time chunks (12h)
   Interactions            <- interaction_detection (e=e
                                                    ,start=time_start
                                                    ,end=time_stop
@@ -84,17 +96,42 @@ compute_G <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_
   )
 
 
+  
+  ## Add ant_x names and times to the Interactions to convert from FRAME since the start of the experiment, to FRAMES
+  ##creates a ID string for each ant in $interactions
+  Interactions$ant1ID_str            <- paste("ant_",Interactions$ant1,sep="")
+  Interactions$ant2ID_str            <- paste("ant_",Interactions$ant2,sep="")
+  # Assign interaction pair
+  Interactions$pair <- paste(Interactions$ant1, Interactions$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
+  
+  ##convert times to different formats
+  Interactions$T_start_UNIX <- as.POSIXct(Interactions$start, format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+  Interactions$T_stop_UNIX  <- as.POSIXct(Interactions$end,  format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )
+  #assign time in sec to avoid issues on time management and matching
+  Interactions$T_start_sec <- round(as.numeric(Interactions$T_start_UNIX),N_DECIMALS)
+  Interactions$T_stop_sec <- round(as.numeric(Interactions$T_stop_UNIX),N_DECIMALS)
+  
+  #assign start and end frame number
+  Interactions$frame_start <- match.closest(x = Interactions$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
+  Interactions$frame_stop  <- match.closest(x = Interactions$T_stop_sec,  table = IF_frames$time_sec, tolerance = 0.05)
+  
+  #calc duration (including start frame)
+  Interactions$duration <- Interactions$T_stop_sec - Interactions$T_start_sec + 1/FRAME_RATE
+  
+  # TRUNCATION
+  # truncate interactions over 2 mins
+  Interactions <- Interactions[which(Interactions$duration <= 120 ),]
+  
+  #### FORMAT THE OUTPUT + SAVE IT!
+  
+  return(Interactions)
+}
+  
+  
 ######
   
   # LIST OF TO DOs:
-  
-  # calculation of IF_FRAMES
-  
-  # RUN IT ON MINI SET TO CHECK THAT IT WORKS
 
-  # TRUNCATION
-  # After interactions extraction, truncate interactions over 2 mins 
-  # TO DO SO, CHECK THE CURRENT SCRIPT OUTPUT
   
   ### SAVE OUTPUT IN SCIENCE 2018 COMPATIBLE FORMAT
   # list of interactions (expected format is frame,box,IDant1,IDant2,x1,y1,a1,x2,y2,a2) - HOW IS THAT COMPATIBLE TO THE CURRENT FUNCTIONS?
@@ -105,12 +142,27 @@ compute_G <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_
   #### BEST PRACTICE:
   # SEPARATE THE INTERACTION CREATION SCRIPT FROM THE NETWORK SCRIPT AND SAVE ITS OUTPUT.
   # IF THE OUTPUT IS ALREADY PRESENT, THEN LOAD THE INTERACTIONS FILE
+
+  ### THE COMPUTE GRAPH/NETWORK MEASURES SCRIPTS SHOULD MANAGE THE INTERACTION FILE BY
+  #   DEALING WITH PRE AND POST SEPARATELY (CURRENTLY THEY WORK INSIDE THE 3 H LOOP BUT IT IS PROBABLY 
+  #   RETUNDANT/USELESS BY NOW). reformatting of the output of these functions may be needed.
+
+
+
+  ## The Ant Task assignment  and space use benefit from the time windows, don't mess with them!!!!
   
   
   
+  ##################################################################
+  ################## COMPUTE NETWORK ###############################
+  ##################################################################
   
+compute_G <- function(e, Interactions){
+    print(paste0("Computing networks"))
   
-  
+  #required packages
+  require(igraph)
+    
   # Interactions$ant_ID1 <- paste("ant_",Interactions$ant1,sep="") ##creates a ID string for each ant: ant1, ant2,...
   # Interactions$ant_ID2 <- paste("ant_",Interactions$ant2,sep="")
   e.Ants <- e$ants
@@ -162,9 +214,9 @@ compute_G <- function(e, time_start, time_stop, MAX_INTERACTION_GAP){ # min_cum_
   #                        'inv_weight')
   
   #### add a column contaning interaction duration in min
-  Interactions["duration_min"] <- as.numeric(difftime(Interactions$time_stop, Interactions$time_start, units = "mins") + 0.125) ###duration in minutes (one frame = 0.125 second)
+  #Interactions["duration_min"] <- as.numeric(difftime(Interactions$time_stop, Interactions$time_start, units = "mins") + 0.125) ###duration in minutes (one frame = 0.125 second)
   ### add edge weights
-  E(G)$weight <- Interactions[,"duration_min"]
+  E(G)$weight <- Interactions[,"duration"]
   ###simplify graph (merge all edges involving the same pair of ants into a single one whose weight = sum of these weights)
   G <- simplify(G,remove.multiple=TRUE,remove.loop=TRUE,edge.attr.comb="sum")
   ##################remove unconnected nodes

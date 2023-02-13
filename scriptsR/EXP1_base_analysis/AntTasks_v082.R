@@ -1,5 +1,9 @@
 
 ################## GET ANT TASK ###################################
+
+#### THIS SCRIPT IS USED INSIDE:
+#### - Extract_Metadata_v082.R
+
 AntTasks <- function(e){
   print("Computing AntTasks based on 48h time-window before exposure")
   
@@ -35,14 +39,14 @@ AntTasks <- function(e){
     
     ## get 2 12Hours window for the Task calculation
     ## calcualte the task BEFORE the EXPOSURE
-    time_start <- fmQueryGetDataInformations(e)$time_stop - HOUR_start*3600
-    #time_start <- fmQueryGetDataInformations(e)$time_start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
+    time_start <- fmQueryGetDataInformations(e)$end - HOUR_start*3600
+    #time_start <- fmQueryGetDataInformations(e)$start + 33*3600 ####first time in tracking plus 21 hours, to skip acclimation time + 12 HOURS
     time_start <- fmTimeCreate(offset=time_start)
     #time_start <- fmTimeCPtrFromAnySEXP(e$getDataInformations()$time_stop - 24*3600)####last time in tracking minus 24 hours
-    stop <- fmQueryGetDataInformations(e)$time_stop - (HOUR_start-TimeWindow)*3600
-    #stop  <- fmQueryGetDataInformations(e)$time_start + 45*3600 ####pre-tracking period 
+    stop <- fmQueryGetDataInformations(e)$end - (HOUR_start-TimeWindow)*3600
+    #stop  <- fmQueryGetDataInformations(e)$start + 45*3600 ####pre-tracking period 
     time_stop   <- fmTimeCreate(offset=stop)
-    #time_stop  <- fmTimeCPtrFromAnySEXP(e$getDataInformations()$time_stop) ####last time in tracking
+    #time_stop  <- fmTimeCPtrFromAnySEXP(e$getDataInformations()$end) ####last time in tracking
     ###QUERY 3: fmQueryComputeAntTrajectories()
     positions                 <- fmQueryComputeAntTrajectories(e,start = time_start,end = time_stop,maximumGap = fmHour(24*365),computeZones = TRUE)
     positions_summaries       <- positions$trajectories_summary
