@@ -1,5 +1,7 @@
 rm(list=ls())
 gc()
+mallinfo::malloc.trim(0L)
+
 
 ########################################################################
 ############# ASSIGN METADATA FROM METADATA-RICH FILES #################
@@ -124,7 +126,7 @@ for (ant in Metadata_ants){
 }
 
 
-#CHECK copy
+# #CHECK copy
 # for (ant in AntsCreated_ants){
 #   print(ant$identifications)
 #   ant$identifications

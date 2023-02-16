@@ -99,7 +99,7 @@ AlreadyDone <- EXP_list[which(grepl(EXP_list$path_name,pattern = "NS_NS_q.myrmid
 EXP_list <- EXP_list[which(!grepl(EXP_list$path_name,pattern = "AutoOrient")),]
 
 # flag which ones are the base oriented files
-EXP_list$OrientedCapsule = ifelse(grepl("-base.myrmidon",EXP_list$path_name),"true","false")
+EXP_list$OrientedCapsule = ifelse(grepl("R3SP_13-03-21_AntsCreated_AutoOriented_withMetaData_CapDef3.myrmidon",EXP_list$path_name),"true","false")
 #EXP_list$OrientedCapsule = ifelse(grepl("ManOriented_CapsuleDef3.myrmidon",EXP_list$path_name),"true","false") # To use as base the CapsuleDef3!
 
 ### manually oriented ref file name
@@ -114,7 +114,7 @@ ToOrient_file <- EXP_list[which(grepl(EXP_list$path_name,pattern = "AntsCreated.
 ### Loop through all the directories in the dir_folder
 
 # loop through the unique Tracking systems
-#TS <- "karla" #
+#TS <- "polyakov" #
 to_keep_1 <- c(ls(),"to_keep_1","TS")
 for (TS in unique(ref_orient_caps_file$TrackSys_name)){
   print(paste("START: Auto-orient + capsule for",TS, sep =" "))
@@ -137,7 +137,10 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
     for (ant in oriented_ants){
       ###extract ant length and capsules
       ant_length_px <- mean(fmQueryComputeMeasurementFor(oriented_data,antID=ant$ID)$length_px)
-      capsules      <- ant$capsules
+      if (oriented_ants[[29]]$ID==29) {
+        
+      }else{
+      capsules      <- ant$capsules}
       for (caps in 1:length(capsules)){
         capsule_name  <- capsule_names[[capsules[[caps]]$type]]
         capsule_coord <- capsules[[caps]]$capsule
@@ -210,7 +213,7 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
   
   to_keep_2 <- c(ls(),"to_keep_2","ToOrient_myr_file")
   for (ToOrient_myr_file in ToOrient_data_list){
-    #ToOrient_myr_file <- ToOrient_data_list[5] #temp
+    #ToOrient_myr_file <- ToOrient_data_list[9] #temp
     
     # if the _AutoOriented file file doesn't exist, then continue
     if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))) {
@@ -453,7 +456,8 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
         }###if not queen
         rm(list=ls()[which(!ls()%in%to_keep_3)])
         gc()
-      }# LOOP ANTS      
+      }# LOOP ANTS
+      
       ToOrient_data$save(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented.myrmidon"))
       print(paste("Saving",ToOrient_exp_name, "as AutoOriented.myrmidon",sep =" "))
       rm(list=(c("ToOrient_data"))) #remove experiment

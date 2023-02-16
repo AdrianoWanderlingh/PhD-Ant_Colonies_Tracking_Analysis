@@ -204,7 +204,8 @@ for (no_cap_ant in ants){
 }
 
 #tracking_data$save(no_capsule_file) 
-tracking_data$save(paste0(sub("\\..*", "", no_capsule_file),"_TESTTTTT.myrmidon"))
+tracking_data$save(paste0(sub("\\..*", "", no_capsule_file),"_q.myrmidon"))
+print(paste0("Adding capsule for QUEEN to",no_capsule_name))
 
 #close experiment
 rm(list=(c("tracking_data")))
