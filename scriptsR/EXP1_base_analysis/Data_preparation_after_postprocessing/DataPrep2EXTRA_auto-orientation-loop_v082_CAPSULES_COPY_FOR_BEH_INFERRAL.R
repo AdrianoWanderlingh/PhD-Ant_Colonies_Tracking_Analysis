@@ -115,6 +115,7 @@ EXP_list$OrientedCapsule = ifelse(grepl("CapsuleDef",EXP_list$path_name),"true",
 
 ### manually oriented ref file name
 ref_orient_caps_file <- EXP_list[which(EXP_list$OrientedCapsule=="true"),]
+ref_orient_caps_file <- ref_orient_caps_file[which(!grepl(ref_orient_caps_file$path_name,pattern = "AntsCreated_AutoOriented_withMetaData")),]
 
 # feed in the analysis of auto-orientation all tracking_data files.
 #ToOrient_file <- EXP_list[which(EXP_list$OrientedCapsule=="false"),]
@@ -122,8 +123,14 @@ ref_orient_caps_file <- EXP_list[which(EXP_list$OrientedCapsule=="true"),]
 ToOrient_file <- EXP_list[which(grepl(EXP_list$path_name,pattern = "AntsCreated_AutoOriented_withMetaData")),]
 
 ToAssignCapDef <- NULL
-### EXCLUDE CAPSDEF3 FILE, THEN SELECT MYR FILE GENERATED LAST!
+### EXCLUDE CAPSDEF FILES, THEN SELECT MYR FILE GENERATED LAST!
 
+#ToOrient_file <- ToOrient_file[which(ToOrient_file$OrientedCapsule=="false"),]
+Already_assigned <- ToOrient_file[which(grepl(ToOrient_file$path_name,pattern = "Def")),]
+ToOrient_file <- ToOrient_file[which(!grepl(ToOrient_file$path_name,pattern = "Def")),]
+
+
+# #SELECT ONLY THE MOST UP TO DATE MYRMIDON FILES FOR EACH REPLICATE
 for (REP.name in unique(ToOrient_file$REP_treat_name)) {
   LIST <- ToOrient_file[which( grepl(REP.name,ToOrient_file$REP_treat_name)) ,]
   LIST[which(max(LIST$modification_date)==LIST$modification_date),]
@@ -133,7 +140,6 @@ for (REP.name in unique(ToOrient_file$REP_treat_name)) {
 }
 
 # 
-# #SELECT ONLY THE MOST UPDATED MYRMIDON FILES FOR EACH REPLICATE
 # for (REP.name in unique(EXP_list$REP_treat_name)) {
 #   if (grepl("NS_q.",
 #             EXP_list[which( grepl(REP.name,EXP_list$REP_treat_name)) ,"path_name"], #& EXP_list$REP_treat_name ==REP_TREAT_NAME)
@@ -161,7 +167,7 @@ for (CAPSULEDEF in unique(CAPS_vector)){
   oriented_metadata <- NULL
   
   # get the oriented metadata for both the original capSULE PROVIDING COLONIES (THE MEAN OF BOTH COLS WILL GIVE A MORE RELIABLE ESTIMATE)
-  for (REP_TREAT_NAME in unique(ref_orient_caps_file$REP_treat_name)) {
+  for (REP_TREAT_NAME in c("R3SP","R9SP")) { #unique(ref_orient_caps_file$REP_treat_name)
   #################################################################################################################################################################################################################
   ###########STEP 1 - use manually oriented data to extract important information about AntPose and Capsules
   ###########          IN YOUR PARTICULAR SPECIES AND EXPERIMENTAL SETTINGS  
@@ -255,18 +261,27 @@ for (CAPSULEDEF in unique(CAPS_vector)){
   ############### list the experiment files to ORIENT ###############################
   ToOrient_data_list         <- ToAssignCapDef[,"path_name"] #which(ToOrient_file$TrackSys_name==TS)
   
+  
   to_keep_2 <- c(ls(),"to_keep_2","ToOrient_myr_file")
   for (ToOrient_myr_file in ToOrient_data_list){
     #ToOrient_myr_file <- ToOrient_data_list[9] #temp
     
-    # if the _AutoOriented file file doesn't exist, then continue
-    ###
-    ### TO FIX SPECIFING THE SELECTED CAPSULE NAME AS FILE NAME
-    ###
-    #if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"CapDef*.myrmidon"))) {
-   # if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS_NS_q.myrmidon"))) {
+    # if the CAPDEF file file doesn't exist, then continue
+    if (!file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_",CAPSULEDEF,".myrmidon"))) {
+      
+
+    # EXP_list[which( grepl(CAPSULEDEF,EXP_list$path_name) ),"path_name"]
+  
+   #  if (length(!file.exists(
+   #    Already_assigned[which(grepl(CAPSULEDEF,Already_assigned$path_name) && grepl(sub("\\_.*", "", basename(ToOrient_myr_file)),ToOrient_myr_file)),"path_name"]
+   #              ))>0 # && grepl(sub("\\_.*", "", basename(ToOrient_myr_file)),ToOrient_myr_file)
+   #     ) {
+      print(paste(CAPSULEDEF,"does not exist for",sub("\\_.*", "", basename(ToOrient_myr_file)),"- PROCESS"))
+    
+   # # if ( !file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_AutoOriented_withMetaData_NS_NS_q.myrmidon"))) {
       ###get experiment and replicate name, and identify the corresponding metadata file
-      ToOrient_exp_name <- unlist(strsplit(ToOrient_myr_file,split="/"))[length(unlist(strsplit(ToOrient_myr_file,split="/")))]
+      
+    ToOrient_exp_name <- unlist(strsplit(ToOrient_myr_file,split="/"))[length(unlist(strsplit(ToOrient_myr_file,split="/")))]
       ToOrient_Repl_name <- unlist(strsplit(ToOrient_exp_name,split="_"))[1]
       Metadata_myr_file <- Metadata_list[which(Metadata_list$REP_treat_name==ToOrient_Repl_name),]$path_name
       print(paste("Assign Capsules to",ToOrient_exp_name, sep =" "))
@@ -362,10 +377,15 @@ for (CAPSULEDEF in unique(CAPS_vector)){
     rm (list = ls() [which(!ls()%in%to_keep_2)] )
     gc()
   #} # IF EXISTS, SKIP PROCESSING
-  
+    
+  }else {
+    print(paste(CAPSULEDEF,"exists for",sub("\\_.*", "", basename(ToOrient_myr_file)),"- SKIP"))
+  }
+    #} # IF STRING NOT NULL, CONTINUE
+    #print(paste("File ",basename(ToOrient_myr_file), " exists already" ,sep =""))
+  } #To orient LOOP
   rm(list=ls()[which(!ls()%in%to_keep_1)])
   gc()
-  } #To orient LOOP
 } # CAPSULE DEF
 
 cat("LOOP ENDED!! \n Go to fort-studio to check things look all right
