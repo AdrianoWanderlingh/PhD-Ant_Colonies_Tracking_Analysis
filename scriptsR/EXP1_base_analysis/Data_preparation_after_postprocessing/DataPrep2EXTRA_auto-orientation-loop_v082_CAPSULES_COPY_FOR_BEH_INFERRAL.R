@@ -43,7 +43,7 @@ list.dirs.depth.n <- function(p, n) {
 #sourceCpp("/home/bzniks/Downloads/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
 
 ### directory of data and myrmidon files
-#dir_data <- '/media/bzniks/DISK3/ADRIANO/EXPERIMENT_DATA'
+#dir_data <- '/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA'
 #dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
 dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
 #dir_data  <- "/media/cf19810/Seagate Portable Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
@@ -64,6 +64,11 @@ for (REP.n in 1:length(files_list)) {
   # REP.n <- 1
   REP.folder      <- files_list[REP.n]
   REP.files       <- list.files(REP.folder, pattern = ".myrmidon")
+  
+  # cut non-desired CapsuleDef files already defined
+  warning("removing myrmidon files arbitrarily, check that these are not the base files of interest")
+  CapDefs_to_exclude <- c("CapDef","CapsuleDef3","CapsuleDef4","CapsuleDef9","CapsuleDef10","CapsuleDef11","CapsuleDef12")
+  REP.files <- REP.files[!grepl(paste(CapDefs_to_exclude,collapse="|"),REP.files)]
   REP.filefolder  <- paste(REP.folder,REP.files,sep="/")
   
   for (variable in REP.files) {
@@ -116,7 +121,7 @@ EXP_list$OrientedCapsule = ifelse(grepl("CapsuleDef",EXP_list$path_name),"true",
 ### manually oriented ref file name
 ref_orient_caps_file <- EXP_list[which(EXP_list$OrientedCapsule=="true"),]
 ref_orient_caps_file <- ref_orient_caps_file[which(!grepl(ref_orient_caps_file$path_name,pattern = "AntsCreated_AutoOriented_withMetaData")),]
-
+ref_orient_caps_file <- ref_orient_caps_file[which(!grepl(ref_orient_caps_file$path_name,pattern = "base")),]
 # feed in the analysis of auto-orientation all tracking_data files.
 #ToOrient_file <- EXP_list[which(EXP_list$OrientedCapsule=="false"),]
 #FILES TO WHICH ASSIGN CAPSULE
@@ -167,7 +172,7 @@ for (CAPSULEDEF in unique(CAPS_vector)){
   oriented_metadata <- NULL
   
   # get the oriented metadata for both the original capSULE PROVIDING COLONIES (THE MEAN OF BOTH COLS WILL GIVE A MORE RELIABLE ESTIMATE)
-  for (REP_TREAT_NAME in c("R3SP","R9SP")) { #unique(ref_orient_caps_file$REP_treat_name)
+  for (REP_TREAT_NAME in unique(ref_orient_caps_file$REP_treat_name) ) { # c("R3SP","R9SP")
   #################################################################################################################################################################################################################
   ###########STEP 1 - use manually oriented data to extract important information about AntPose and Capsules
   ###########          IN YOUR PARTICULAR SPECIES AND EXPERIMENTAL SETTINGS  
@@ -236,7 +241,8 @@ for (CAPSULEDEF in unique(CAPS_vector)){
   ### Measures of mean ant length and offset between tag centre and ant centre will be heavily influenced by the queen #########
   ### So we need to remove the queen from the computation
   ### One way of doing so is to find and remove outliers in the ant length measure (provided there is enough variation between queen and worker size)
-  interquartile_range <- quantile(oriented_metadata$length_px,probs=c(0.25,0.75))
+  ## using na.rm = TRUE is UNSAFE, make sure to only exclude ants which are dead since start and for which there is no manual measure
+  interquartile_range <- quantile(oriented_metadata$length_px,probs=c(0.25,0.75),na.rm = TRUE)
   outlier_bounds      <- c(interquartile_range[1]-1.5*(interquartile_range[2]-interquartile_range[1]),interquartile_range[2]+1.5*(interquartile_range[2]-interquartile_range[1]))
   ###apply outlier exclusion to oriented_metadata...
   oriented_metadata <- oriented_metadata[which(oriented_metadata$length_px>=outlier_bounds[1]&oriented_metadata$length_px<=outlier_bounds[2]),]  

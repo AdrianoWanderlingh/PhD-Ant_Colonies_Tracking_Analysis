@@ -28,8 +28,8 @@ list.dirs.depth.n <- function(p, n) {
 
 
 ### directory of data and myrmidon files
-dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA'
-#dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
+# dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA'
+dir_data <- "/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA"
 
 
 #### ACCESS FILES

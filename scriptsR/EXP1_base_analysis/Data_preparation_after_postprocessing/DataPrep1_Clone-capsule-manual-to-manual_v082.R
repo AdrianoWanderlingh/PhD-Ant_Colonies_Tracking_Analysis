@@ -17,8 +17,9 @@ library(circular)
 library(R.utils)
 
 ### directory of data and myrmidon files
-#dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/'
-dir_data <- '/home/cf19810/Documents/TEMP/EXPERIMENT_DATA/'
+#dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/' # /media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/CapsuleDef3_R3SP_ManualOriented_base.myrmidon
+dir_data <- '/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA/'
+#dir_data <- '/home/cf19810/Documents/TEMP/EXPERIMENT_DATA/'
 
 
 ### tracking data folder name
@@ -26,7 +27,7 @@ dir_data <- '/home/cf19810/Documents/TEMP/EXPERIMENT_DATA/'
 
 ### manually oriented myrmidon file name
 #defined_capsule_file <- paste(dir_data,"REP1/R1SP_27-02-21_Oriented.myrmidon",sep='') #polyakov
-defined_capsule_file <- paste(dir_data,"REP3/CapsuleDef3_R3SP.myrmidon",sep='') #prideaux
+defined_capsule_file <- paste(dir_data,"REP3/CapsuleDef2018_R3SP_ManualOriented_base.myrmidon",sep='') #prideaux
 
 
 ### manually oriented myrmidon file name
@@ -104,6 +105,7 @@ for (myrmidon_file in data_list){
 ### Measures of mean ant length and offset between tag centre and ant centre will be heavily influenced by the queen #########
 ### So we need to remove the queen from the computation
 ### One way of doing so is to find and remove outliers in the ant length measure (provided there is enough variation between queen and worker size)
+## using na.rm = TRUE is UNSAFE, make sure to only exclude ants which are dead since start and for which there is no manual measure
 interquartile_range <- quantile(oriented_metadata$length_px,probs=c(0.25,0.75))
 outlier_bounds      <- c(interquartile_range[1]-1.5*(interquartile_range[2]-interquartile_range[1]),interquartile_range[2]+1.5*(interquartile_range[2]-interquartile_range[1]))
 ###apply outlier exclusion to oriented_metadata...
@@ -120,9 +122,27 @@ for (caps in 1:length(capsule_list)){
 ### Write capsule data in each manually oriented file
 for (no_capsule_file in no_capsule_list) {
 
+
 # open tracking data which need new capsule
 tracking_data <- fmExperimentOpen(no_capsule_file) 
 ants <- tracking_data$ants
+
+
+#### DELETE ANY CAPSULE ALREADY PRESENT
+
+# delete individuals' capsule data IF PRESENT
+for (ant in tracking_data$ants){
+  tracking_data$ants[[ant$ID]]$clearCapsules()
+}
+
+# delete the capsule shapes IF PRESENT
+if (length(tracking_data$antShapeTypeNames)>0) {
+  for (caps in 1:length(tracking_data$antShapeTypeNames)){
+    tracking_data$deleteAntShapeType(caps)
+  }
+}
+
+## Assign new capsules
 for (caps in 1:length(capsule_list)){
   tracking_data$createAntShapeType(names(capsule_list)[caps])
 }
@@ -148,7 +168,7 @@ for (i in 1:length(ants)){
 
 
 #tracking_data$save(no_capsule_file) 
-tracking_data$save(paste0(sub("\\..*", "", no_capsule_file),"_CapsuleDef3.myrmidon"))
+tracking_data$save(paste0(sub("\\..*", "", no_capsule_file),"_CapsuleDef2018.myrmidon"))
 
 #close experiment
 rm(list=(c("tracking_data")))
