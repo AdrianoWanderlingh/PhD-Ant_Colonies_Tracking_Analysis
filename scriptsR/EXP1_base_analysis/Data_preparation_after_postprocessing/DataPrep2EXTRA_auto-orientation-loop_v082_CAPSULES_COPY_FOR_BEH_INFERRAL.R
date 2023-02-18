@@ -43,9 +43,9 @@ list.dirs.depth.n <- function(p, n) {
 #sourceCpp("/home/bzniks/Downloads/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
 
 ### directory of data and myrmidon files
-#dir_data <- '/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA'
+dir_data <- '/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA'
 #dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
-dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
+# dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
 #dir_data  <- "/media/cf19810/Seagate Portable Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
 
 
