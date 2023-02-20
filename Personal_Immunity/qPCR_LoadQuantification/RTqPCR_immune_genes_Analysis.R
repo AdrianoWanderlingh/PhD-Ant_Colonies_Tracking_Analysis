@@ -10,6 +10,18 @@ library(reshape2) # for melt
 library(scales) # for colours
 library(ggpubr) # for creating easily publication ready plots
 library(rstatix) #provides pipe-friendly R functions for easy statistical analyses.
+library(gridExtra) #grid of plots
+
+## for qPCR missing values imputation
+# if (!require("BiocManager", quietly = TRUE)){
+#   install.packages("BiocManager")
+#   }n
+# BiocManager::install("nondetects") # deal with qPCR non-detections (No_Ct)
+# BiocManager::install("qpcrNorm")
+# library(qpcrNorm)
+# library(nondetects)
+# library(HTqPCR)
+
 
 ## for stats
 library(performance)
@@ -59,6 +71,48 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
     data.table::fread(paste(WORKDIR, files, sep = "/"), header = TRUE, sep = "\t")
   })
   names(data_list) <- gsub(".txt", "", files)
+  
+########################################################################################
+# # LOAD FILE IN FORMAT ACCEPTED BY IMPUTATION FUNCTIONS (BIOCONDUCTOR PACKAGES)
+#   
+#   # assign column names
+#   # "Well",	"Well Type",	"Threshold (dR)",	"Ct (dR)"	
+#   col.info <- list(position = 1,  Ct = 4) #feature = 4,  #(gene name, missing here)
+#   
+#   # create qPCRset object
+#   CT_obj <- readCtData(files[1:14],path = WORKDIR,n.features = 96, format= "plain",header =TRUE, column.info=col.info)
+#   
+#   # assign naming to CT_obj@phenoData@data
+#   # assign sampleType colname to gene
+#   # str_match will cut everything before the 3rd dash % sub will cut everythig after the space
+#   names_gne_reps <- sub(" .*", "", stringr::str_match(rownames(CT_obj@phenoData@data), "([^-]+)(?:-[^-]+){3}$")[, 1])
+#   
+#   # remove the duplicate plate info
+#   CT_obj@phenoData@data$gene_rep <- substr(names_gne_reps, 1, nchar(names_gne_reps) - 2)
+#   
+#   CT_obj@phenoData@data$sampleName <- rownames(CT_obj@phenoData@data)
+#   
+#   ##maybe load in readCtData files which have been modified such that feature includes the gene name and state which well is control!!!
+#   ## be careful in not mixing up pData(CT_obj) / CT_obj@phenoData@data with features / groupVars
+#   
+#   
+#   #Impute Non-detects in qPCR data
+#   #which columns in pData(object) should be used to determine replicate samples. If NULL, all columns are used.
+#   tst <- qpcrImpute(CT_obj,# groupVars="gene_rep",
+#                     outform=c("Single"), batch=NULL, linkglm = c("logit"))
+#   
+#   
+#   str(sagmb2011)
+#   # may this be of help?
+#   pData(sagmb2011)
+#   
+#   
+#   # perform direct estimation using MIcombine
+#   estimates <- MIcombine(with(imputed_data, lm(ct ~ gene)), imputed_data)
+#   
+#   # print out estimates
+#   summary(estimates)
+  ########################################################################################
 
   # make cols uniform
   my_list <- lapply(data_list, function(x) {
@@ -102,11 +156,56 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   # remove the duplicate plate info
   genes_data$gene_rep <- substr(genes_data$gene_rep, 1, nchar(genes_data$gene_rep) - 2)
 
-  # combine all the duplicates to have Ct1, Ct2, Tm1, Tm2
+  
+#   #####################
+#   #####################
+#   
+#   # For each gene, we compute the proportion of non-detects and the average Ct value across replicate samples (Fig. 3). 
+#   # There appears to be a strong relationship between the average expression of the genes across replicate samples and the proportion of non-detects.
+#   
+#   genes_data_TEST <- genes_data %>%
+#     separate(gene_rep, into = c("Sample_Plate", "gene"), sep = "-")
+#   
+#   genes_data_TEST %>% group_by(gene) %>% summarise(sumNA = sum(is.na(Ct)))
+#   
+#   # Calculate the mean Ct value per group and the proportion of missing values
+#   mean_data <- genes_data_TEST %>%
+#     group_by(gene) %>%
+#     summarize(mean_Ct = mean(Ct, na.rm = TRUE),
+#               prop_na = mean(is.na(Ct)))
+#   
+#   # Plot the distribution of NA by mean Ct per group
+#   ggplot(mean_data, aes(x = mean_Ct, y = prop_na, label= gene)) +
+#     geom_point() +
+#     geom_smooth() +
+#     geom_text(nudge_y = 0.1) +
+#     xlab("Mean Ct per group") +
+#     ylab("Proportion of missing values in Ct") +
+#     ggtitle("Distribution of NA in Ct by mean Ct per group")
+# # it seems that genes with lower average expression are far more likely to be non-detects.
+# # From this we can conclude that the non-detects do not occur completely at random. 
+# 
+# #First, the PCR reactions are run for a fixed number of cycles (typically 40), implying that the observed data are censored at the maximum cycle number. This is a type of non-random missingness in which the missing data mechanism depends on the unobserved value. Knowledge of the technology allows us to conclude that the data are at least subject to fixed censoring; however, as we will later show, the qPCR censoring mechanism may actually be a probabilistic function of the unobserved data.
+# #https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4133581/
+#   
+#   
+#   
+#   
+#   
+  #####################
+  #####################
+  
+  
+  genes_data$Ct <- as.numeric(genes_data$Ct)
+  # combine all the duplicates to have meanCts
   summarised_data <- genes_data %>%
-    mutate(Ct = as.numeric(Ct)) %>%
     group_by(Sample_Well, gene_rep) %>%
-    summarise(mean_Ct = mean(Ct, na.rm = TRUE), mean_Tm = mean(Tm_Product, na.rm = TRUE))
+    summarise(mean_Ct = ifelse(all(is.na(Ct)), NA, mean(Ct, na.rm = TRUE)), #without this, if both NA, NaNs will be created
+              mean_Tm = ifelse(all(is.na(Tm_Product)), NA, mean(Tm_Product, na.rm = TRUE)))
+  # summarised_data <- genes_data %>%
+  #   group_by(Sample_Well, gene_rep) %>%
+  #   summarise(mean_Ct = mean(Ct, na.rm = TRUE), mean_Tm = mean(Tm_Product, na.rm = TRUE))
+  
   # add gene label
   summarised_data <- summarised_data %>%
     separate(gene_rep, into = c("Sample_Plate", "gene"), sep = "-")
@@ -158,7 +257,30 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   summarised_data$Ori_Well <- sub(".*\\-", "", summarised_data$Code)
   summarised_data$Ori_Plate <- sub("\\-.*", "", summarised_data$Code)
 
+  # ADD EXTRA QUEENS
+  ExtraQueens <- read.csv(paste(WORKDIR, "230214_ExtraShamQueens_AW.csv", sep = "/"), header = T, stringsAsFactors = F, sep = ",")
+  ExtraQueens$Ct <- as.numeric(ExtraQueens$Ct)
+  
+  #combine all the duplicates to have meanCts
+  ExtraQueens <- ExtraQueens %>%
+    group_by(Sample_Well, gene) %>%
+    summarise(mean_Ct = ifelse(all(is.na(Ct)), NA, mean(Ct, na.rm = TRUE)), #without this, if both NA, NaNs will be created
+              mean_Tm = ifelse(all(is.na(Tm)), NA, mean(Tm, na.rm = TRUE)),
+              Sample_Plate = Sample_Plate,
+              Code = Code,
+              Ori_Well = Ori_Well,
+              Ori_Plate = Ori_Plate)
 
+  #reorder cols
+  ExtraQueens <- ExtraQueens[,c(1,5,2,3,4,6:8)]
+  
+  #add extra Q
+  summarised_data <- rbind(as.data.frame(summarised_data), as.data.frame(ExtraQueens))
+  
+  
+  #this requires re-organising the order of cols to rbind without issues, 
+  # calc mean_Ct, place it on row 4
+  
   ### CHECK THE WELLS POSITIONS TO ADD THE ANT IDENTITY
   plate_positions_list <- list.files(path = file.path(IMMUNITY_DATA, "QPCR_SAMPLING_TAGSCANNER"), pattern = "PLAQUE", full.names = T)
 
@@ -223,6 +345,8 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment) == "BS"] <- "Big Sham"
   levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment) == "SS"] <- "Small Sham"
 
+  
+  
   # write the dataframe to a csv file
   write.csv(genes_Results_annotated, paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"), row.names = FALSE)
 
@@ -237,6 +361,8 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
 # read the csv file
 genes_data <- read.csv(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"))
 genes_data$Sample_Plate <- as.factor(genes_data$Sample_Plate)
+genes_data$mean_Tm <- NULL # problematic as present only in some reps and messes up some functions
+genes_data$gene <- as.factor(genes_data$gene)
 
 ## remove rows which contain NAs for Ct
 #genes_data <- genes_data[!is.na(genes_data$mean_Ct), ]
@@ -248,6 +374,8 @@ levels(genes_data$Exposed)[levels(genes_data$Exposed) == "FALSE"] <- "untreated"
 # Create new Status category
 genes_data$Ant_status <- paste(genes_data$Exposed, genes_data$AntTask)
 genes_data[which(genes_data$Ant_status=="untreated queen" ),"Ant_status"] <- "queen"
+# #REMOVE  MEAN_tm (caused issues with the extra Q)
+# genes_data$mean_Tm <- NULL
 
 # save controls aside
 controls_gene_data <- genes_data %>%
@@ -260,21 +388,28 @@ genes_data <- genes_data %>%
 genes_data <- genes_data[which(genes_data$IsAlive == TRUE), ]
 
 
-# plot RAW data
-ggplot(genes_data, aes(x = gene, y = mean_Ct, color = Sample_Plate)) +
-  geom_boxplot(aes(colour = Sample_Plate), lwd = 0.8, alpha = 0.3)
+# # plot RAW data
+# ggplot(genes_data, aes(x = gene, y = mean_Ct, color = Sample_Plate)) +
+#   geom_boxplot(aes(colour = Sample_Plate), lwd = 0.8, alpha = 0.3)
+
+
+#### PERRFORM DATA IMPUTATION HERE, SKIPPING THE HOUSE-KEEPING GENE FOR WHICH WE KNOW WE DO NOT EXPECT VALUES OVER 25-27
 
 
 ##### ISOLATE SUSPICIOUS DATAPOINTS (CONTAMINATIONS, BAD EXTRACTIONS, ETC)
 # Calculate standard deviation by group
+# Calculate standard deviation by group
 stdev_by_group <- genes_data %>%
   group_by(gene) %>%
-  summarize(st.dev_mean_Ct = sd(mean_Ct, na.rm = T), grand_mean_Ct = mean(mean_Ct, na.rm = T))
+  summarise(st.dev_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, sd(mean_Ct, na.rm = TRUE)), 
+            grand_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, mean(mean_Ct, na.rm = TRUE)))
 
 # filter rows with mean_Ct value greater than 2*st.dev mean_Ct value for each group
+#exclude Queens from outliers (on the lowerbound, they are expected to have a lot of datapoints -low Ct-, but the upperbound should be cleaned)
 outliers <- genes_data %>%
   inner_join(stdev_by_group, by = "gene") %>%
-  filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct)
+  filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
+  filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
 
 # plot a scatterplot with lines connecting Ct values between groups
 ggplot(outliers, aes(x = gene, y = mean_Ct, group = Code)) +
@@ -293,14 +428,24 @@ test_gene_data <- genes_data %>%
 # isolate housekeeping and change colnames
 ref_gene_data <- genes_data %>%
   filter(gene == "EF1") %>%
-  rename("housekeeping" = "gene", "ref_Ct" = "mean_Ct", "ref_Tm" = "mean_Tm")
+  rename("housekeeping" = "gene", "ref_Ct" = "mean_Ct") #, "ref_Tm" = "mean_Tm"
 
-# recombine data
-common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
-genes_data <- left_join(test_gene_data, ref_gene_data, by = common_col_names4)
+# # recombine data
+# common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
+# #common_col_names4 <- common_col_names4[ !common_col_names4 =="mean_Tm"] #exclude numeric var
+###THIS LOSES SOMETHING AND FUCKS UP DATA, WHY?????????????????????????????????????????
+# genes_data <- left_join(test_gene_data, ref_gene_data, by = common_col_names4)
+
+### THIS WORKS, SOME VARIABLE MUST CAUSE CONFLICTS, REMOVE 1 BY 1 TO CHECK!
+combined_data <- left_join(test_gene_data, ref_gene_data, by = c("Colony", "Code"))
+
+
+
 
 # create a new column containing the delta Ct between the housekeeping gene and our gene of interest, and plot the delta Ct for each treatment and replicate.
 genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
+
+
 
 # # plot delta_Ct
 # ggplot(genes_data, aes(x = gene, y = delta_Ct, fill = Treatment)) +
@@ -316,8 +461,10 @@ genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
 # EF1alpha is expected () to show expression values ranging between 25+-2 (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
 # given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
 #
-#remove the EF1 No_Ct values, as we are excluding EF1 values over threshold
+#remove the EF1 No_Ct values, as we are excluding EF1 values over threshold (12 only) and as we can't base the expression of the other genes on it
+warning("THIS STEP DELETES THE QUEENS!!!")
 genes_data <- genes_data[!is.na(genes_data$ref_Ct),]
+
 # check outliers min upper threshold
 outliers_limit <- min(outliers %>%
   filter(gene == "EF1") %>%
@@ -346,7 +493,14 @@ genes_data <- genes_data %>%
 # this may flatten the result, but it is not straightforward to assign an arbitrarly high value to CT for missing values....
 ## OPTION: ASSING AS VALUE THE CT DETECTION THRESHOLD, I.E. WHERE THE CT INFELXION POINT HAPPENS PER EACH GENE
 #min(genes_data$rel_conc,na.rm=T)
-genes_data[is.na(genes_data$rel_conc),"rel_conc"] <- 1e-06
+
+warning("this procedure may introduce bias in the data")
+for (GENE in unique(genes_data$gene)) {
+  #assign the min/sqrt(2) value by gene to missing datapoints
+  genes_data[is.na(genes_data$rel_conc) & genes_data$gene == GENE, "rel_conc"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc"],na.rm = T)/sqrt(2)
+}
+
+# genes_data[is.na(genes_data$rel_conc),"rel_conc"] <- 1e-06
 
 # plot the relative concentration.
 ggplot(genes_data, aes(x = gene, y = rel_conc,fill=Treatment)) +
@@ -543,8 +697,6 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   # First,fir candidate linear models to explain variation in density
   mod1 <- lmer(log10(rel_conc + GENE_cost) ~ Treatment * Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
   mod2 <- lmer(log10(rel_conc + GENE_cost) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
-  #output_lmer(mod1)
-  #output_lmer(mod2)
   # We can now use the mod.sel to conduct model selection. The default model selection criteria is Akaike’s information criteria (AIC) with small sample bias adjustment, AICc
   # delta AICc, and the model weights
   out.put <- model.sel(mod1,mod2)
@@ -554,6 +706,7 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   print(sel.table)
   # compute posthocs
   sel_mod <- get(sel.table[which.max(sel.table$weight), "Model"])
+  output_lmer(sel_mod)
   ID_model <- paste(GROUP,GENE,sep="-") # to assign name to posthoc's list element
   posthoc_list <- compute_posthocs(sel_mod)
   
@@ -594,9 +747,12 @@ for (i in seq_along(mod_Q_list)) {
 
 mod_Q <- do.call(rbind.data.frame, mod_Q_list)
 
-if (unique(GENE_data$GROUP)==c("TREATED_W")) {
+### PLOTTING ###
+for (GROUP in unique(genes_data$GROUP)) {
   
+if (GROUP == "TREATED_W") {
   
+  print(
   ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
     aes(x = gene, y = rel_conc, color = Treatment)
@@ -606,12 +762,13 @@ if (unique(GENE_data$GROUP)==c("TREATED_W")) {
     colScale_Treatment +
     STYLE +
     ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
-    scale_y_continuous(labels = scales::percent, trans = "log10")
-  #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-  
-}else if (unique(GENE_data$GROUP)=="QUEEN"){
+    scale_y_continuous(labels = scales::percent, trans = "log10") +
+  geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  )
+}else if (GROUP == "QUEEN"){
   
   # separated from the above as the label is assigned differently!
+  print(
   ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
     aes(x = gene, y = rel_conc, color = Treatment)
@@ -623,13 +780,17 @@ if (unique(GENE_data$GROUP)==c("TREATED_W")) {
     ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
   #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-    #geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = Pr, fontface = "bold")) #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-
+    geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = Pr, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+)
   
-}else if (unique(GENE_data$GROUP)=="UNTREATED_W"){
+}else if (GROUP == "UNTREATED_W"){
   # PLOT FOR NON-TREATED ANTS
   ## plot by Treatment (size)
-  ggplot(
+
+  p1 <- NULL
+  p2 <- NULL
+  
+  p1 <- ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
     aes(x = gene, y = rel_conc, color = Treatment)
   ) + 
@@ -640,11 +801,11 @@ if (unique(GENE_data$GROUP)==c("TREATED_W")) {
     ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
     geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-  
+
 
   # PLOT FOR NON-TREATED ANTS
   ## plot by Treatment (size)
-  ggplot(
+  p2 <- ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
     aes(x = Ant_status, y = rel_conc, color = treatment)
   ) + 
@@ -655,11 +816,13 @@ if (unique(GENE_data$GROUP)==c("TREATED_W")) {
     ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
     facet_grid(. ~ gene) +
-    geom_text(data = label_status[which(label_treatment$GROUP==GROUP),], aes(x = Ant_status, y = 10, group = Ant_status, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-
+    geom_text(data = label_status[which(label_status$GROUP==GROUP),], aes(x = Ant_status, y = 10, group = Ant_status, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
   
-}
+  # arrange plots side by side
 
+  grid.arrange(p1, p2, ncol = 2)
+  }
+}
 
 
 #########################
