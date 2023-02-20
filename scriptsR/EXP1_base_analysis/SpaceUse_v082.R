@@ -39,7 +39,7 @@ SpaceUse <- function(e, time_start, time_stop){
       positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]%in%nest_zone))
     }
     #match antID and tagID (live tracking gives tagID). 
-    IDs <- e$identificationsAt(fmTimeCreate(offset=fmQueryGetDataInformations(e)$time_start))
+    IDs <- e$identificationsAt(fmTimeCreate(offset=fmQueryGetDataInformations(e)$start))
     IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
     IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
     positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
