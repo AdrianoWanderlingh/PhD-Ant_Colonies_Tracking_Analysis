@@ -4,15 +4,21 @@
 
 # PhD-exp1-data-analysis
 
-Lasius niger Colony Maturation Experiment
+<strong>Lasius niger Colony Maturation Experiment</strong> :ant: 🦠
 
-R scripts for:
+Testing Social Immunity role in disease hindering dynamics in societies, using ant colonies interaction networks and behaviour | experimental epidemiology
+
+
+
+<strong>R scripts for:</strong>
 - Tracking Data Post-processing
+- Geometrical capsules assignment
+- Interactions detection
 - Machine Learning Behavioural Classification
-- Personal immunity quantification
+- Personal immunity investment and pathogen load quantification
 - extra related material
 
-Code written by Adriano Wanderlingh, Nathalie Stroeymeyt, Tom Richardson with contributions by Enrico Gavagnign
+<em>Code written by Adriano Wanderlingh, Nathalie Stroeymeyt and Tom Richardson with contributions by Enrico Gavagnign</em>
 
 Ant Epidemiology Lab
 
