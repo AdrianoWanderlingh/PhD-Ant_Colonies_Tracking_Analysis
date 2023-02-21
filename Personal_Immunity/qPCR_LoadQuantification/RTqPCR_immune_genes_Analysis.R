@@ -157,41 +157,47 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   genes_data$gene_rep <- substr(genes_data$gene_rep, 1, nchar(genes_data$gene_rep) - 2)
 
   
-#   #####################
-#   #####################
-#   
-#   # For each gene, we compute the proportion of non-detects and the average Ct value across replicate samples (Fig. 3). 
-#   # There appears to be a strong relationship between the average expression of the genes across replicate samples and the proportion of non-detects.
-#   
-#   genes_data_TEST <- genes_data %>%
-#     separate(gene_rep, into = c("Sample_Plate", "gene"), sep = "-")
-#   
-#   genes_data_TEST %>% group_by(gene) %>% summarise(sumNA = sum(is.na(Ct)))
-#   
-#   # Calculate the mean Ct value per group and the proportion of missing values
-#   mean_data <- genes_data_TEST %>%
-#     group_by(gene) %>%
-#     summarize(mean_Ct = mean(Ct, na.rm = TRUE),
-#               prop_na = mean(is.na(Ct)))
-#   
-#   # Plot the distribution of NA by mean Ct per group
-#   ggplot(mean_data, aes(x = mean_Ct, y = prop_na, label= gene)) +
-#     geom_point() +
-#     geom_smooth() +
-#     geom_text(nudge_y = 0.1) +
-#     xlab("Mean Ct per group") +
-#     ylab("Proportion of missing values in Ct") +
-#     ggtitle("Distribution of NA in Ct by mean Ct per group")
-# # it seems that genes with lower average expression are far more likely to be non-detects.
-# # From this we can conclude that the non-detects do not occur completely at random. 
-# 
-# #First, the PCR reactions are run for a fixed number of cycles (typically 40), implying that the observed data are censored at the maximum cycle number. This is a type of non-random missingness in which the missing data mechanism depends on the unobserved value. Knowledge of the technology allows us to conclude that the data are at least subject to fixed censoring; however, as we will later show, the qPCR censoring mechanism may actually be a probabilistic function of the unobserved data.
-# #https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4133581/
-#   
-#   
-#   
-#   
-#   
+  #####################
+  #####################
+
+  # For each gene, we compute the proportion of non-detects and the average Ct value across replicate samples (Fig. 3).
+  # There appears to be a strong relationship between the average expression of the genes across replicate samples and the proportion of non-detects.
+
+  genes_data_TEST <- genes_data %>%
+    separate(gene_rep, into = c("Sample_Plate", "gene"), sep = "-")
+
+  genes_data_TEST %>% group_by(gene) %>% summarise(sumNA = sum(is.na(Ct)))
+
+  # Calculate the mean Ct value per group and the proportion of missing values
+  mean_data <- genes_data_TEST %>%
+    group_by(gene) %>%
+    summarize(mean_Ct = mean(Ct, na.rm = TRUE),
+              prop_na = mean(is.na(Ct)))
+
+  # Plot the distribution of NA by mean Ct per group
+  ggplot(mean_data, aes(x = mean_Ct, y = prop_na, label= gene)) +
+    geom_point() +
+    geom_smooth() +
+    geom_text(nudge_y = 0.1) +
+    xlab("Mean Ct per group") +
+    ylab("Proportion of missing values in Ct") +
+    ggtitle("Distribution of NA in Ct by mean Ct per group")
+# it seems that genes with lower average expression are far more likely to be non-detects.
+# From this we can conclude that the non-detects do not occur completely at random.
+
+#First, the PCR reactions are run for a fixed number of cycles (typically 40), implying that the observed data are censored at the maximum cycle number. This is a type of non-random missingness in which the missing data mechanism depends on the unobserved value. Knowledge of the technology allows us to conclude that the data are at least subject to fixed censoring; however, as we will later show, the qPCR censoring mechanism may actually be a probabilistic function of the unobserved data.
+#https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4133581/
+
+
+
+  #### QRILC 
+  # A missing data imputation method that performs the imputation of
+  # left-censored missing data using random draws from a truncated
+  # distribution with parameters estimated using quantile
+  # regression. Implemented in the `imputeLCMD::impute.QRILC`
+  # result <- data %>% log %>% impute.QRILC(., ...) %>% extract2(1) %>% exp
+
+  
   #####################
   #####################
   
@@ -263,20 +269,22 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   
   #combine all the duplicates to have meanCts
   ExtraQueens <- ExtraQueens %>%
-    group_by(Sample_Well, gene) %>%
+    group_by(Code, gene) %>%
     summarise(mean_Ct = ifelse(all(is.na(Ct)), NA, mean(Ct, na.rm = TRUE)), #without this, if both NA, NaNs will be created
               mean_Tm = ifelse(all(is.na(Tm)), NA, mean(Tm, na.rm = TRUE)),
               Sample_Plate = Sample_Plate,
               Code = Code,
+              Sample_Well= NA, # there are 2 distinct sample wells, unlike the rest of the experiment, so they can't be included in the summarise
               Ori_Well = Ori_Well,
               Ori_Plate = Ori_Plate)
-
+#eliminate duplicate rows!
+  ExtraQueens <- ExtraQueens %>% distinct()
+  
   #reorder cols
-  ExtraQueens <- ExtraQueens[,c(1,5,2,3,4,6:8)]
+  #ExtraQueens <- ExtraQueens[,c(1,5,2,3,4,6:8)]
   
   #add extra Q
   summarised_data <- rbind(as.data.frame(summarised_data), as.data.frame(ExtraQueens))
-  
   
   #this requires re-organising the order of cols to rbind without issues, 
   # calc mean_Ct, place it on row 4
@@ -345,11 +353,8 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment) == "BS"] <- "Big Sham"
   levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment) == "SS"] <- "Small Sham"
 
-  
-  
   # write the dataframe to a csv file
   write.csv(genes_Results_annotated, paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"), row.names = FALSE)
-
 
   to_keep <- c(to_keep, "genes_Results_annotated", "controls_gene_data")
   # cleaning
@@ -357,6 +362,8 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   gc()
 }
 
+################################################################################
+################################################################################
 ##### READ STARTING FILE
 # read the csv file
 genes_data <- read.csv(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"))
@@ -393,7 +400,70 @@ genes_data <- genes_data[which(genes_data$IsAlive == TRUE), ]
 #   geom_boxplot(aes(colour = Sample_Plate), lwd = 0.8, alpha = 0.3)
 
 
+####### CHECK FOR DISTRIBUTION OF MISSING DATA ########################################################
+
+# For each gene, we compute the proportion of non-detects and the average Ct value across replicate samples (Fig. 3).
+# There appears to be a strong relationship between the average expression of the genes across replicate samples and the proportion of non-detects.
+
+genes_data %>% group_by(gene) %>% summarise(propNA = sum(is.na(mean_Ct)/length(mean_Ct)))
+
+# Calculate the mean Ct value per group and the proportion of missing values
+mean_data <- genes_data %>%
+  group_by(gene) %>%
+  summarise(
+            propNA = sum(is.na(mean_Ct)/length(mean_Ct)),
+            sum_NA = sum(is.na(mean_Ct)),
+            mean_Ct = mean(mean_Ct, na.rm = TRUE)
+            )
+            # prop_na = mean(sum(is.na(mean_Ct)))) # sum(is.na(mean_Ct))/length(mean_Ct))
+
+# Plot the distribution of NA by mean Ct per group
+ggplot(mean_data, aes(x = mean_Ct, y = propNA, label= gene)) +
+  geom_point() +
+  geom_smooth() +
+  geom_text(nudge_y = 0.1) +
+  xlab("Mean Ct per group") +
+  ylab("Proportion of missing values in Ct") +
+  ggtitle("Distribution of NA in Ct by mean Ct per group")
+
+
+mean_data_Col <- genes_data %>%
+  group_by(gene,Colony) %>%
+  summarise(
+    propNA = sum(is.na(mean_Ct)/length(mean_Ct)),
+    sum_NA = sum(is.na(mean_Ct)),
+    mean_Ct = mean(mean_Ct, na.rm = TRUE),
+    Treatment = Treatment
+  )
+mean_data_Col <- mean_data_Col %>% distinct()
+
+
+
+# Plot the distribution of NA by mean Ct per group
+ggplot(mean_data_Col, aes(x = gene, y = propNA,colour=Treatment)) + #, label= Colony
+  geom_boxplot() +
+  geom_point(position=position_jitterdodge()) +
+  # geom_text(nudge_y = 0.1) +
+  xlab("Mean Ct per group") +
+  ylab("Proportion of missing values in Ct") +
+  ggtitle("Distribution of NA in Ct by mean Ct per group")
+
+
+
+
+# prop_na = mean(sum(is.na(mean_Ct)))) # sum(is.na(mean_Ct))/length(mean_Ct))
+
+
 #### PERRFORM DATA IMPUTATION HERE, SKIPPING THE HOUSE-KEEPING GENE FOR WHICH WE KNOW WE DO NOT EXPECT VALUES OVER 25-27
+
+# result <- data %>% log %>% impute.QRILC(., ...) %>% extract2(1) %>% exp
+
+genes_data
+
+
+
+
+
 
 
 ##### ISOLATE SUSPICIOUS DATAPOINTS (CONTAMINATIONS, BAD EXTRACTIONS, ETC)
@@ -404,8 +474,9 @@ stdev_by_group <- genes_data %>%
   summarise(st.dev_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, sd(mean_Ct, na.rm = TRUE)), 
             grand_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, mean(mean_Ct, na.rm = TRUE)))
 
-# filter rows with mean_Ct value greater than 2*st.dev mean_Ct value for each group
+# CHECK ROWS with mean_Ct value greater than 2*st.dev mean_Ct value for each group
 #exclude Queens from outliers (on the lowerbound, they are expected to have a lot of datapoints -low Ct-, but the upperbound should be cleaned)
+# outliers are not removed or filtered at this stage
 outliers <- genes_data %>%
   inner_join(stdev_by_group, by = "gene") %>%
   filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
@@ -430,22 +501,13 @@ ref_gene_data <- genes_data %>%
   filter(gene == "EF1") %>%
   rename("housekeeping" = "gene", "ref_Ct" = "mean_Ct") #, "ref_Tm" = "mean_Tm"
 
-# # recombine data
-# common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
+# recombine data
+common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
 # #common_col_names4 <- common_col_names4[ !common_col_names4 =="mean_Tm"] #exclude numeric var
-###THIS LOSES SOMETHING AND FUCKS UP DATA, WHY?????????????????????????????????????????
-# genes_data <- left_join(test_gene_data, ref_gene_data, by = common_col_names4)
-
-### THIS WORKS, SOME VARIABLE MUST CAUSE CONFLICTS, REMOVE 1 BY 1 TO CHECK!
-combined_data <- left_join(test_gene_data, ref_gene_data, by = c("Colony", "Code"))
-
-
-
+genes_data <- left_join(test_gene_data, ref_gene_data, by = common_col_names4)
 
 # create a new column containing the delta Ct between the housekeeping gene and our gene of interest, and plot the delta Ct for each treatment and replicate.
 genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
-
-
 
 # # plot delta_Ct
 # ggplot(genes_data, aes(x = gene, y = delta_Ct, fill = Treatment)) +
@@ -462,7 +524,6 @@ genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
 # given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
 #
 #remove the EF1 No_Ct values, as we are excluding EF1 values over threshold (12 only) and as we can't base the expression of the other genes on it
-warning("THIS STEP DELETES THE QUEENS!!!")
 genes_data <- genes_data[!is.na(genes_data$ref_Ct),]
 
 # check outliers min upper threshold
@@ -496,9 +557,10 @@ genes_data <- genes_data %>%
 
 warning("this procedure may introduce bias in the data")
 for (GENE in unique(genes_data$gene)) {
-  #assign the min/sqrt(2) value by gene to missing datapoints
-  genes_data[is.na(genes_data$rel_conc) & genes_data$gene == GENE, "rel_conc"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc"],na.rm = T)/sqrt(2)
-}
+  #assign the min/2 value by gene to missing datapoints
+  genes_data[is.na(genes_data$rel_conc) & genes_data$gene == GENE, "rel_conc"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc"],na.rm = T)/2
+
+  }
 
 # genes_data[is.na(genes_data$rel_conc),"rel_conc"] <- 1e-06
 
