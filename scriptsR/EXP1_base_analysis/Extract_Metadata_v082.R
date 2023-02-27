@@ -22,17 +22,17 @@ list.dirs.depth.n <- function(p, n) {
 
 
 #### ACCESS FILES
-USER <- "Adriano"
+USER <- "supercompAdriano"
 
 if (USER=="Adriano") {
 WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
 DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
-SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+SCRIPTDIR <- "/media/cf19810/DISK4/EXP1_base_analysis/EXP1_analysis scripts"
 }
 if (USER=="supercompAdriano") {
   WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
   DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
-  SCRIPTDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
+  SCRIPTDIR <- "/media/cf19810/DISK4/EXP1_base_analysis/EXP1_analysis scripts"
 }
 
 ###source function scripts
@@ -40,10 +40,8 @@ print("Loading functions and libraries...")
 source(paste(SCRIPTDIR,"AntTasks_v082.R",sep="/"))
 
 
-
 ###define name of general output table
-Metadata_Exp1 <- file.path(DATADIR,"Metadata_Exp1_2021.txt") 
-
+Metadata_Exp1 <- file.path(DATADIR,"Metadata_Exp1_2021_2023-02-27.txt") 
 
 # #inferred$return_time <- NA
 # inferred$end_time <- NA
@@ -61,7 +59,7 @@ files_list <- files_list[grep("REP",files_list)]
 for (REP.n in 1:length(files_list)) {
   # REP.n <- 1    #temp
   REP.folder      <- files_list[REP.n]
-  REP.files       <- list.files(REP.folder, pattern = "withMetaData_NS_NS_q.myr")
+  REP.files       <- list.files(REP.folder, pattern = "CapsuleDef2018_q.myr")
   REP.filefolder  <- paste(REP.folder,REP.files,sep="/")
   
   #replicate file
@@ -79,8 +77,11 @@ for (REP.n in 1:length(files_list)) {
     exp_start <- fmQueryGetDataInformations(e)$start
     
     ########### COMPUTE THE ANT TASKS (48h before exposure)
+    #make sure that the file does not exist already
     print(paste0("Computing Ant Tasks and Zone Uses"))
-    AntTasks <- AntTasks(exp=e)
+    #re-source here as it keeps getting deleted
+    source(paste(SCRIPTDIR,"AntTasks_v082.R",sep="/"))
+    AntTasks <- AntTasks(e=e)
    
     ############# CREATE BASE FILE #########################
     metadata <- NULL
@@ -158,6 +159,10 @@ for (REP.n in 1:length(files_list)) {
     }#ant
     metadata$surviv_time <- as.POSIXct(metadata$surviv_time, origin="1970-01-01", tz="GMT")
     
+    
+    # relabel Q as queen, not nurse
+    metadata[which(metadata$IsQueen==TRUE),"AntTask"] <- "queen"
+    
     # N_exposed in the colony
     metadata$N_exposed <- sum(metadata$Exposed)
     #start and end times
@@ -177,7 +182,7 @@ for (REP.n in 1:length(files_list)) {
     gc()
     #remove experiment and all
     #clean up
-    rm(list=ls()[which(!ls()%in%c("REP.folder","REP.files","REP.filefolder","files_list","Metadata_Exp1","SCRIPTDIR","WORKDIR","DATADIR","list.dirs.depth.n"))]) #close experiment
+    rm(list=ls()[which(!ls()%in%c("REP.folder","REP.files","REP.filefolder","files_list","Metadata_Exp1","SCRIPTDIR","WORKDIR","DATADIR","list.dirs.depth.n","AntTasks"))]) #close experiment
     
     
   }

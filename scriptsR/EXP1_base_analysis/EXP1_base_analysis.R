@@ -65,6 +65,7 @@ library(dplyr)
 # library(reshape)
 
 # starting params
+# USER <- "2A13_Office" # Nath_office 
 USER <- "2A13_Office" # Nath_office 
 
 if (USER == "2A13_Office") {
@@ -73,7 +74,7 @@ if (USER == "2A13_Office") {
   usr <- "bzniks"
 }
   
-SAVEDIR <- "/media/cf19810/DISK_AR/ADRIANO_Interactions"
+SAVEDIR <- paste("/media/",usr,"/DISK4/ADRIANO/ADRIANO_Interactions",sep="")
 
   WORKDIR <- paste("/media",usr,"DISK4/ADRIANO",sep="/")
   DATADIR <- paste(WORKDIR, "EXPERIMENT_DATA", sep = "/")
@@ -383,10 +384,30 @@ for (REP.n in 1:length(files_list)) {
       # INTERACTIONS IN THIS FUNCTION ARE CALCULATED ACCORDING TO STROEYMEYT ET AL, SCIENCE 2018
       Interactions <- compute_Interactions(e = e, start = time_start, end = time_stop, max_time_gap = MAX_INTERACTION_GAP)
       
+      # Remove interactions involving dead ants
+      dead_by_REP <- metadata[which(metadata$IsAlive==FALSE & metadata$REP_treat==REP_TREAT),"antID"]
+      Interactions <- Interactions[!(Interactions$ant1 %in% dead_by_REP | Interactions$ant2 %in% dead_by_REP), ]
+      
+      # science2018 structure
+      #Tag1 Tag2 Startframe Stopframe Starttime Stoptime Box Xcoor1 Ycoor1 Angle1 Xcoor2 Ycorr2 Angle2 Direction Detections time_hours time_of_day colony treatment
+      
+      # extras not present in Science files:
+      #"REP_treat","ant1.zones","ant2.zones"
+      
+      
+      
+      # MISSING: 
+      # time_hours time_of_day colony treatment
+      REP_NUM <- remove last and first character from REP_TREAT
+      REP_NUM <- c("01B", "13S")
+    
+      
+      colony <- paste("colony", paste(rep(0,3-nchar(REP_TREAT)),collapse=""), REP_TREAT,sep="-")
+      
       ### Individual
       # Add metadata info
       Interactions_REP_TREAT <- cbind(data.frame(
-         REP_treat = REP_TREAT, period = PERIOD,Interactions, randy = REP.FILES,
+         REP_treat = REP_TREAT, period = PERIOD,Interactions,
         stringsAsFactors = F
       ))
       # stack
