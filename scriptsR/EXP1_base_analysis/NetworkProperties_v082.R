@@ -31,7 +31,7 @@ compute_Interactions <- function(e, start, end, max_time_gap) { # min_cum_durati
   # Because of various issues raised, including the ones reported here https://github.com/formicidae-tracker/myrmidon/issues/240 ,
   # the analysis is performed not using UNIX_time but using frames. Every new queried file will then show a part including FRAME assignment.
   # Frames are then used for any trajectory cutting later on in the sub-scripts
-  IdentifyFrames <- fmQueryIdentifyFrames(e, start = time_start, end = time_stop, showProgress = FALSE)
+  IdentifyFrames <- fmQueryIdentifyFrames(e, start = start, end = end, showProgress = FALSE)
   IF_frames <- IdentifyFrames$frames
   # Assign a frame to each time since start and use it as baseline for all matching and computation
   IF_frames$frame_num <- as.numeric(seq.int(nrow(IF_frames)))
@@ -66,7 +66,7 @@ compute_Interactions <- function(e, start, end, max_time_gap) { # min_cum_durati
 
   # Adapted from BEH_Extract_movement_variables_fort081_FUNCTIONS.R
 
-  # Interactions <- fmQueryComputeAntInteractions(e, time_start, time_stop, maximumGap=gap, singleThreaded=FALSE, reportFullTrajectories = F)
+  # Interactions <- fmQueryComputeAntInteractions(e, start, end, maximumGap=gap, singleThreaded=FALSE, reportFullTrajectories = F)
 
   # Get info on the capules shapes and use the relevant ones in the ant interaction query
   capsules <- e$antShapeTypeNames
@@ -86,9 +86,9 @@ compute_Interactions <- function(e, start, end, max_time_gap) { # min_cum_durati
   # interaction_detection automatically performs the analysis on large time chunks (12h)
   Interactions <- interaction_detection(
     e = e,
-    start = time_start,
-    end = time_stop,
-    max_time_gap = MAX_INTERACTION_GAP,
+    start = start,
+    end = end,
+    max_time_gap = max_time_gap,
     max_distance_moved = (body_lengths$body_length_px / body_lengths$body_length_mm) * MAX_DIST_GAP_MM,
     capsule_matcher = ALL_CAPS_MATCHERS,
     IF_frames = IF_frames
@@ -108,10 +108,18 @@ compute_Interactions <- function(e, start, end, max_time_gap) { # min_cum_durati
   # calc duration (including start frame)
   Interactions$duration <- round((Interactions$T_stop_UNIX - Interactions$T_start_UNIX + 1 / FRAME_RATE), N_DECIMALS)
 
-  # #assign time in sec to avoid issues on time management and matching
-  # Interactions$T_start_sec <- round(unas.numeric(Interactions$T_start_UNIX),N_DECIMALS)
-  # Interactions$T_stop_sec <- round(as.numeric(Interactions$T_stop_UNIX),N_DECIMALS)
-  #
+  #assign time in sec to avoid issues on time management and matching
+  Interactions$Starttime <- round(as.numeric(Interactions$T_start_UNIX),N_DECIMALS)
+  Interactions$Stoptime <- round(as.numeric(Interactions$T_stop_UNIX),N_DECIMALS)
+  
+  # round digits
+  Interactions$ant1.mean.x          <- round(as.numeric(Interactions$ant1.mean.x),N_DECIMALS)
+  Interactions$ant1.mean.y          <- round(as.numeric(Interactions$ant1.mean.y),N_DECIMALS)
+  Interactions$ant1.mean.angle      <- round(as.numeric(Interactions$ant1.mean.angle),N_DECIMALS)
+  Interactions$ant2.mean.x          <- round(as.numeric(Interactions$ant2.mean.x),N_DECIMALS)
+  Interactions$ant2.mean.y          <- round(as.numeric(Interactions$ant2.mean.y),N_DECIMALS)
+  Interactions$ant2.mean.angle      <- round(as.numeric(Interactions$ant2.mean.angle),N_DECIMALS)
+  
   # check that frame numbering is correct
   # #assign start and end frame number
   # Interactions$frame_start <- match.closest(x = Interactions$T_start_sec, table = IF_frames$time_sec, tolerance = 0.05)
@@ -124,10 +132,14 @@ compute_Interactions <- function(e, start, end, max_time_gap) { # min_cum_durati
   # EXPECTED FORMAT:: Tag1,Tag2,Startframe,Stopframe,Starttime,Stoptime,Box, Xcoor1,Ycoor1,Angle1,Xcoor2,Ycorr2,Angle2,Direction (types),Detections,
   # DIRECTION → the capsule types matching
   # DETECTION → the rate of frames in which both ants where present
+  names(Interactions)[which(names(Interactions) == "ant1")] <- "Tag1" # beware: these are antID but called Tags for compatibility
+  names(Interactions)[which(names(Interactions) == "ant2")] <- "Tag2"
+  names(Interactions)[which(names(Interactions) == "types")] <- "Direction"
+  names(Interactions)[which(names(Interactions) == "detections")] <- "Detections"
   names(Interactions)[which(names(Interactions) == "startframe")] <- "Startframe"
   names(Interactions)[which(names(Interactions) == "endframe")] <- "Stopframe"
-  names(Interactions)[which(names(Interactions) == "T_start_UNIX")] <- "Starttime"
-  names(Interactions)[which(names(Interactions) == "T_stop_UNIX")] <- "Stoptime"
+  # names(Interactions)[which(names(Interactions) == "T_start_UNIX")] <- "Starttime"
+  # names(Interactions)[which(names(Interactions) == "T_stop_UNIX")] <- "Stoptime"
   names(Interactions)[which(names(Interactions) == "ant1.mean.x")] <- "Xcoor1"
   names(Interactions)[which(names(Interactions) == "ant1.mean.y")] <- "Ycoor1"
   names(Interactions)[which(names(Interactions) == "ant1.mean.angle")] <- "Angle1"
@@ -136,15 +148,22 @@ compute_Interactions <- function(e, start, end, max_time_gap) { # min_cum_durati
   names(Interactions)[which(names(Interactions) == "ant2.mean.angle")] <- "Angle2"
   Interactions$Box <- e$spaces[[1]]$name # tracking system
   # remove extras
-  Interactions$start <- NULL
-  Interactions$end <- NULL
-  Interactions$space <- NULL
+  Interactions$start          <- NULL
+  Interactions$end            <- NULL
+  Interactions$space          <- NULL
+  Interactions$T_start_UNIX   <- NULL
+  Interactions$T_stop_UNIX    <- NULL
 
   # should I retain the Tag1,Tag2 or is ant1 ant2 enough as an identifier?
 
   # TRUNCATION
   # truncate interactions over 2 mins
-  Interactions <- Interactions[which(Interactions$duration <= 120), ]
+  long_interaction_indices <- which(Interactions$duration > 120)
+  Interactions[long_interaction_indices,"duration"] <- 120
+  Interactions[long_interaction_indices,"Stoptime"] <-  Interactions[long_interaction_indices,"Starttime"] + 120
+  Interactions[long_interaction_indices,"Stopframe"] <-  Interactions[long_interaction_indices,"Startframe"] + round(  ( Interactions[long_interaction_indices,"duration"] - 1/FRAME_RATE )* FRAME_RATE)
+  
+  
   return(Interactions)
 }
 
