@@ -74,12 +74,17 @@ if (USER == "2A13_Office") {
   usr <- "bzniks"
 }
   
-SAVEDIR <- paste("/media/",usr,"/DISK4/ADRIANO/ADRIANO_Interactions",sep="")
+SAVEDIR <- paste("/media/",usr,"/DISK4/EXP1_base_analysis/EXP_summary_data",sep="")
+#where to save the interactions in the same structure as for Science 2018
+#I copied the folder structure from Nathalie, ideally one should create it via the terminal:
+# use the file /media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/dirs.txt
+# and in the terminal use: xargs mkdir -p < dirs.txt
+INTDIR <- paste("/media/",usr,"/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/intermediary_analysis_steps",sep="")
 
   WORKDIR <- paste("/media",usr,"DISK4/ADRIANO",sep="/")
   DATADIR <- paste(WORKDIR, "EXPERIMENT_DATA", sep = "/")
   SCRIPTDIR <- paste("/media",usr,"DISK4/EXP1_base_analysis/EXP1_analysis scripts",sep="/") # "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
-  metadata <- read.table(paste(DATADIR, "/Metadata_Exp1_2021_2022-10-20.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
+  metadata <- read.table(paste(DATADIR, "/Metadata_Exp1_2021_2023-02-27.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
   BEH_FUNCTIONS <-  paste("/media",usr,"DISK4/Ants_behaviour_analysis/ScriptsR",sep="/")
   BODYLENGTH_FILE <- paste(BEH_FUNCTIONS,"Mean_ant_length_per_TrackingSystem.txt", sep = "/")
   metadata_info         <- read.csv(paste(DATADIR,"Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU_All_colonies.csv",sep = "/"), sep = ",")
@@ -146,8 +151,11 @@ MAX_INTERACTION_GAP <- 10 # fmSecond(10) # the maximum gap in tracking before cu
 MAX_DIST_GAP_MM <- 0.6
 FRAME_RATE <- 8
 interactions_of_interest <- list(c("head", "body")) ### if interested in more than one type, list them as follows: interactions_of_interest <- c(list(c("head","body")),list(c("head","head")))
+
 Time_dictionary <- data.frame(time_hours = -36:35, time_of_day = rep(0:23, 3)) # time_hours= time since exposure (negatives pre-exposire, positive post exposure), time_of_day=time hour slot of the day
 Time_dictionary <- Time_dictionary[which(Time_dictionary$time_hours <= 21 & Time_dictionary$time_hours >= -27), ]
+Time_dictionary$period <- ifelse(Time_dictionary$time_hours<0, "pre", "post")
+
 OUTPUT_FOLDER <-  "Exp1_Results_2023" # paste0("Exp1_Results_", Sys.Date())
 
 #### FLAGS
@@ -248,138 +256,155 @@ for (REP.n in 1:length(files_list)) {
   # 
   # }}
 
-    INTERACTIONS <- file.path(SAVEDIR, OUTPUT_FOLDER, paste0("INTERACTIONS_",REP_TREAT,".txt")) # (saved INSIDE the folder)
-    
     
     #####
     # end time is return time + 24h
     exp_end <- time_window_all[which(time_window_all$REPLICATE==REP_TREAT),"return_time"] + 60*60*24 # 24h
     #exp_end <- fmQueryGetDataInformations(e)$end - window_shift
     
-    if (RUN_NETWORKS) {
-    COLONY_SIZE <- unique(metadata[which(metadata$REP_treat == REP_TREAT), "colony_size"])
-}
-
-    # ### HOURLY LOOP; loading 24 hours of data requires >32 GB RAM & causes R to crash, so we must load the contacts in 3h blocks, stacking vertically
-    # print(paste0("Compute 3-hours analysis"))
-    # # TIME_HOURS zero is the moment of exposed ants return
-    # for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)]) { ## increments by 3 hours for 48 hours
-    #   # HOUR <- seq(from=0, to=48, by=3)
-    #   # From  <- fmQueryGetDataInformations(e)$end - 51*TimeWind + (HOUR * TimeWind) - window_shift
-    #   # To    <- fmQueryGetDataInformations(e)$end - 48*TimeWind + (HOUR * TimeWind) - window_shift
-    #   #
-    #   From <- fmQueryGetDataInformations(e)$end + (TIME_HOURS - 24) * TimeWind - window_shift
-    #   To <- fmQueryGetDataInformations(e)$end + (TIME_HOURS - 21) * TimeWind - window_shift
-    #   #############################
-    # 
-    #   print(paste0("computing hour ", TIME_HOURS))
-    #   print(paste("Time window, from", From, "to", To))
-    #   time_start <- fmTimeCreate(offset = From) # time_stop minus 48 hours plus incremental time
-    #   time_stop <- fmTimeCreate(offset = To) # time_stop minus 45 hours plus incremental time
-    # 
-    #   # base file information
-    #   # PERIOD
-    #   TimeDiff <- difftime(exp_end, To, units = "hours")
-    #   if (TimeDiff < 24) {
-    #     PERIOD <- "post"
-    #   } else if (TimeDiff >= 27 & TimeDiff < 51) {
-    #     PERIOD <- "pre"
-    #   } else {
-    #     PERIOD <- "EXPOSURE_GAP"
-    #   }
-    #   Period_dt <- data.frame(From, To, PERIOD)
-    #   Period_dataframe <- rbind(Period_dataframe, Period_dt)
-    #   # TIME_OF_DAY
-    #   TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
-    #   # }
-    #   #
-    #   # table(Period_dataframe$PERIOD) # shall be equal!
-    # 
-    #   if (RUN_SPACEUSE) {
-    #     
-    #   # RUN FOR PRE AND POST (skip the 3h exposure gap)
-    #   if (!Period_dt$PERIOD == "EXPOSURE_GAP") {
-    # 
-    # 
-    #     # ############ NETWORK PROPERTIES: INDIVIDUAL & COLONY LEVEL ##########################
-    #     # 
-    #     # # COMPUTE NETWORK
-    #     # Graph <- compute_G(e = e, start = time_start, end = time_stop, gap = MAX_INTERACTION_GAP)
-    #     # # COMPUTE NETWORK PROPERTIES (collective and individual)
-    #     # Network_summ_prop_hour <- NetProperties(graph = Graph)
-    #     # 
-    #     # ### Collective
-    #     # # Add metadata info
-    #     # NetworkProp_collective_hour <- cbind(data.frame(
-    #     #   randy = REP.FILES, REP_treat = REP_TREAT, colony_size = COLONY_SIZE, period = PERIOD, time_hours = TIME_HOURS, time_of_day = TIME_OF_DAY, From, To,
-    #     #   Network_summ_prop_hour$summary_collective,
-    #     #   stringsAsFactors = F
-    #     # ))
-    #     # # stack
-    #     # NetworkProp_collective <- rbind(NetworkProp_collective, NetworkProp_collective_hour)
-    #     # 
-    #     # ### Individual
-    #     # # Add metadata info
-    #     # NetworkProp_individual_hour <- cbind(data.frame(
-    #     #   randy = REP.FILES, REP_treat = REP_TREAT, colony_size = COLONY_SIZE, period = PERIOD, time_hours = TIME_HOURS, time_of_day = TIME_OF_DAY, From, To,
-    #     #   Network_summ_prop_hour$summary_individual,
-    #     #   stringsAsFactors = F
-    #     # ))
-    #     # # stack
-    #     # NetworkProp_individual <- rbind(NetworkProp_individual, NetworkProp_individual_hour)
-    # 
-    #     ############ SPACE USE: INDIVIDUAL ##########################
-    #     # SPACE USAGE
-    #     SpaceUsage_hour <- SpaceUse(e = e, start = time_start, end = time_stop)
-    # 
-    #     # Add metadata info
-    #     SpaceUsage_hour <- cbind(data.frame(
-    #       randy = REP.FILES, REP_treat = REP_TREAT, colony_size = COLONY_SIZE, period = PERIOD, time_hours = TIME_HOURS, time_of_day = TIME_OF_DAY, From, To,
-    #       SpaceUsage_hour,
-    #       stringsAsFactors = F
-    #     ))
-    # 
-    #     # stack
-    #     SpaceUsage <- rbind(SpaceUsage, SpaceUsage_hour)
-    # 
-    #     #####################################################################################################
-    #   } 
-    #     }
-    #   } # REP LOOP
+#     if (RUN_NETWORKS) {
+#     COLONY_SIZE <- unique(metadata[which(metadata$REP_treat == REP_TREAT), "colony_size"])
+# }
+# 
+#     ### HOURLY LOOP; loading 24 hours of data requires >32 GB RAM & causes R to crash, so we must load the contacts in 3h blocks, stacking vertically
+#     print(paste0("Compute 3-hours analysis"))
+#     # TIME_HOURS zero is the moment of exposed ants return
+#     for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)]) { ## increments by 3 hours for 48 hours
+#       # HOUR <- seq(from=0, to=48, by=3)
+#       # From  <- fmQueryGetDataInformations(e)$end - 51*TimeWind + (HOUR * TimeWind) - window_shift
+#       # To    <- fmQueryGetDataInformations(e)$end - 48*TimeWind + (HOUR * TimeWind) - window_shift
+#       #
+#       From <- fmQueryGetDataInformations(e)$end + (TIME_HOURS - 24) * TimeWind - window_shift
+#       To <- fmQueryGetDataInformations(e)$end + (TIME_HOURS - 21) * TimeWind - window_shift
+#       #############################
+# 
+#       print(paste0("computing hour ", TIME_HOURS))
+#       print(paste("Time window, from", From, "to", To))
+#       time_start <- fmTimeCreate(offset = From) # time_stop minus 48 hours plus incremental time
+#       time_stop <- fmTimeCreate(offset = To) # time_stop minus 45 hours plus incremental time
+# 
+#       # base file information
+#       # PERIOD
+#       TimeDiff <- difftime(exp_end, To, units = "hours")
+#       if (TimeDiff < 24) {
+#         PERIOD <- "post"
+#       } else if (TimeDiff >= 27 & TimeDiff < 51) {
+#         PERIOD <- "pre"
+#       } else {
+#         PERIOD <- "EXPOSURE_GAP"
+#       }
+#       Period_dt <- data.frame(From, To, PERIOD)
+#       Period_dataframe <- rbind(Period_dataframe, Period_dt)
+#       # TIME_OF_DAY
+#       TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
+#       # }
+#       #
+#       # table(Period_dataframe$PERIOD) # shall be equal!
+# 
+#       if (RUN_SPACEUSE) {
+# 
+#       # RUN FOR PRE AND POST (skip the 3h exposure gap)
+#       if (!Period_dt$PERIOD == "EXPOSURE_GAP") {
+# 
+# 
+#         # ############ NETWORK PROPERTIES: INDIVIDUAL & COLONY LEVEL ##########################
+#         #
+#         # # COMPUTE NETWORK
+#         # Graph <- compute_G(e = e, start = time_start, end = time_stop, gap = MAX_INTERACTION_GAP)
+#         # # COMPUTE NETWORK PROPERTIES (collective and individual)
+#         # Network_summ_prop_hour <- NetProperties(graph = Graph)
+#         #
+#         # ### Collective
+#         # # Add metadata info
+#         # NetworkProp_collective_hour <- cbind(data.frame(
+#         #   randy = REP.FILES, REP_treat = REP_TREAT, colony_size = COLONY_SIZE, period = PERIOD, time_hours = TIME_HOURS, time_of_day = TIME_OF_DAY, From, To,
+#         #   Network_summ_prop_hour$summary_collective,
+#         #   stringsAsFactors = F
+#         # ))
+#         # # stack
+#         # NetworkProp_collective <- rbind(NetworkProp_collective, NetworkProp_collective_hour)
+#         #
+#         # ### Individual
+#         # # Add metadata info
+#         # NetworkProp_individual_hour <- cbind(data.frame(
+#         #   randy = REP.FILES, REP_treat = REP_TREAT, colony_size = COLONY_SIZE, period = PERIOD, time_hours = TIME_HOURS, time_of_day = TIME_OF_DAY, From, To,
+#         #   Network_summ_prop_hour$summary_individual,
+#         #   stringsAsFactors = F
+#         # ))
+#         # # stack
+#         # NetworkProp_individual <- rbind(NetworkProp_individual, NetworkProp_individual_hour)
+# 
+#         ############ SPACE USE: INDIVIDUAL ##########################
+#         # SPACE USAGE
+#         SpaceUsage_hour <- SpaceUse(e = e, start = time_start, end = time_stop)
+# 
+#         # Add metadata info
+#         SpaceUsage_hour <- cbind(data.frame(
+#           randy = REP.FILES, REP_treat = REP_TREAT, colony_size = COLONY_SIZE, period = PERIOD, time_hours = TIME_HOURS, time_of_day = TIME_OF_DAY, From, To,
+#           SpaceUsage_hour,
+#           stringsAsFactors = F
+#         ))
+# 
+#         # stack
+#         SpaceUsage <- rbind(SpaceUsage, SpaceUsage_hour)
+# 
+#         #####################################################################################################
+#       }
+#         }
+#       } # REP LOOP
     
 
-    
     ### PERFORM THE FULL INTERACTION AND NETWORK ANALYSIS OUTSIDE OF THE HOURLY LOOP
     
+    # # # Extract the minimum "From" time and maximum "To" time for each PERIOD
+    Period_windows <- data.frame(Period = c("pre","post")
+                                 , From = c(time_window_all[which(time_window_all$REPLICATE==REP_TREAT),"time_start"], #skip 3h gap
+                                            time_window_all[which(time_window_all$REPLICATE==REP_TREAT),"return_time"]
+                                 ))
+    Period_windows$To <-   Period_windows$From + 24*60*60
+    
+    
+ 
+    #############################
+    # sort pre-post (should be done here I guess)
+    # sort full binned (should be done in the saving part at the bottom)
+    
+    # MISSING: 
+    # time_hours time_of_day colony treatment
+    
+    #############################
+    
+    for (PERIOD in c("pre","post")) {
+    
+      #conform naming to science2018
+      # colony code
+      REP_NUM           <- substring(REP_TREAT, 2, nchar(REP_TREAT)-1)
+      colony            <- paste("colony", paste(rep(0,3-nchar(REP_NUM)),collapse=""), REP_NUM,sep="")
+      # colony_status
+      status_char       <- substr(REP_TREAT, nchar(REP_TREAT), nchar(REP_TREAT))
+      colony_status     <- ifelse(status_char == "P", "pathogen", ifelse(status_char == "S", "control", NA))
+      # treatment code
+      treatment_code     <- ifelse(PERIOD == "pre", "PreTreatment", ifelse(PERIOD == "post", "PostTreatment", NA))
+      # DESTINATION FOLDER
+      INTERACTIONS_FULL   <-  file.path(INTDIR,"full_interaction_lists",treatment_code,"observed", 
+                                 paste(colony,colony_status,treatment_code,"interactions.txt",sep="_"))
+
+
     ############ GET INTERACTIONS ##########################
-    if(file.exists(INTERACTIONS)){
+    if(file.exists(INTERACTIONS_FULL)){
       print(paste("File",INTERACTIONS,"already present, skip", sep=" "))
     }
       
-    if(!file.exists(INTERACTIONS)){
+    if(!file.exists(INTERACTIONS_FULL)){
     
-    # # # Extract the minimum "From" time and maximum "To" time for each PERIOD
-    # Period_windows <- Period_dataframe %>%
-    #   group_by(PERIOD) %>%
-    #   summarise(From = min(c(From,To)),To = max(c(From,To)))
-  
-  Period_windows <- data.frame(Period = c("pre","post")
-                               , From = c(time_window_all[which(time_window_all$REPLICATE==REP_TREAT),"time_start"], #skip 3h gap
-                                          time_window_all[which(time_window_all$REPLICATE==REP_TREAT),"return_time"]
-                               ))
-  
-  Period_windows$To <-   Period_windows$From + 24*60*60
-  
-  
-    
-    for (PERIOD in c("pre","post")) {
+
       # Select the full PERIOD (24h)
       print(paste("period:", PERIOD, sep= " "))
       time_start <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"]) # time_stop minus 48 hours plus incremental time
       time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"To"]) # time_stop minus 45 hours plus incremental time
       # # TEMP TIME STOP
-      # warning("using tiny time window for testing")
-      # time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"] + 1*60)
+      warning("using tiny time window for testing")
+      time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"] + 1*60)
       # 
       # INTERACTIONS IN THIS FUNCTION ARE CALCULATED ACCORDING TO STROEYMEYT ET AL, SCIENCE 2018
       Interactions <- compute_Interactions(e = e, start = time_start, end = time_stop, max_time_gap = MAX_INTERACTION_GAP)
@@ -394,16 +419,7 @@ for (REP.n in 1:length(files_list)) {
       # extras not present in Science files:
       #"REP_treat","ant1.zones","ant2.zones"
       
-      
-      
-      # MISSING: 
-      # time_hours time_of_day colony treatment
-      REP_NUM <- remove last and first character from REP_TREAT
-      REP_NUM <- c("01B", "13S")
     
-      
-      colony <- paste("colony", paste(rep(0,3-nchar(REP_TREAT)),collapse=""), REP_TREAT,sep="-")
-      
       ### Individual
       # Add metadata info
       Interactions_REP_TREAT <- cbind(data.frame(
@@ -414,14 +430,54 @@ for (REP.n in 1:length(files_list)) {
       #Interactions_total <- rbind(Interactions_total, Interactions_REP_TREAT)
       
       ## Interactions save (saved INSIDE the Network_analysis folder)
-      if (file.exists(INTERACTIONS)) {
-        write.table(Interactions_REP_TREAT, file = INTERACTIONS, append = T, col.names = F, row.names = F, quote = T, sep = ",")
-      } else {
-        write.table(Interactions_REP_TREAT, file = INTERACTIONS, append = F, col.names = T, row.names = F, quote = T, sep = ",")
-      }
+      #if (file.exists(INTERACTIONS_FULL)) {
+      #  write.table(Interactions_REP_TREAT, file = INTERACTIONS_FULL, append = T, col.names = F, row.names = F, quote = T, sep = ",")
+      #} else {
+        write.table(Interactions_REP_TREAT, file = INTERACTIONS_FULL, append = F, col.names = T, row.names = F, quote = T, sep = ",")
+      #}
+      
+      
+      ### split output into bins
+        ### HOURLY LOOP; loading 24 hours of data requires >32 GB RAM & causes R to crash, so we must load the contacts in 3h blocks, stacking vertically
+        print(paste0("split files into 3-hours bins"))
+        # TIME_HOURS zero is the moment of exposed ants return
+        for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)]) { ## increments by 3 hours for 48 hours
+
+          #time windows
+          From_TIME_HOURS <- time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 24) * TimeWind
+          To_TIME_HOURS <- time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 21) * TimeWind
+
+          # TIME_OF_DAY
+          TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
+          
+            #if we are in the right time window, create dataframe TIME_HOURSxPERIOD
+            if (PERIOD %in% Time_dictionary[which(Time_dictionary$time_hours==TIME_HOURS),"period"]) {
+              
+              #labels for subsets
+              TH <- paste0("TH",TIME_HOURS)
+              TD <- paste0("TD",TIME_OF_DAY)
+              print(paste("TIME_HOURS", TIME_HOURS,"TIME_OF_DAY", TIME_OF_DAY,"PERIOD",PERIOD,sep=" "))
+              
+              INTERACTIONS_BINNED <-  file.path(INTDIR,"binned_interaction_lists",treatment_code,"observed", 
+                                                paste(colony,colony_status,treatment_code,TH,TD,"interactions.txt",sep="_"))
+              
+              # split into bins using the TIME_HOURS
+              ### CREATE WINDOW
+              # get anything between From_TIME_HOURS and To_TIME_HOURS
+              Interactions_HOUR <- Interactions_REP_TREAT[Interactions_REP_TREAT$time_hours==TIME_HOURS,]
+              
+              
+              
+              warning("ideal way of cutting object. Is there any extra info to be added?")
+              
+          # check the expected columns in nathalie's binned_interactions
+          write.table(Interactions_HOUR, file = INTERACTIONS_BINNED, append = F, col.names = T, row.names = F, quote = T, sep = ",")
+          
+            }
+        }
       
     } # PERIOD
-    } # only run if file does not exist
+    }
     
   
     #### ADD EXTRA REPLICATE INFORMATIONS
