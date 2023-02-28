@@ -1,7 +1,12 @@
+##################################################################
+################## METADATA CHECKS AND TABLES ####################
+##################################################################
+
 ### tables from metadata information
 library(reshape2)
 library(dplyr)
 library(ggplot2)
+library(gridExtra)
 
 USER <- "supercompAdriano"
 
@@ -11,36 +16,73 @@ if (USER=="supercompAdriano") {
   #SCRIPTDIR <- "/media/cf19810/DISK4/EXP1_base_analysis/EXP1_analysis scripts"
 }
 
- 
-
+###### LOAD METADATA
 metadata_present <- read.table(file.path(DATADIR,"Metadata_Exp1_2021_2023-02-27.txt"),header=T,stringsAsFactors = F, sep=",")
 
-#AntTasks_by_col <- dcast(metadata_present, size_treat + REP_treat ~ AntTask, fun.aggregate = length)
+##################################################################
+################## THRESHOLD FOR ANT_TASK ########################
+##################################################################
 
+# calculate AntTasks with different prop_time_outside limits
+MAX <- c(0.01, 0.02, 0.03, 0.04)
+
+#create new column per each prop_time_outside limit
+for (i in seq_along(MAX)) { 
+metadata_present <- metadata_present %>% mutate(!!paste0("AntTask", MAX[i]*100, "perc") := NA)
+}
+
+#list of plots
+plots <- list()
+#loop through max  prop_time_outside limits 
+for (i in seq_along(MAX)) {
+  #call new column for the loop
+  ANT_TASK_PERC <- paste0("AntTask", MAX[i]*100, "perc")
+  metadata_present[which(metadata_present$prop_time_outside <= MAX[i]), ANT_TASK_PERC] <- "nurse"
+  metadata_present[which(metadata_present$prop_time_outside > MAX[i]), ANT_TASK_PERC] <- "forager"
+
+#remove dead ants
+metadata_present <- metadata_present[which(metadata_present$IsAlive==TRUE),]
+
+#AntTasks_by_col <- dcast(metadata_present, size_treat + REP_treat ~ AntTask, fun.aggregate = length)
 AntTasks_by_col <- metadata_present %>%
-  group_by(AntTask, size_treat, REP_treat) %>%
+  group_by(!!sym(ANT_TASK_PERC), size_treat, REP_treat) %>%
   summarize(occurrences = n())
 
-ggplot(AntTasks_by_col, aes(x=size_treat, y=occurrences)) +
-  geom_boxplot() +
-  facet_wrap( . ~AntTask)
-
 #remove NAs
-AntTasks_by_col <- AntTasks_by_col[!is.na(AntTasks_by_col$AntTask),]
+AntTasks_by_col <- AntTasks_by_col[!is.na(AntTasks_by_col[[ANT_TASK_PERC]]),]
 #remove Q
-AntTasks_by_col <- AntTasks_by_col[which(AntTasks_by_col$AntTask!="queen"),]
+AntTasks_by_col <- AntTasks_by_col[which(AntTasks_by_col[[ANT_TASK_PERC]]!="queen"),]
 
+#proportion of ants by task group
 AntTasks_by_col_prop <- AntTasks_by_col %>%
-  group_by(REP_treat, size_treat, AntTask) %>%
+  group_by(REP_treat, size_treat, !!sym(ANT_TASK_PERC)) %>%
   summarise(total_occurrences = sum(occurrences)) %>%
   mutate(proportion = total_occurrences/sum(total_occurrences))
 
-ggplot(AntTasks_by_col_prop, aes(x = size_treat, y = proportion, fill = AntTask)) +
+#plotting
+AntTasks_by_col_prop_nurses <- AntTasks_by_col_prop[which(AntTasks_by_col_prop[[ANT_TASK_PERC]]=="nurse"),]
+p <- ggplot(AntTasks_by_col_prop_nurses, aes(x = size_treat, y = proportion, fill = AntTasks_by_col_prop_nurses[[ANT_TASK_PERC]])) +
   geom_boxplot() +
   geom_jitter()+
-  facet_wrap(. ~ AntTask) +
-  labs(x = "REP_treat", y = "Proportion", fill = "AntTask") +
-  ggtitle("AntTask = nurse if <1% time outside") +
-  theme_bw()
+  facet_wrap(. ~  AntTasks_by_col_prop_nurses[[ANT_TASK_PERC]]) +
+  ylim(0, 1) + # set y-axis limits to the same range
+  labs(x = "REP_treat", y = "Proportion", fill = ANT_TASK_PERC) +
+  ggtitle( paste0("nurses prop if < ", MAX[i]*100, "%\ntime outside")) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+plots[[i]] <- p
+}
+
+# Combine ggplots into a grid
+grid.arrange(grobs = plots, nrow = 1, ncol = 4)
+
+
+
+
+##################################################################
+##################              ########################
+##################################################################
+
 
 
