@@ -69,6 +69,14 @@ for (REP.n in 1:length(files_list)) {
     REP_treat <- sub("\\_.*", "", basename(REP.FILES))
     #treat_name = substr(REP_treat_name,(nchar(REP_treat_name)+1)-2,nchar(REP_treat_name))
     
+    #check if the colony has already been recorded in the metadata{}
+    if(file.exists(file.path(DATADIR,"Metadata_Exp1_2021_2023-02-27.txt"))){
+    metadata_present <- read.table(file.path(DATADIR,"Metadata_Exp1_2021_2023-02-27.txt"),header=T,stringsAsFactors = F, sep=",")
+    if (REP_treat %in% unique(metadata_present$REP_treat) ) {
+      print(paste0(REP_treat," already present in metadata, skip"))
+    }
+    } else {
+    
     print(REP.FILES) ##}}
     #open experiment
     e <- fmExperimentOpen(REP.FILES)
@@ -96,6 +104,7 @@ for (REP.n in 1:length(files_list)) {
                                             identifStart     = capture.output(print(id$start)), 
                                             identifEnd       = capture.output(print(id$end)), 
                                             AntTask          = AntTasks[which(AntTasks$antID==ant$ID),"AntTask"],
+                                            prop_time_outside= AntTasks[which(AntTasks$antID==ant$ID),"prop_time_outside"],
                                             #AntTask_num          = AntTasks[which(AntTasks$antID==ant$ID),"AntTask_num"],
                                             stringsAsFactors = F))
       
@@ -184,7 +193,7 @@ for (REP.n in 1:length(files_list)) {
     #clean up
     rm(list=ls()[which(!ls()%in%c("REP.folder","REP.files","REP.filefolder","files_list","Metadata_Exp1","SCRIPTDIR","WORKDIR","DATADIR","list.dirs.depth.n","AntTasks"))]) #close experiment
     
-    
+    }
   }
   
   

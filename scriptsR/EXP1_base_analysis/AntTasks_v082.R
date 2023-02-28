@@ -124,7 +124,10 @@ AntTasks <- function(e){
   positions_SUMS[which(positions_SUMS$prop_time_outside<=0.01),"AntTask"] <- "nurse"
   positions_SUMS[which(positions_SUMS$prop_time_outside>0.01),"AntTask"] <- "forager"
   
-  AntTasks <- data.frame(antID=positions_SUMS[,"antID"],tag_hex_ID=positions_SUMS[,"tag_hex_ID"],AntTask= positions_SUMS[,"AntTask"])
+  AntTasks <- data.frame(antID=positions_SUMS[,"antID"],
+                         tag_hex_ID=positions_SUMS[,"tag_hex_ID"],
+                         AntTask= positions_SUMS[,"AntTask"],
+                         prop_time_outside= positions_SUMS[,"prop_time_outside"])
   
   print("AntTasks computed")
   
@@ -135,7 +138,7 @@ AntTasks <- function(e){
   for (MISSING in missing_ants) {
   for (id in length(e$ants[[MISSING]]$identifications)) {
    #print ( e$ants[[MISSING]]$identifications[[id]]$tagValue )
-    missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING, tag_hex_ID= e$ants[[MISSING]]$identifications[[id]]$tagValue ,AntTask=NA))
+    missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING, tag_hex_ID= e$ants[[MISSING]]$identifications[[id]]$tagValue ,AntTask=NA, prop_time_outside= NA))
   }}
   
   AntTasks <- rbind(AntTasks, missing_ants_table)
