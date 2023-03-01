@@ -13,7 +13,7 @@ mallinfo::malloc.trim(0L)
 # total_distance_travelled_pix
 
 # ------------------------------------
-# DONE:
+# DONE in NETWORK OUTPUT:
 # COLUMNS:
 # colony    colony_size x
 # treatment (two values: pathogen and control)  x
@@ -23,14 +23,9 @@ mallinfo::malloc.trim(0L)
 # period    ( pre/post chunks corresponding to the same time of day should have the same value in column "time_of_day") x
 # time_hours    x
 # time_of_day x
-#
 
-# #reference
-# individual_behavioural_data <- read.table("/home/cf19810/Documents/TEMP/individual_behavioural_data.txt",header=T,stringsAsFactors = F)
-# Time_dictionary_N <- unique(individual_behavioural_data[c("time_hours","time_of_day","period")])
-
-########################################################################################################
-################### IMPORTANT THINGS TO MODIFY #########################################################
+##############################################################################
+################### IMPORTANT THINGS TO MODIFY ###############################
 
 # UNIFORM Plot_Grooming_Pre-Post.R to the output of this script and the sourced functions
 # AGGREGATE SPACE USE FUNCTION FOR tag_hex_ID (we want 1 row per ant!)
@@ -47,13 +42,6 @@ mallinfo::malloc.trim(0L)
 # THE EXACT DATE IS IN /home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data/Grooming_Classifier_CrossVal_Adriano2022_RETURN_EXP_TIME_ZULU.csv
 
 ##############################################################################
-######
-#######
-##########
-#############
-##########
-#######
-######
 ##############################################################################
 # "https://formicidae-tracker.github.io/myrmidon/latest/index.html"
 
@@ -113,7 +101,6 @@ source(paste(BEH_FUNCTIONS, "trajectory_extraction.R", sep = "/"))
 Sys.setenv("PKG_CXXFLAGS"="-std=c++11") # required by merge_interactions.cpp
 sourceCpp(paste(BEH_FUNCTIONS, "merge_interactions.cpp", sep = "/"))
 # list.functions.in.file(paste(SCRIPTDIR,"NetworkProperties_v082.R",sep="/"), alphabetic = TRUE)
-
 
 #### FUNCTIONS
 # list files recursive up to a certain level (level defined by "n" parameter)
@@ -355,8 +342,6 @@ for (REP.n in 1:length(files_list)) {
 #       } # REP LOOP
     
 
-    
-    
     ### PERFORM THE FULL INTERACTION AND NETWORK ANALYSIS OUTSIDE OF THE HOURLY LOOP
     
     # # # Extract the minimum "From" time and maximum "To" time for each PERIOD
@@ -385,7 +370,6 @@ for (REP.n in 1:length(files_list)) {
       INTERACTIONS_FULL   <-  file.path(INTDIR,"full_interaction_lists",period_code,"observed", 
                                  paste(colony,colony_status,period_code,"interactions.txt",sep="_"))
 
-
     ############ GET INTERACTIONS ##########################
     if(file.exists(INTERACTIONS_FULL)){
       warning(paste(REP_TREAT,"|",colony,colony_status,period_code,"| already present, SKIP >>", sep=" "))
@@ -400,8 +384,8 @@ for (REP.n in 1:length(files_list)) {
       time_start <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"]) # time_stop minus 48 hours plus incremental time
       time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"To"]) # time_stop minus 45 hours plus incremental time
       # # TEMP TIME STOP
-      warning("using tiny time window for testing")
-      time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"] + 2*60)
+      # warning("using tiny time window for testing")
+      # time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"] + 2*60)
       # 
       # INTERACTIONS IN THIS FUNCTION ARE CALCULATED ACCORDING TO STROEYMEYT ET AL, SCIENCE 2018
       Interactions <- compute_Interactions(e = e, start = time_start, end = time_stop, max_time_gap = MAX_INTERACTION_GAP)
@@ -424,7 +408,6 @@ for (REP.n in 1:length(files_list)) {
         #assing time labels
         Interactions[which(Interactions$Starttime >= From_TIME_HOURS & Interactions$Starttime <= To_TIME_HOURS),"time_hours"]   <- TIME_HOURS
         Interactions[which(Interactions$Starttime >= From_TIME_HOURS & Interactions$Starttime <= To_TIME_HOURS),"time_of_day"]  <- TIME_OF_DAY
-        
       }
       
       # Add metadata info
@@ -489,14 +472,7 @@ for (REP.n in 1:length(files_list)) {
 
     ########################################
     ##### SAVE FILES IN FOLDER #############
-
-    # NOTE ON DIFFERNCES FROM SCIENCE 2018 PAPER:
-    # period is ("pre","post"), not ("after","before")
-    # treatment is ("Pathogen","Sham"), not ("pathogen","sham")
-    # status is linked to size of the colony, not ("treated","untreated") ant
-
   
-
   if (RUN_NETWORKS) {    
     ## Network properties Collective save (saved INSIDE the Network_analysis folder)
     if (file.exists(NET_properties_collective)) {
@@ -522,58 +498,18 @@ for (REP.n in 1:length(files_list)) {
     }
 }
 
-
     # start fresh
     NetworkProp_collective <- data.frame()
     NetworkProp_individual <- data.frame()
-    #Interactions_total     <- data.frame()
+    Interactions           <- data.frame()
     SpaceUsage             <- data.frame()
 
     # cleaning
     rm(list = ls()[which(!ls() %in% to_keep)])
     gc()
     mallinfo::malloc.trim(0L)
-
-
-    ######################################################
-    ### PLOTTING (1 col..., should be all)
-    # plot(AntTasks$delta_time_inside, col=as.factor(AntTasks$Exposed))
-
-    ####################################################################################
-    ### plot MEAN DELTA PER ANT SEPARATED BETWEEN NON EXPOSED AND EXPOSED, WITH COL. SIZE COMPARISON
-    ###################################################################################
   }
 
 
 loop_end_time <- Sys.time()
 print(paste("loop took ", as.numeric(difftime(loop_end_time, loop_start_time, units = "mins")), " minutes to complete"))
-
-
-
-
-
-
-
-
-
-
-################################################################################################################
-########## THE INFORMATION ON METADATA IS USELESS AND MISLEADING, REMOVE ######################################
-###############################################################################################################
-
-# ########## GET EXPOSED ANTS from METADATA
-# e.Ants <- e$ants
-# metadata$Exposed <- "no"
-# for (ant in e.Ants){
-#   individual  <- ant$ID
-#   #print(ant)
-#     if (TRUE %in% ant$getValues("Exposed")[,"values"]) { metadata[individual,"Exposed"] <- "exposed" }
-# }
-#
-# ########## GET QUEENS
-# metadata$IsQueen <- "no"
-# for (ant in e.Ants){
-#   individual  <- ant$ID
-#   #print(ant)
-#   if (TRUE %in% ant$getValues("IsQueen")[,"values"]) { metadata[individual,"IsQueen"] <- "queen" }
-# }
