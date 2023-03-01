@@ -101,16 +101,16 @@ compute_Interactions <- function(e, start, end, max_time_gap) { # min_cum_durati
   # Assign interaction pair
   # Interactions$pair <- paste(Interactions$ant1, Interactions$ant2, sep="_") ## ant 1 is always < ant 2, which makes things easier...
 
-  ## convert times to different formats
-  Interactions$T_start_UNIX <- as.POSIXct(Interactions$start, format = "%Y-%m-%dT%H:%M:%OSZ", origin = "1970-01-01", tz = "GMT")
-  Interactions$T_stop_UNIX <- as.POSIXct(Interactions$end, format = "%Y-%m-%dT%H:%M:%OSZ", origin = "1970-01-01", tz = "GMT")
+  # ## convert times to different formats
+  # Interactions$T_start_UNIX <- as.POSIXct(Interactions$start, format = "%Y-%m-%dT%H:%M:%OSZ", origin = "1970-01-01", tz = "GMT")
+  # Interactions$T_stop_UNIX <- as.POSIXct(Interactions$end, format = "%Y-%m-%dT%H:%M:%OSZ", origin = "1970-01-01", tz = "GMT")
 
   # calc duration (including start frame)
-  Interactions$duration <- round((Interactions$T_stop_UNIX - Interactions$T_start_UNIX + 1 / FRAME_RATE), N_DECIMALS)
+  Interactions$duration <- round((Interactions$end - Interactions$start + 1 / FRAME_RATE), N_DECIMALS)
 
   #assign time in sec to avoid issues on time management and matching
-  Interactions$Starttime <- round(as.numeric(Interactions$T_start_UNIX),N_DECIMALS)
-  Interactions$Stoptime <- round(as.numeric(Interactions$T_stop_UNIX),N_DECIMALS)
+  Interactions$Starttime <- round(as.numeric(Interactions$start),N_DECIMALS)
+  Interactions$Stoptime <- round(as.numeric(Interactions$end),N_DECIMALS)
   
   # round digits
   Interactions$ant1.mean.x          <- round(as.numeric(Interactions$ant1.mean.x),N_DECIMALS)
