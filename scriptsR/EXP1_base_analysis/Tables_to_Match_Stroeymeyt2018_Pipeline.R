@@ -89,13 +89,12 @@ write.table(treated_worker_list, file = file.path(SAVEDIR,"treated_worker_list.t
 #######################    info.txt    ###########################
 ##################################################################
 
-metadata_colony <- metadata_present[,c("colony","treatment_code","colony_size","REP_treat")]
-warning("BOX INFORMATION MISSING, ADD IT TO THE METADATA FILE AND TO THE R SCRIPT THAT CREATES IT!")
+metadata_colony <- metadata_present[,c("colony","treatment_code","box","colony_size","REP_treat")]
 metadata_colony <- unique(metadata_colony)
 
 info <- data.frame(colony = metadata_colony$colony,
                   treatment = metadata_colony$treatment_code,
-                  box = NA,
+                  box = metadata_colony$box,
                   colony_size = metadata_colony$colony_size,
                   Ynestmin = NA,
                   Ynestmax = NA,
