@@ -50,6 +50,7 @@ Get_metadata <- function() {
                                             identifEnd       = capture.output(print(id$end)), 
                                             AntTask1perc     = AntTasks[which(AntTasks$antID==ant$ID),"AntTask"],
                                             prop_time_outside= round(AntTasks[which(AntTasks$antID==ant$ID),"prop_time_outside"],3),
+                                            box              = e$spaces[[1]]$name, # tracking system
                                             #AntTask_num          = AntTasks[which(AntTasks$antID==ant$ID),"AntTask_num"],
                                             stringsAsFactors = F))
       }
