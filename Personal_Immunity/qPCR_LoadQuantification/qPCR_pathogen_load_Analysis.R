@@ -46,7 +46,7 @@ options(contrasts = c("contr.sum", "contr.poly"))
 
 
 ##### PLOT STYLES
-
+warning("in the future, the Style_and_functions script should be used!")
 # Create a custom color scale FOR COLONIES + treatments
 FullPal <- scales::viridis_pal(option = "D")(20)
 myColorsSmall <- tail(FullPal, 5)
@@ -317,11 +317,13 @@ plate_positions$AntID <- NULL
 plate_positions$Ori_Plate <- sub("\\_.*", "", plate_positions$fileName)
 plate_positions$Ori_Plate <- gsub("[PLAQUE]", "", plate_positions$Ori_Plate)
 plate_positions$Colony <- sub(".*\\-", "", plate_positions$fileName)
+#disregard the Colony information in DNA_Results as it could be wrong. use always metadata as reference.
+DNA_Results$Colony <- NULL
 # MERGE DNA_Results and plate_positions
 common_col_names <- intersect(names(DNA_Results), names(plate_positions))
 DNA_Results_annotated <- merge(DNA_Results, plate_positions, by = common_col_names, all.x = TRUE)
 # read metadata
-metadata <- read.table(paste(DATADIR, "/Metadata_Exp1_2021_2022-10-12.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
+metadata <- read.table(paste(DATADIR, "/Metadata_Exp1_2021_2023-02-27.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
 # rename cols to match the DNA results
 colnames(metadata)[which(colnames(metadata) == "REP_treat")] <- "Colony"
 # MERGE BASED ON TAG ID AS THE PLATE POSTION ANTidS ARE NOT RELIABLE (misalignment issue spotted for Q of R4BP, which had right TagID=228, but wrong antID (153 instead of 152). )
@@ -330,7 +332,7 @@ colnames(metadata)[which(colnames(metadata) == "tagIDdecimal")] <- "TagID"
 common_col_names1 <- intersect(names(DNA_Results_annotated), names(metadata))
 DNA_Results_annotated <- merge(DNA_Results_annotated, metadata, by = common_col_names1, all.x = TRUE)
 # ASSIGN QUEEN LABEL TO QUEEN INSTEAD OF NURSE (SHOULD BE FIXED IN METADATA!!!)
-DNA_Results_annotated[which(DNA_Results_annotated$IsQueen == TRUE), "AntTask"] <- "queen"
+DNA_Results_annotated[which(DNA_Results_annotated$IsQueen == TRUE), "AntTask1perc"] <- "queen"
 
 ###### filter objects below detection threshold of the qPCR machine.
 ## threshold calculated as the point of inflection of the values curve (scatterplot of the ordered Cts), getting the values of second derivative.
@@ -353,18 +355,20 @@ ggplot(
 
 # filter values above detection threshold
 # from Florent:
-# Claculated the M brunneum DNA standard to determine the spore detection limit by qPCR. Linearity in the CP as a function of the amount of DNA in in the sample (ng/µL) is lost at ~37 CP,
+# Calculated the M brunneum DNA standard to determine the spore detection limit by qPCR. Linearity in the CP as a function of the amount of DNA in in the sample (ng/µL) is lost at ~37 CP,
 # which indicates that CPs over 37 cannot be reliably analysed (= the samples have too few spores to be quantified /!\ it is not a “no DNA present”, this is a “DNA not detected”).
 # If you want to be permissive you can probably use even 38 as a threshold, it should not change much the results anyway.
 # A CP of 37 corresponds to a quantity of DNA of 0.0003 ng/µL in my plate. The conversion can be slightly different in your data because of inter-plate variations, but the threshold of 37 should be suitable for all plates.
-DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean > 37), "MbruDNA"] <- 0
 
-# #check objects with no values
-# No_CT_REPs <- toString(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
-# N_ants_NoCt <- length(DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0),"Colony"])
+#add detection threshold
+DNA_Results_annotated$above_detection_threshold <- "T"
+#over Ct threshold
+DNA_Results_annotated[which(DNA_Results_annotated$Ct_mean > 37), "above_detection_threshold"] <- "F"
+# when Ct is missing and 0.000001 is assigned
+DNA_Results_annotated[which(DNA_Results_annotated$MbruDNA == 0.000001), "above_detection_threshold"] <- "F"
 
 # remove  dead ants
-DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$AntTask)), ]
+DNA_Results_annotated <- DNA_Results_annotated[which(!is.na(DNA_Results_annotated$AntTask1perc)), ]
 # remove extra cols
 DNA_Results_annotated <- DNA_Results_annotated[, !(names(DNA_Results_annotated) %in% c("X.ScanTime", "tagIDdecimal", "surviv_time", "ExpStart", "ExpEnd", "Comment", "TagID", "tagIDdecimal", "qPCR_Plate", "qPCR_Well", "Ori_Plate", "Ori_Well", "Date", "fileName", "identifStart", "identifEnd"))]
 
@@ -384,7 +388,15 @@ levels(DNA_Results_annotated$Exposed)[levels(DNA_Results_annotated$Exposed) == "
 levels(DNA_Results_annotated$Exposed)[levels(DNA_Results_annotated$Exposed) == "FALSE"] <- "untreated"
 
 # Create new category Ant_status
-DNA_Results_annotated$Ant_status <- paste(DNA_Results_annotated$Exposed, DNA_Results_annotated$AntTask)
+DNA_Results_annotated$Ant_status <- paste(DNA_Results_annotated$Exposed, DNA_Results_annotated$AntTask1perc)
+
+# save output!
+write.csv(Meta_all_combs, file = "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen_Quantification_Data/Adriano_qPCR_pathogen_load_MASTER_REPORT.csv", row.names = FALSE)
+
+
+### remove samples above threshold
+DNA_Results_annotated <- DNA_Results_annotated[which(DNA_Results_annotated$above_detection_threshold =="T"), ]
+
 
 #####################################################################################
 ##################              STATS & PLOTS        ################################
@@ -544,7 +556,7 @@ warning("posthoc_list shows only 1 letter in cld ")
 table(DNA_Results_annotated$positive, DNA_Results_annotated$Treatment, DNA_Results_annotated$Ant_status)
 
 DNA_Results_ColPropPos <- DNA_Results_annotated %>%
-  group_by(AntTask, Exposed, treatment, Treatment, Ant_status) %>%
+  group_by(AntTask1perc, Exposed, treatment, Treatment, Ant_status) %>%
   summarise(count = n(), positive = sum(positive == 1))
 DNA_Results_ColPropPos$negative <- DNA_Results_ColPropPos$count - DNA_Results_ColPropPos$positive
 # prop of zero
@@ -592,8 +604,8 @@ SpaceUsage <- read.table(paste(WORKDIR, "/Data/Space_Usage.txt", sep = ""), head
 # freqList
 
 # REMOVE DEAD ANTS
-SpaceUsage <- SpaceUsage[which(!is.na(SpaceUsage$AntTask)), ]
-NetworkProp_individual <- NetworkProp_individual[which(!is.na(NetworkProp_individual$AntTask)), ]
+SpaceUsage <- SpaceUsage[which(!is.na(SpaceUsage$AntTask1perc)), ]
+NetworkProp_individual <- NetworkProp_individual[which(!is.na(NetworkProp_individual$AntTask1perc)), ]
 
 
 # Merge network data with the DNA results INDIVIDUAL MEANS
@@ -622,7 +634,7 @@ NetworkProp_individual$time_of_day <- factor(NetworkProp_individual$time_of_day,
 
 
 # ASSIGN QUEEN LABEL TO QUEEN INSTEAD OF NURSE (SHOULD BE FIXED IN METADATA!!!)
-NetworkProp_individual[which(NetworkProp_individual$IsQueen == TRUE), "AntTask"] <- "queen"
+NetworkProp_individual[which(NetworkProp_individual$IsQueen == TRUE), "AntTask1perc"] <- "queen"
 # keep only colonies that have been subjected to qPCR
 NetworkProp_individual <- NetworkProp_individual[NetworkProp_individual$Colony %in% unique(DNA_Results_annotated$Colony), ]
 
@@ -631,11 +643,11 @@ NetworkProp_individual <- NetworkProp_individual[, !(names(NetworkProp_individua
 
 # #calculate means by colony for plotting
 # #for aggregate dist
-# NetworkProp_ColMean <- NetworkProp_individual %>% group_by(Colony, AntTask, Exposed, treatment) %>% summarize( mean_distance_to_queen = mean(aggregated_distance_to_queen))
+# NetworkProp_ColMean <- NetworkProp_individual %>% group_by(Colony, AntTask1perc, Exposed, treatment) %>% summarize( mean_distance_to_queen = mean(aggregated_distance_to_queen))
 # # Remove duplicate rows
 # NetworkProp_ColMean <- NetworkProp_ColMean[!duplicated(NetworkProp_ColMean), ]
 # #for pathogen load
-# DNA_Results_ColMean <- DNA_Results_annotated %>% group_by(Colony, AntTask, Exposed, treatment,Treatment, Ant_status) %>% summarize( mean_MbruDNA = mean(MbruDNA))
+# DNA_Results_ColMean <- DNA_Results_annotated %>% group_by(Colony, AntTask1perc, Exposed, treatment,Treatment, Ant_status) %>% summarize( mean_MbruDNA = mean(MbruDNA))
 # DNA_Results_ColMean <- DNA_Results_ColMean[!duplicated(DNA_Results_ColMean), ]
 #
 # #add info from network to DNA_Results_annotated
@@ -647,7 +659,7 @@ NetworkProp_individual <- NetworkProp_individual[, !(names(NetworkProp_individua
 # calculate means by individual for stats (now in 3h blocks)
 # for aggregate dist
 NetworkProp_IndMean <- NetworkProp_individual %>%
-  group_by(period, Colony, AntID, AntTask, Exposed, treatment) %>%
+  group_by(period, Colony, AntID, AntTask1perc, Exposed, treatment) %>%
   summarize(mean_distance_to_queen = mean(aggregated_distance_to_queen), mean_distance_to_treated = mean(mean_aggregated_distance_to_treated))
 # Remove duplicate rows
 NetworkProp_IndMean <- NetworkProp_IndMean[!duplicated(NetworkProp_IndMean), ]
@@ -893,7 +905,7 @@ for (col_id in unique(DNA_Results_IndNet$Colony)) {
 
 # use the functions above to calculate the pooled SD and the N samples!
 DNA_Results_IndNet_DELTA <- DNA_Results_IndNet %>%
-  group_by(Treatment, time_of_day, Colony, AntID, AntTask, Ant_status, Exposed) %>%
+  group_by(Treatment, time_of_day, Colony, AntID, AntTask1perc, Ant_status, Exposed) %>%
   dplyr::summarise( # delta
     Norm_Qdist_postpre_diff = ((aggregated_distance_to_queen[match("post", period)] - aggregated_distance_to_queen[match("pre", period)]) / aggregated_distance_to_queen[match("pre", period)]) * 100,
     # Norm_Qdist_ord_postpre_diff = (aggregated_distance_to_queen_ordered[match("post", period)] - aggregated_distance_to_queen_ordered[match("pre", period)]) / aggregated_distance_to_queen_ordered[match("pre", period)]
@@ -929,13 +941,13 @@ posthoc_list <- compute_posthocs(PercDistQ)
 ###### AGGREGATE ALL, not time
 # Aggregate the data by Colony
 DNA_Results_IndNet_summ <- DNA_Results_IndNet %>%
-  group_by(Treatment, Colony, AntTask, Ant_status, Exposed, period) %>%
+  group_by(Treatment, Colony, AntTask1perc, Ant_status, Exposed, period) %>%
   summarise(MEAN_aggregated_distance_to_queen = mean(aggregated_distance_to_queen))
 
 # remove the colony level
 # calculate mean and SD by colony
 DNA_Results_IndNet_summ <- DNA_Results_IndNet_summ %>%
-  group_by(Treatment, AntTask, Ant_status, Exposed, period) %>%
+  group_by(Treatment, AntTask1perc, Ant_status, Exposed, period) %>%
   summarise(
     N_Count_REP = length(MEAN_aggregated_distance_to_queen),
     SD_aggregated_distance_to_queen = sd(MEAN_aggregated_distance_to_queen),
@@ -963,13 +975,13 @@ DNA_Results_IndNet_summ_DELTA <- as.data.frame(DNA_Results_IndNet_summ_DELTA)
 ###### AGGREGATE TO time_of_day LEVEL
 # Aggregate the data by Colony
 DNA_Results_IndNet_Time <- DNA_Results_IndNet %>%
-  group_by(Treatment, time_of_day, Colony, AntTask, Ant_status, Exposed, period) %>%
+  group_by(Treatment, time_of_day, Colony, AntTask1perc, Ant_status, Exposed, period) %>%
   summarise(MEAN_aggregated_distance_to_queen = mean(aggregated_distance_to_queen))
 
 # remove the colony level
 # calculate mean and SD by colony
 DNA_Results_IndNet_Time <- DNA_Results_IndNet_Time %>%
-  group_by(Treatment, time_of_day, AntTask, Ant_status, Exposed, period) %>%
+  group_by(Treatment, time_of_day, AntTask1perc, Ant_status, Exposed, period) %>%
   summarise(
     N_Count_REP = length(MEAN_aggregated_distance_to_queen),
     SD_aggregated_distance_to_queen = sd(MEAN_aggregated_distance_to_queen),
@@ -1187,7 +1199,7 @@ print(
 # posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
 # print(posthoc_Treatment_summary)
 
-# # POST-HOCs for AntTask by treatment
+# # POST-HOCs for AntTask1perc by treatment
 # posthoc_Ant_status <- emmeans(m1, specs = pairwise ~  Ant_status | Treatment) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2”
 # posthoc_Ant_status_summary<-summary(posthoc_Ant_status$contrasts)
 # print(posthoc_Ant_status_summary)
@@ -1284,5 +1296,5 @@ print(
 
 # ### keep ant task
 # DNA_Results_annotated_MEAN_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=mean, na.rm=T, na.action=na.pass, DNA_Results_annotated) #; colnames(Counts_by_Behaviour_CLEAN) [match("Actor",colnames(Counts_by_Behaviour_CLEAN))] <- "Count_byAnt"
-# DNA_Results_annotated_SE_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask, FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE_T) [match("MbruDNA",colnames(DNA_Results_annotated_SE_T))] <- "SD_MbruDNA"
+# DNA_Results_annotated_SE_T    <- aggregate(MbruDNA ~ Treatment + Exposed +AntTask1perc, FUN=std.error, na.rm=T, na.action=na.pass, DNA_Results_annotated) ; colnames(DNA_Results_annotated_SE_T) [match("MbruDNA",colnames(DNA_Results_annotated_SE_T))] <- "SD_MbruDNA"
 # DNA_Results_for_barplot_T    <-  plyr::join(x=DNA_Results_annotated_MEAN_T, y=DNA_Results_annotated_SE_T, type = "full", match = "all")
