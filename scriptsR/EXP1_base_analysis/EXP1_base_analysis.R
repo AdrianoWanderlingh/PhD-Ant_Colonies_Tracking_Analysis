@@ -356,8 +356,8 @@ for (REP.n in 1:length(files_list)) {
     
       #conform naming to science2018
       # colony code
-      REP_NUM           <- substring(REP_TREAT, 2, nchar(REP_TREAT)-1)
-      colony            <- paste("colony", paste(rep(0,3-nchar(REP_NUM)),collapse=""), REP_NUM,sep="")
+      REP_NUM           <- substring(REP_TREAT, 2, nchar(REP_TREAT))
+      colony            <- paste("colony", paste(rep(0,4-nchar(REP_NUM)),collapse=""), REP_NUM,sep="")
       # colony_status
       status_char       <- substr(REP_TREAT, nchar(REP_TREAT), nchar(REP_TREAT))
       colony_status     <- ifelse(status_char == "P", "pathogen", ifelse(status_char == "S", "control", NA))
@@ -365,14 +365,14 @@ for (REP.n in 1:length(files_list)) {
       period_code       <- ifelse(PERIOD == "pre", "PreTreatment", ifelse(PERIOD == "post", "PostTreatment", NA))
       size_char         <- substr(REP_TREAT, nchar(REP_TREAT)-1, nchar(REP_TREAT)-1)
       size_status       <- ifelse(size_char == "S", "small", ifelse(size_char == "B", "big", NA))
-      treatment_code    <- paste(colony_status,size_status,sep="_")
+      treatment_code    <- paste(colony_status,size_status,sep=".")
       # DESTINATION FOLDER
       INTERACTIONS_FULL   <-  file.path(INTDIR,"full_interaction_lists",period_code,"observed", 
-                                 paste(colony,colony_status,period_code,"interactions.txt",sep="_"))
+                                 paste(colony,treatment_code,period_code,"interactions.txt",sep="_"))
 
     ############ GET INTERACTIONS ##########################
     if(file.exists(INTERACTIONS_FULL)){
-      warning(paste(REP_TREAT,"|",colony,colony_status,period_code,"| already present, SKIP >>", sep=" "))
+      warning(paste(REP_TREAT,"|",colony,treatment_code,period_code,"| already present, SKIP >>", sep=" "))
     }
       
     if(!file.exists(INTERACTIONS_FULL)){
@@ -426,9 +426,9 @@ for (REP.n in 1:length(files_list)) {
       
       ## Interactions save (saved INSIDE the Network_analysis folder)
       #if (file.exists(INTERACTIONS_FULL)) {
-      #  write.table(Interactions, file = INTERACTIONS_FULL, append = T, col.names = F, row.names = F, quote = T, sep = ",")
+      #  write.table(Interactions, file = INTERACTIONS_FULL, append = T, col.names = F, row.names = F, quote = F, sep = ",")
       #} else {
-        write.table(Interactions, file = INTERACTIONS_FULL, append = F, col.names = T, row.names = F, quote = T, sep = ",")
+        write.table(Interactions, file = INTERACTIONS_FULL, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
       #}
       
       ### split output into bins
@@ -443,11 +443,9 @@ for (REP.n in 1:length(files_list)) {
           print(paste("TIME_HOURS", TH,"TIME_OF_DAY", TD,"PERIOD",PERIOD,sep=" "))
           
           INTERACTIONS_BINNED <-  file.path(INTDIR,"binned_interaction_lists",period_code,"observed", 
-                                            paste(colony,colony_status,period_code,TH,TD,"interactions.txt",sep="_"))
-          
-          # check the expected columns in nathalie's binned_interactions
-          #save object by TH and TD
-          write.table(Interactions[which(Interactions$time_hours==TIME_HOURS),], file = INTERACTIONS_BINNED, append = F, col.names = T, row.names = F, quote = T, sep = ",")
+                                            paste(colony,treatment_code,period_code,TH,TD,"interactions.txt",sep="_"))
+                    #save object by TH and TD
+          write.table(Interactions[which(Interactions$time_hours==TIME_HOURS),], file = INTERACTIONS_BINNED, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
 
           }
         }
@@ -476,25 +474,25 @@ for (REP.n in 1:length(files_list)) {
   if (RUN_NETWORKS) {    
     ## Network properties Collective save (saved INSIDE the Network_analysis folder)
     if (file.exists(NET_properties_collective)) {
-      write.table(NetworkProp_collective, file = NET_properties_collective, append = T, col.names = F, row.names = F, quote = T, sep = ",")
+      write.table(NetworkProp_collective, file = NET_properties_collective, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
     } else {
-      write.table(NetworkProp_collective, file = NET_properties_collective, append = F, col.names = T, row.names = F, quote = T, sep = ",")
+      write.table(NetworkProp_collective, file = NET_properties_collective, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
     }
 
     ## Network properties Individual save (saved INSIDE the Network_analysis folder)
     if (file.exists(NET_properties_individual)) {
-      write.table(NetworkProp_individual, file = NET_properties_individual, append = T, col.names = F, row.names = F, quote = T, sep = ",")
+      write.table(NetworkProp_individual, file = NET_properties_individual, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
     } else {
-      write.table(NetworkProp_individual, file = NET_properties_individual, append = F, col.names = T, row.names = F, quote = T, sep = ",")
+      write.table(NetworkProp_individual, file = NET_properties_individual, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
     }
 }
 
     ## Space Use save (saved INSIDE the Network_analysis folder)
     if (RUN_SPACEUSE) {
     if (file.exists(SPACE_USE)) {
-      write.table(SpaceUsage, file = SPACE_USE, append = T, col.names = F, row.names = F, quote = T, sep = ",")
+      write.table(SpaceUsage, file = SPACE_USE, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
     } else {
-      write.table(SpaceUsage, file = SPACE_USE, append = F, col.names = T, row.names = F, quote = T, sep = ",")
+      write.table(SpaceUsage, file = SPACE_USE, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
     }
 }
 

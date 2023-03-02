@@ -26,12 +26,12 @@ metadata_present$colony <- NA
 ##### ADD EXTRA COLS TO METADATA
 #conform naming to science2018
 # colony code
-metadata_present$REP_NUM           <- substring(metadata_present$REP_treat, 2, nchar(metadata_present$REP_treat)-1)
-metadata_present$N_CHAR            <-  3-nchar(metadata_present$REP_NUM)
+metadata_present$REP_NUM           <- substring(metadata_present$REP_treat, 2, nchar(metadata_present$REP_treat))
+metadata_present$N_CHAR            <-  4-nchar(metadata_present$REP_NUM)
 #rep function is unhappy if the reps are 0...
 #paste("colony", paste(rep(0,N_CHAR),collapse=""), metadata_present$REP_NUM,sep="")
 metadata_present[which(metadata_present$N_CHAR==0),"colony"] <- paste("colony", metadata_present[which(metadata_present$N_CHAR==0),"REP_NUM"],sep="")
-metadata_present[which(metadata_present$N_CHAR==1),"colony"] <- paste("colony", 1, metadata_present[which(metadata_present$N_CHAR!=0),"REP_NUM"],sep="")
+metadata_present[which(metadata_present$N_CHAR==1),"colony"] <- paste("colony", 0, metadata_present[which(metadata_present$N_CHAR!=0),"REP_NUM"],sep="")
 # colony_status
 metadata_present$status_char       <- substr(metadata_present$REP_treat, nchar(metadata_present$REP_treat), nchar(metadata_present$REP_treat))
 metadata_present$colony_status     <- ifelse(metadata_present$status_char  == "P", "pathogen", ifelse(metadata_present$status_char  == "S", "control", NA))
@@ -39,16 +39,16 @@ metadata_present$colony_status     <- ifelse(metadata_present$status_char  == "P
 #period_code       <- ifelse(PERIOD == "pre", "PreTreatment", ifelse(PERIOD == "post", "PostTreatment", NA))
 metadata_present$size_char         <- substr(metadata_present$REP_treat, nchar(metadata_present$REP_treat)-1, nchar(metadata_present$REP_treat)-1)
 metadata_present$size_status       <- ifelse(metadata_present$size_char  == "S", "small", ifelse(metadata_present$size_char  == "B", "big", NA))
-metadata_present$treatment_code    <- paste(metadata_present$colony_status ,metadata_present$size_status,sep="_")
+metadata_present$treatment_code    <- paste(metadata_present$colony_status ,metadata_present$size_status,sep=".")
 
 ##### ADD EXTRA COLS TO PATHOHEN LOAD DATA
 # colony code
-pathogen_load$REP_NUM           <- substring(pathogen_load$Colony, 2, nchar(pathogen_load$Colony)-1)
-pathogen_load$N_CHAR            <-  3-nchar(pathogen_load$REP_NUM)
+pathogen_load$REP_NUM           <- substring(pathogen_load$Colony, 2, nchar(pathogen_load$Colony))
+pathogen_load$N_CHAR            <-  4-nchar(pathogen_load$REP_NUM)
 #rep function is unhappy if the reps are 0...
 #paste("colony", paste(rep(0,N_CHAR),collapse=""), pathogen_load$REP_NUM,sep="")
 pathogen_load[which(pathogen_load$N_CHAR==0),"colony"] <- paste("colony", pathogen_load[which(pathogen_load$N_CHAR==0),"REP_NUM"],sep="")
-pathogen_load[which(pathogen_load$N_CHAR==1),"colony"] <- paste("colony", 1, pathogen_load[which(pathogen_load$N_CHAR!=0),"REP_NUM"],sep="")
+pathogen_load[which(pathogen_load$N_CHAR==1),"colony"] <- paste("colony", 0, pathogen_load[which(pathogen_load$N_CHAR!=0),"REP_NUM"],sep="")
 # colony_status
 pathogen_load$status_char       <- substr(pathogen_load$Colony, nchar(pathogen_load$Colony), nchar(pathogen_load$Colony))
 pathogen_load$colony_status     <- ifelse(pathogen_load$status_char  == "P", "pathogen", ifelse(pathogen_load$status_char  == "S", "control", NA))
@@ -56,7 +56,7 @@ pathogen_load$colony_status     <- ifelse(pathogen_load$status_char  == "P", "pa
 #period_code       <- ifelse(PERIOD == "pre", "PreTreatment", ifelse(PERIOD == "post", "PostTreatment", NA))
 pathogen_load$size_char         <- substr(pathogen_load$Colony, nchar(pathogen_load$Colony)-1, nchar(pathogen_load$Colony)-1)
 pathogen_load$size_status       <- ifelse(pathogen_load$size_char  == "S", "small", ifelse(pathogen_load$size_char  == "B", "big", NA))
-pathogen_load$treatment_code    <- paste(pathogen_load$colony_status ,pathogen_load$size_status,sep="_")
+pathogen_load$treatment_code    <- paste(pathogen_load$colony_status ,pathogen_load$size_status,sep=".")
 
 
 ##################################################################
@@ -69,7 +69,7 @@ task_groups <- data.frame(colony = metadata_present$colony,
                           treatment = metadata_present$treatment_code,
                           REP_treat= metadata_present$REP_treat)
 warning("task_group = decide_threshold")
-write.table(task_groups, file = file.path(SAVEDIR,"task_groups.txt"), append = F, col.names = T, row.names = F, quote = T, sep = ",")
+write.table(task_groups, file = file.path(SAVEDIR,"task_groups.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
 
 ##################################################################
 ##############     treated_worker_list.txt    ####################
@@ -83,7 +83,7 @@ treated_worker_list <- data.frame(colony = metadata_treated$colony,
                                   treatment = metadata_treated$treatment_code,
                                   REP_treat= metadata_treated$REP_treat)
 
-write.table(treated_worker_list, file = file.path(SAVEDIR,"treated_worker_list.txt"), append = F, col.names = T, row.names = F, quote = T, sep = ",")
+write.table(treated_worker_list, file = file.path(SAVEDIR,"treated_worker_list.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
 
 ##################################################################
 #######################    info.txt    ###########################
@@ -103,7 +103,7 @@ info <- data.frame(colony = metadata_colony$colony,
                   colony_age = NA,
                   REP_treat= metadata_colony$REP_treat)
 
-write.table(info, file = file.path(SAVEDIR,"info.txt"), append = F, col.names = T, row.names = F, quote = T, sep = ",")
+write.table(info, file = file.path(SAVEDIR,"info.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
 
 ##################################################################
 #####################    qPCR_file.txt    ########################
@@ -122,4 +122,4 @@ qPCR_file <- data.frame(colony = pathogen_load$colony,
                         REP_treat= pathogen_load$Colony)
 
 
-write.table(qPCR_file, file = file.path(SAVEDIR,"qPCR","qPCR_file.txt"), append = F, col.names = T, row.names = F, quote = T, sep = ",")
+write.table(qPCR_file, file = file.path(SAVEDIR,"qPCR","qPCR_file.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
