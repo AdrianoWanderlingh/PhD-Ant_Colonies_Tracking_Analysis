@@ -147,9 +147,12 @@ Time_dictionary$period <- ifelse(Time_dictionary$time_hours<0, "pre", "post")
 OUTPUT_FOLDER <-  "Exp1_Results_2023" # paste0("Exp1_Results_", Sys.Date())
 
 #### FLAGS
-RUN_SPACEUSE <- FALSE
-RUN_NETWORKS <- FALSE
-warning(paste("RUN_SPACEUSE is set to",RUN_SPACEUSE,"\nRUN_NETWORKS is set to",RUN_NETWORKS,sep=" "))
+RUN_INTERACT     <- FALSE
+RUN_SPACEUSE     <- TRUE
+RUN_NETWORKS     <- FALSE
+warning(paste("RUN_INTERACT is set to:",RUN_INTERACT,
+              "\nRUN_SPACEUSE is set to:",RUN_SPACEUSE,
+              "\nRUN_NETWORKS is set to:",RUN_NETWORKS,sep="\t"))
 
 ## TIME WINDOW SHIFT. WARNING: THIS IS AN APPROXIMATION. IN THE FUTURE, THE TIME OF EXP ANTS RETURN PER TRACKING SYSTEM SHOULD BE USED!
 #window_shift <- 60 * 15 # approx N of minutes that where given at the end as leeway, minutes can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
@@ -219,7 +222,7 @@ for (REP.n in 1:length(files_list)) {
     
     #Interactions_total <- data.frame()
     Interactions_REP_TREAT <- data.frame()
-    SpaceUsage <- data.frame()
+    #SpaceUsage <- data.frame()
 
     cat(paste("########################################\n",basename(REP.FILES)),sep="") ## }}
     # open experiment
@@ -322,27 +325,12 @@ for (REP.n in 1:length(files_list)) {
 #         # # stack
 #         # NetworkProp_individual <- rbind(NetworkProp_individual, NetworkProp_individual_hour)
 # 
-#         ############ SPACE USE: INDIVIDUAL ##########################
-#         # SPACE USAGE
-#         SpaceUsage_hour <- SpaceUse(e = e, start = time_start, end = time_stop)
-# 
-#         # Add metadata info
-#         SpaceUsage_hour <- cbind(data.frame(
-#           randy = REP.FILES, REP_treat = REP_TREAT, colony_size = COLONY_SIZE, period = PERIOD, time_hours = TIME_HOURS, time_of_day = TIME_OF_DAY, From, To,
-#           SpaceUsage_hour,
-#           stringsAsFactors = F
-#         ))
-# 
-#         # stack
-#         SpaceUsage <- rbind(SpaceUsage, SpaceUsage_hour)
-# 
-#         #####################################################################################################
 #       }
 #         }
 #       } # REP LOOP
     
 
-    ### PERFORM THE FULL INTERACTION AND NETWORK ANALYSIS OUTSIDE OF THE HOURLY LOOP
+    ### PERFORM THE FULL INTERACTION AND NETWORK ANALYSIS OUTSIDE OF THE HOURLY LOOP #########################
     
     # # # Extract the minimum "From" time and maximum "To" time for each PERIOD
     Period_windows <- data.frame(Period = c("pre","post")
@@ -366,6 +354,18 @@ for (REP.n in 1:length(files_list)) {
       size_char         <- substr(REP_TREAT, nchar(REP_TREAT)-1, nchar(REP_TREAT)-1)
       size_status       <- ifelse(size_char == "S", "small", ifelse(size_char == "B", "big", NA))
       treatment_code    <- paste(colony_status,size_status,sep=".")
+      
+      # Select the full PERIOD (24h)
+      cat(paste("#######","period:", PERIOD, sep= " "))
+      #time_start <- as.numeric(Period_windows[which(Period_windows$Period==PERIOD),"From"]) # time_stop minus 48 hours plus incremental time
+      time_start <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"]) # time_stop minus 48 hours plus incremental time
+      time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"To"]) # time_stop minus 45 hours plus incremental time
+      ##TEMP TIME STOP
+      # warning("using tiny time window for testing")
+      # time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"] + 2*60)
+      
+      
+      if (RUN_INTERACT) {
       # DESTINATION FOLDER
       INTERACTIONS_FULL   <-  file.path(INTDIR,"full_interaction_lists",period_code,"observed", 
                                  paste(colony,treatment_code,period_code,"interactions.txt",sep="_"))
@@ -377,16 +377,6 @@ for (REP.n in 1:length(files_list)) {
       
     if(!file.exists(INTERACTIONS_FULL)){
     
-      # Select the full PERIOD (24h)
-      cat(paste("#######","period:", PERIOD, sep= " "))
-      time_start <- as.numeric(Period_windows[which(Period_windows$Period==PERIOD),"From"]) # time_stop minus 48 hours plus incremental time
-      
-      time_start <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"]) # time_stop minus 48 hours plus incremental time
-      time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"To"]) # time_stop minus 45 hours plus incremental time
-      # # TEMP TIME STOP
-      # warning("using tiny time window for testing")
-      # time_stop <- fmTimeCreate(offset = Period_windows[which(Period_windows$Period==PERIOD),"From"] + 2*60)
-      # 
       # INTERACTIONS IN THIS FUNCTION ARE CALCULATED ACCORDING TO STROEYMEYT ET AL, SCIENCE 2018
       Interactions <- compute_Interactions(e = e, start = time_start, end = time_stop, max_time_gap = MAX_INTERACTION_GAP)
       
@@ -416,12 +406,8 @@ for (REP.n in 1:length(files_list)) {
         stringsAsFactors = F
       ))
       
-      #interactions str
-      #Tag1 Tag2 Startframe Stopframe Starttime Stoptime Box Xcoor1 Ycoor1 Angle1 Xcoor2 Ycoor2 Angle2 Direction Detections time_hours time_of_day colony treatment
-      #112 564 800219 800458 1415277843.35 1415277963.35 61 2133 90 -15775 2034 99 270 -13 647 0 12 colony020 pathogen_big
       # extras not present in Science files: (added at the end of the file output)
       #"REP_treat","period","ant1.zones","ant2.zones","duration"
-      
       Interactions <- Interactions[,c("Tag1","Tag2","Startframe","Stopframe","Starttime","Stoptime","Box","Xcoor1","Ycoor1","Angle1","Xcoor2","Ycoor2","Angle2","Direction","Detections","time_hours","time_of_day","colony","treatment","REP_treat","period","ant1.zones","ant2.zones","duration")]
       
       ## Interactions save (saved INSIDE the Network_analysis folder)
@@ -436,7 +422,6 @@ for (REP.n in 1:length(files_list)) {
         print(paste0("split files into 3-hours bins"))
         
         for (TIME_HOURS in unique(Interactions$time_hours)) {
-          
           #labels for subsets
           TH <- paste0("TH",unique(Interactions[which(Interactions$time_hours==TIME_HOURS),"time_hours"]))
           TD <- paste0("TD",unique(Interactions[which(Interactions$time_hours==TIME_HOURS),"time_of_day"]))
@@ -446,11 +431,59 @@ for (REP.n in 1:length(files_list)) {
                                             paste(colony,treatment_code,period_code,TH,TD,"interactions.txt",sep="_"))
                     #save object by TH and TD
           write.table(Interactions[which(Interactions$time_hours==TIME_HOURS),], file = INTERACTIONS_BINNED, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+          }
+    }
+      }# RUN_INTERACT
+      
+      if (RUN_SPACEUSE) {
+        print("Computing SpaceUse based on 24h time-window pre AND post exposure")
+        # TIME_HOURS zero is the moment of exposed ants return
+        for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)]) { ## increments by 3 hours for 48 hours
+          
+          #time windows
+          time_start_h <- fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 24) * TimeWind)) # time_stop minus 48 hours plus incremental time
+          time_stop_h  <- fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 21) * TimeWind)) # time_stop minus 45 hours plus incremental time
+          
+          # TIME_OF_DAY
+          TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
 
+          ############ SPACE USE ##########################
+          # SPACE USAGE
+          SpaceUsage_hour <- SpaceUse(e = e, start = time_start_h, end = time_stop_h)
+          # Add metadata info
+          SpaceUsage_hour <- cbind(data.frame(
+            colony = colony,
+            colony_size = unique(metadata[which(metadata$REP_treat==REP_TREAT),"colony_size"]),
+            treatment = treatment_code,
+            tag = ,
+            age = 0,
+            status = ,
+            period = PERIOD,
+            time_hours = TIME_HOURS,
+            time_of_day = TIME_OF_DAY,
+            SpaceUsage_hour,
+            REP_treat = REP_TREAT,
+            stringsAsFactors = F
+          ))
+
+          
+          warning("ADD COMPUTATIONS AND SAVE FILE ITERATIVELY ON ITSELF, ISIDE APPROPRIATE FOLDER")
+          # add task, exposure and status (large, small)  info to SpaceUsage
+
+            #SpaceUsage <- dplyr::left_join(SpaceUsage, metadata[c("size_treat", "status", "treatment", "REP_treat", "antID", "Exposed", "AntTask")], by = c("REP_treat", "antID")) # Apply left_join dplyr function
+
+            ## Space Use save (saved INSIDE the Network_analysis folder)
+            if (file.exists(SPACE_USE)) {
+              write.table(SpaceUsage, file = SPACE_USE, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
+            } else {
+              write.table(SpaceUsage, file = SPACE_USE, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+            }
+          
+          
+          
           }
         }
-      
-    } # PERIOD
+      } # PERIOD
     }
     
   
@@ -461,17 +494,10 @@ for (REP.n in 1:length(files_list)) {
 
     # add status (large, small) info to NetworkProp_individual
     NetworkProp_individual <- dplyr::left_join(NetworkProp_individual, unique(metadata[c("size_treat", "status", "treatment", "REP_treat")]), by = "REP_treat") # Apply left_join dplyr function
-}
-
-    # add task, exposure and status (large, small)  info to SpaceUsage
-    if (RUN_SPACEUSE) {
-    SpaceUsage <- dplyr::left_join(SpaceUsage, metadata[c("size_treat", "status", "treatment", "REP_treat", "antID", "Exposed", "AntTask")], by = c("REP_treat", "antID")) # Apply left_join dplyr function
-}
 
     ########################################
     ##### SAVE FILES IN FOLDER #############
   
-  if (RUN_NETWORKS) {    
     ## Network properties Collective save (saved INSIDE the Network_analysis folder)
     if (file.exists(NET_properties_collective)) {
       write.table(NetworkProp_collective, file = NET_properties_collective, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
@@ -487,27 +513,17 @@ for (REP.n in 1:length(files_list)) {
     }
 }
 
-    ## Space Use save (saved INSIDE the Network_analysis folder)
-    if (RUN_SPACEUSE) {
-    if (file.exists(SPACE_USE)) {
-      write.table(SpaceUsage, file = SPACE_USE, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
-    } else {
-      write.table(SpaceUsage, file = SPACE_USE, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
-    }
-}
-
     # start fresh
     NetworkProp_collective <- data.frame()
     NetworkProp_individual <- data.frame()
     Interactions           <- data.frame()
-    SpaceUsage             <- data.frame()
+    SpaceUsage_hour        <- data.frame()
 
     # cleaning
     rm(list = ls()[which(!ls() %in% to_keep)])
     gc()
     mallinfo::malloc.trim(0L)
   }
-
 
 loop_end_time <- Sys.time()
 print(paste("loop took ", as.numeric(difftime(loop_end_time, loop_start_time, units = "mins")), " minutes to complete"))

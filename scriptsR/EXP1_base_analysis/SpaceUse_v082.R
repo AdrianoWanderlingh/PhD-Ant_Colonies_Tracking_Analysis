@@ -1,7 +1,6 @@
 
 ################## GET ZONES usage ###################################
-SpaceUse <- function(e, time_start, time_stop){
-  print("Computing SpaceUse based on 48h time-window before AND after exposure")
+SpaceUse <- function(e, start, end){
   
   #required packages
   require(lubridate)
@@ -24,20 +23,32 @@ SpaceUse <- function(e, time_start, time_stop){
     AntID_list <- c(AntID_list,e$ants[[ant]]$ID)}
 
     #   print(paste(" Time interval from hour",HOUR_start,"to",(HOUR_start-TimeWindow),"until e end",sep = " "))
-    positions                 <- fmQueryComputeAntTrajectories(e,time_start,time_stop,maximumGap = fmHour(24*365),computeZones = TRUE,singleThreaded=FALSE)
+    positions                 <- fmQueryComputeAntTrajectories(e,start,end,maximumGap = fmHour(24*365),computeZones = TRUE,singleThreaded=FALSE)
     positions_summaries       <- positions$trajectories_summary
     positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
     positions_list            <- positions$trajectories
     
     ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
-    nrow(positions_summaries)==length(positions_list)
+    if(!(nrow(positions_summaries)==length(positions_list)))stop("number of rows of positions_summaries is not equal to the length of positions_list")
     ####2/ always make sure that positions_summaries is ordered correctly, using the index column
     positions_summaries <- positions_summaries[order(positions_summaries$index),]
     ###this ensures that the first row in positions_summaries corresponds to the first trajectory in positions_list, etc.
     for ( ant_index in 1:length(positions_list)) {
       positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]%in%foraging_zone))
       positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]%in%nest_zone))
-    }
+      positions_summaries[ant_index,"prop_time_outside"] <- positions_summaries[ant_index,"nb_frames_outside"] /(positions_summaries[ant_index,"nb_frames_outside"] + positions_summaries[ant_index,"nb_frames_inside"])
+      positions_summaries[ant_index,"proportion_time_active"] 
+      warning("continue from here")
+      #is going to be a bit long:
+      # get from *_process trajectories all the elements to "2. cut trajectory into bouts of activity vs. inactivity"
+      # get sums: sum(bouts$total_dist,na.rm=T)
+      positions_summaries[ant_index,"average_bout_speed_pixpersec"]
+      positions_summaries[ant_index,"total_distance_travelled_pix"]
+      # prop_time_outside = ,
+      # proportion_time_active = ,
+      # average_bout_speed_pixpersec = ,
+      # total_distance_travelled_pix = ,
+      }
     #match antID and tagID (live tracking gives tagID). 
     IDs <- e$identificationsAt(fmTimeCreate(offset=fmQueryGetDataInformations(e)$start))
     IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
@@ -67,13 +78,15 @@ SpaceUse <- function(e, time_start, time_stop){
   SpaceUsage <- rbind(SpaceUsage, missing_ants_table)
   }
   SpaceUsage <- SpaceUsage[order(SpaceUsage$antID),]
-  
+  #rename antId to Tag to comply with Science2018
+  colnames(SpaceUsage)[which(colnames(SpaceUsage)=="antID")] <- "Tag"
+  SpaceUsage$tag_hex_ID <- NULL
   
   rm(list=ls()[which(!ls()%in%c("SpaceUsage"))]) #close experiment
   gc()
   mallinfo::malloc.trim(0L)
   
-  print("SpaceUse computed")
+  #print("SpaceUse computed")
   ##RETURN OUTPUT
   return(SpaceUsage)
 

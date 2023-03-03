@@ -39,19 +39,19 @@ for (i in seq_along(MAX)) {
   ANT_TASK_PERC <- paste0("AntTask", MAX[i]*100, "perc")
   metadata_present[which(metadata_present$prop_time_outside <= MAX[i]), ANT_TASK_PERC] <- "nurse"
   metadata_present[which(metadata_present$prop_time_outside > MAX[i]), ANT_TASK_PERC] <- "forager"
-
+  metadata_present[which(metadata_present$IsQueen ==T), ANT_TASK_PERC] <- "queen"
 #remove dead ants
-metadata_present <- metadata_present[which(metadata_present$IsAlive==TRUE),]
+#metadata_present <- metadata_present[which(metadata_present$IsAlive==TRUE),]
 
 #AntTasks_by_col <- dcast(metadata_present, size_treat + REP_treat ~ AntTask, fun.aggregate = length)
 AntTasks_by_col <- metadata_present %>%
   group_by(!!sym(ANT_TASK_PERC), size_treat, REP_treat) %>%
-  summarize(occurrences = n())
+  summarise(occurrences = n())
 
 #remove NAs
-AntTasks_by_col <- AntTasks_by_col[!is.na(AntTasks_by_col[[ANT_TASK_PERC]]),]
+#AntTasks_by_col <- AntTasks_by_col[!is.na(AntTasks_by_col[[ANT_TASK_PERC]]),]
 #remove Q
-AntTasks_by_col <- AntTasks_by_col[which(AntTasks_by_col[[ANT_TASK_PERC]]!="queen"),]
+#AntTasks_by_col <- AntTasks_by_col[which(AntTasks_by_col[[ANT_TASK_PERC]]!="queen"),]
 
 #proportion of ants by task group
 AntTasks_by_col_prop <- AntTasks_by_col %>%
@@ -77,7 +77,10 @@ plots[[i]] <- p
 # Combine ggplots into a grid
 grid.arrange(grobs = plots, nrow = 1, ncol = 4)
 
+metadata_present <- select(metadata_present, -c("AntTask1perc","AntTask3perc","AntTask4perc"))
+colnames(metadata_present)[which(colnames(metadata_present)=="AntTask2perc")] <- "AntTask"
 
+write.table(metadata_present,file=file.path(DATADIR,"Metadata_Exp1_2021_2023-02-27.txt"),append=F,col.names=T,row.names=F,quote=T,sep=",")
 
 
 ##################################################################

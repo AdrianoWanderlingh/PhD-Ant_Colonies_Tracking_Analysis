@@ -5,6 +5,20 @@
 ### tables from metadata information
 library(reshape2)
 library(dplyr)
+library(FortMyrmidon)
+
+#### FUNCTIONS
+#list files recursive up to a certain level (level defined by "n" parameter)
+list.dirs.depth.n <- function(p, n) {
+  res <- list.dirs(p, recursive = FALSE)
+  if (n > 1) {
+    add <- list.dirs.depth.n(res, n-1)
+    c(res, add)
+  } else {
+    res
+  }
+}
+
 
 USER <- "supercompAdriano"
 
@@ -65,10 +79,9 @@ pathogen_load$treatment_code    <- paste(pathogen_load$colony_status ,pathogen_l
 
 task_groups <- data.frame(colony = metadata_present$colony,
                           tag =  metadata_present$antID,
-                          task_group = "decide_threshold",
+                          task_group = metadata_present$AntTask,
                           treatment = metadata_present$treatment_code,
                           REP_treat= metadata_present$REP_treat)
-warning("task_group = decide_threshold")
 write.table(task_groups, file = file.path(SAVEDIR,"task_groups.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
 
 ##################################################################
@@ -123,3 +136,113 @@ qPCR_file <- data.frame(colony = pathogen_load$colony,
 
 
 write.table(qPCR_file, file = file.path(SAVEDIR,"qPCR","qPCR_file.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+
+##################################################################
+#####################    tag_files.txt    ########################
+##################################################################
+
+### GET EXP END TIME FOR EACH REP AND ASSIGN PRE-POST TIME!
+#list subdirectories in parent folder EXPERIMENT_DATA
+files_list <- list.dirs.depth.n(DATADIR, n = 1)
+#select REP folders
+files_list <- files_list[grep("REP",files_list)]
+
+# replicate folder
+for (REP.n in 1:length(files_list)) {
+  # REP.n <- 1    #temp
+  REP.folder      <- files_list[REP.n]
+  REP.files       <- list.files(REP.folder, pattern = "CapsuleDef2018_q.myr")
+  REP.filefolder  <- paste(REP.folder,REP.files,sep="/")
+  
+  #replicate file
+  for (REP.FILES in REP.filefolder) {
+    #get substring in variable until R9BS_
+    # REP.FILES <- REP.filefolder[2]
+    REP_treat <- sub("\\_.*", "", basename(REP.FILES))
+    
+    
+    #conform naming to science2018
+    # colony code
+    REP_NUM           <- substring(REP_treat, 2, nchar(REP_treat))
+    colony            <- paste("colony", paste(rep(0,4-nchar(REP_NUM)),collapse=""), REP_NUM,sep="")
+    # colony_status
+    status_char       <- substr(REP_treat, nchar(REP_treat), nchar(REP_treat))
+    colony_status     <- ifelse(status_char == "P", "pathogen", ifelse(status_char == "S", "control", NA))
+    # treatment code
+    size_char         <- substr(REP_treat, nchar(REP_treat)-1, nchar(REP_treat)-1)
+    size_status       <- ifelse(size_char == "S", "small", ifelse(size_char == "B", "big", NA))
+    treatment_code    <- paste(colony_status,size_status,sep=".")
+    
+    print(paste(REP_treat,colony,treatment_code,sep=" | ")) ##}}
+    #open experiment
+    e <- fmExperimentOpen(REP.FILES)
+    exp.Ants  <- e$ants
+    exp_end   <- fmQueryGetDataInformations(e)$end
+    exp_start <- fmQueryGetDataInformations(e)$start
+
+    tag_stats <- fmQueryComputeTagStatistics(e)
+    
+    ############# CREATE BASE FILE
+    tag_file <- NULL
+    
+    for (ant in exp.Ants){
+      for (id in ant$identifications){
+        #if the ant died, skip
+        if (capture.output(ant$identifications[[1]]$end)=="+∞") {
+        tag_file <- rbind(tag_file,data.frame(tag =  ant$ID,
+                               count = tag_stats[which(tag_stats$tagDecimalValue == id$tagValue),"count"], #count considers also the acclimation time, therefore it is always higher than the N of frames
+                               last_det = 51*60*60 * 8, #fixed= sll alive, so it is the n of frames for 51 hours.   tag_stats[which(tag_stats$tagDecimalValue == id$tagValue),"lastSeen"], 
+                               rot = round(deg(id$antAngle),3), # assumed to be the the relative angle of the ant to the tag
+                               displacement_distance = 0, #id$antPosition one of the two measures
+                               displacement_angle = 0,
+                               antenna_reach = NA,
+                               trapezoid_length = NA,
+                               type = "N", #what does it mean?
+                               size = 0 ,
+                               headwidth = 0,
+                               death = 0,  #all alive, dead not included
+                               age = 0,
+                               final_status = "alive", #ifelse(metadata_present[which(metadata_present$tagIDdecimal == id$tagValue & metadata_present$REP_treat==REP_treat),"IsAlive"]==T,"alive","dead"),
+                               group = metadata_present[which(metadata_present$tagIDdecimal == id$tagValue & metadata_present$REP_treat==REP_treat),"AntTask"],
+                               REP_treat = REP_treat,
+                               stringsAsFactors = F))
+        
+        tag_file$rot <- round(tag_file$rot,3)
+        #identifEnd <- ifelse(capture.output(print(id$end))=="+∞",NA,ifelse(capture.output(print(id$end))))
+        #fmQueryGetDataInformations(e)$end - 51*60*60
+        
+  
+          # individual  <- ant$ID
+          # #extract metadata info per key
+          #   #for more than one row, always last row will be picked (the relevant one if there is a timed change or the default one if there is not)
+          #   for(ROW in 1:2) {
+          #     #assign metadata_key value when ID corresponds
+          #     tag_file[which(tag_file$tag==ant$ID),"final_status"] <- ant$getValues("IsAlive")["IsAlive","values"]
+          #     #if the ant died
+          #     if (METADATA_KEY=="IsAlive") {
+          #       if (ant$getValues("IsAlive")[ROW,"values"]==FALSE) {
+          #         metadata[which(metadata$antID==ant$ID),"surviv_time"] <- ant$getValues("IsAlive")[ROW,"times"]
+          #         # if didn't die    
+          #       }else if (ant$getValues("IsAlive")[ROW,"values"]==TRUE) {
+          #         metadata[which(metadata$antID==ant$ID),"surviv_time"] <- as.POSIXct( exp_end,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
+          #       }} # IsAlive check
+          #   } # ROW
+        }
+    }
+    
+      
+    }#ant is dead
+ 
+    # #check if the tag_file file exists
+    # if(file.exists(file.path(SAVEDIR,"tag_files",paste(colony,treatment_code,".txt")))){
+    #     print(paste0(REP_treat," already present in tag_file, skip"))
+    #   } else {
+
+        write.table(tag_file, file = file.path(SAVEDIR,"tag_files",paste0(colony,"_",treatment_code,".txt")), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+        
+        
+        # }
+  } # REP folders
+} # REP by REP
+
+
