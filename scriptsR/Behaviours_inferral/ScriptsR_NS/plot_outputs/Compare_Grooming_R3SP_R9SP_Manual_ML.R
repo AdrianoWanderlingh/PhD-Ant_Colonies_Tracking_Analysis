@@ -9,7 +9,7 @@ DATADIR <-  "/home/tracking_users/Documents/Adriano/Ants_behaviour_analysis/Data
 chosen <- read.table(paste(WORKDIR,"/Data/MachineLearning_outcomes/quality_scores_CHOSEN.txt",sep=""),header=T,stringsAsFactors = F)
 
 
-inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_TEST.csv",sep=""),header=T,stringsAsFactors = F)
+inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings.csv",sep=""),header=T,stringsAsFactors = F)
 
 
 inferred$T_start_UNIX <- as.POSIXct(inferred$T_start_UNIX,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )

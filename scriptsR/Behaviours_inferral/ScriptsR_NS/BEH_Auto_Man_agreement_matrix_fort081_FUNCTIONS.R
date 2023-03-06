@@ -1,6 +1,12 @@
-make_binary_interaction_matrix <- function(ant_list,IF_frames,summary_object){
-    allpairs <- data.frame(combinations(length(ant_list), 2, v = sort(as.numeric(ant_list)) , repeats.allowed = FALSE))
-    allpairs$pair <- apply(allpairs[,],1,function(x){paste(sort(x),collapse = "_") })
+make_binary_interaction_matrix <- function(full_ant_list,focal_list,IF_frames,summary_object){
+  # allpairs <- data.frame(combinations(length(ant_list), 2, v = sort(as.numeric(ant_list)) , repeats.allowed = FALSE))
+    allpairs <- expand.grid(full_ant_list,focal_list)###list all pairs
+    
+    allpairs <- allpairs[which(allpairs[,1]!=allpairs[,2]),]##remove self pairs
+    
+    allpairs$pair <- apply(allpairs[,],1,function(x){paste(sort(x),collapse = "_") }) ###sort pair in increasing order
+    allpairs <- allpairs[which(!duplicated(allpairs$pair)),]##remove duplicates
+  
     ids_pairs <- subset(allpairs,select = "pair")
   
   # # initialize interaction matrix each rows represent a binary array, one for each ids pairs, with 1s on the interactions and 0s elsewhere
@@ -19,7 +25,7 @@ make_binary_interaction_matrix <- function(ant_list,IF_frames,summary_object){
   return(int_mat)
 }
 
-auto_manual_agreement <- function(summary_AUTO , summary_MANUAL, list_IF_Frames  ){
+auto_manual_agreement <- function(summary_AUTO , summary_MANUAL, list_IF_Frames, list_replicate_full_ant_list, list_replicate_focal_list ){
   
   ##########################################################################################
   ############## AUTO-MAN AGREEMENT MATRIX #################################################
@@ -41,26 +47,26 @@ auto_manual_agreement <- function(summary_AUTO , summary_MANUAL, list_IF_Frames 
   summary_AUTO$disagreement <- NA
   
   for (REPLICATE in unique(summary_AUTO$REPLICATE)){
-    for (PERIOD in unique(summary_AUTO$PERIOD)){
+    for (PERIOD in unique(summary_AUTO[which(summary_AUTO$REPLICATE==REPLICATE),"PERIOD"])){
       summary_AUTO_REP_PER <- summary_AUTO    [ which(summary_AUTO   $REPLICATE==REPLICATE & summary_AUTO   $PERIOD==PERIOD),]   
       summary_MAN_REP_PER  <- summary_MANUAL  [ which(summary_MANUAL $REPLICATE==REPLICATE & summary_MANUAL $PERIOD==PERIOD),]
       IF_frames            <- list_IF_Frames[[paste(c("IF_frames",REPLICATE,PERIOD),collapse="_")]]
+      full_ant_list        <- list_replicate_full_ant_list[[paste(c("replicate_list",REPLICATE),collapse="_")]]
+      focal_list           <- list_replicate_focal_list [[paste(c("replicate_list",REPLICATE),collapse="_")]]
+      if (is.null(focal_list)){
+        focal_list <- full_ant_list
+      }
       
-      # # pointer to list of all the possible ids pairs ordered 
-      # ant_id1 <- rep(1:35);  ant_id2 <- rep(1:35) ## THIS IS SHIT! ###NATH_FLAG: never do this! It is not generalisable to other ant IDs / other situations. Instead use the data at your disposal
-      ###NATH_FLAG: the rest kind of works except that it is long and convoluted and produces self-pairs
-      # allpairs <- expand.grid(ant_list,ant_list)
-      #  allpairs$pair <- apply(allpairs[,c("Var1","Var2")],1,function(x){paste(sort(x),collapse = "_") })
-      # ## exclude  duplicated pairs!
-      # allpairs <- allpairs[which(!duplicated(allpairs$pair)),] 
-      # ids_pairs <- subset(allpairs,select = "pair")
+      # ###NATH_FLAG:INSTEAD USE COMBINATIONS, and extract your ant list from the objects you have
+      # ant_list <- sort(na.omit(unique(c(summary_AUTO_REP_PER$ant1,summary_AUTO_REP_PER$ant2,summary_MAN_REP_PER$ant1,summary_MAN_REP_PER$ant2))))
+      # if(focal){
+      #   ant_list <- sort(na.omit(unique(c(ant_list,gsub(paste(REPLICATE,"_",sep=""),"",focal_list[which(grepl(REPLICATE,focal_list))])))))
+      # }
       
-      ###NATH_FLAG:INSTEAD USE COMBINATIONS, and extract your ant list from the objects you have
-      ant_list <- sort(na.omit(unique(c(summary_AUTO_REP_PER$ant1,summary_AUTO_REP_PER$ant2,summary_MAN_REP_PER$ant1,summary_MAN_REP_PER$ant2))))
       
       ###create interaction matrices
-      int_mat_manual <- make_binary_interaction_matrix (ant_list,IF_frames,summary_MAN_REP_PER )
-      int_mat_auto   <- make_binary_interaction_matrix (ant_list,IF_frames,summary_AUTO_REP_PER )
+      int_mat_manual <- make_binary_interaction_matrix (full_ant_list,focal_list,IF_frames,summary_MAN_REP_PER )
+      int_mat_auto   <- make_binary_interaction_matrix (full_ant_list,focal_list,IF_frames,summary_AUTO_REP_PER )
       
       #####NATH_FLAG: use these to calculate the number of true positives, number of true negatives, number of false positives and number of false negatives
       true_negatives   <- true_negatives  + sum(as.numeric(int_mat_manual==0) * as.numeric(int_mat_auto ==0))

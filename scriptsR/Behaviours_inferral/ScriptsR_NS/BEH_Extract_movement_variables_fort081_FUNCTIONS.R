@@ -1,11 +1,12 @@
-extraction_loop <- function(chunk,extract_movement_variables=T, selected_variables = NULL,all_body_lengths=NULL,focal=F){
+extraction_loop <- function(chunk,extract_movement_variables=T, selected_variables = NULL,all_body_lengths=NULL,focal="all",focal_list=NULL){
   ### initialise variables
   interaction_MANUAL      <- NULL
   summary_MANUAL          <- NULL
   interaction_AUTO        <- NULL
   summary_AUTO            <- NULL
   list_IF_Frames          <- list()
-  
+  list_replicate_full_ant_list <- list()
+  list_replicate_focal_list <- list()
   ### get appropriate time_window and annotations objects
   time_window_ori <- get(paste("time_window_",chunk,sep=""))
   annotations_ori <- get(paste("annotations_",chunk,sep=""))
@@ -37,7 +38,14 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
     
      print(MyrmidonCapsuleFile)
     e <- fmExperimentOpen(MyrmidonCapsuleFile)
-
+    replicate_full_ant_list <- unlist(lapply(e$ants,function(x)x$ID))
+    
+    if (is.null(focal_list)){
+      replicate_focal_list <- NULL
+    }else{
+      replicate_focal_list <- sort(as.numeric(gsub(paste(REPLICATE,"_",sep=""),"",focal_list[which(grepl(REPLICATE,focal_list))])))
+    }
+    
     body_lengths <- get_body_lengths(e,all_body_lengths)
     
     ################################################################################
@@ -176,7 +184,7 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
                                                          ,max_time_gap = MAX_INTERACTION_GAP
                                                          ,max_distance_moved = 2*mean(body_lengths$body_length,na.rm=T)
                                                          ,capsule_matcher=ALL_CAPS_MATCHERS
-                                                         ,desired_ants_OR = unique(annotations$Focal)
+                                                         ,desired_ants_OR = replicate_focal_list
                                                          ,IF_frames=IF_frames
         )
         
@@ -278,6 +286,12 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
       list_IF_Frames <- c(list_IF_Frames,IF_frames)
       rm(list=ls()[which(ls()%in%c("extracted_variables_AUTO","extracted_variables_MANUAL","IF_frames"))])
     }##PERIOD
+    replicate_full_ant_list <- list(replicate_full_ant_list); names(replicate_full_ant_list) <- paste(c("replicate_list",REPLICATE),collapse="_")
+    list_replicate_full_ant_list <- c(list_replicate_full_ant_list,replicate_full_ant_list)
+    
+    replicate_focal_list <- list(replicate_focal_list); names(replicate_focal_list) <- paste(c("replicate_list",REPLICATE),collapse="_")
+    list_replicate_focal_list <- c(list_replicate_focal_list,replicate_focal_list)
+    
   }##REPLICATE
   
   return(list(  
@@ -285,7 +299,11 @@ extraction_loop <- function(chunk,extract_movement_variables=T, selected_variabl
     summary_MANUAL=summary_MANUAL,
     # interaction_AUTO=interaction_AUTO,
     summary_AUTO=summary_AUTO,
-    list_IF_Frames=list_IF_Frames)
+    list_IF_Frames=list_IF_Frames,
+    list_replicate_full_ant_list=list_replicate_full_ant_list,
+    list_replicate_focal_list=list_replicate_focal_list
+    
+    )
   )
 }
 

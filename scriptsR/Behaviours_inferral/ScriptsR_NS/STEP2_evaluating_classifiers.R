@@ -1,35 +1,45 @@
 rm(list=ls())
 
+####libraries
 library(lme4)
 library(car)
 library(multcomp)
 
+####user and folder
 USER <- "Nathalie"
 if (USER=="Adriano") {
   SAVEOUTPUT <- "/home/cf19810/Documents"
 }
 if (USER=="Nathalie"){
-   SAVEOUTPUT <- "/media/bzniks/DISK1"
+  SAVEOUTPUT <- "/media/bzniks/FiveTB"
 }
 
-measure = "Fbeta" ##""Fbeta" "CSI" 
+####parameters
+measure         <- "Fbeta" ##""Fbeta" "CSI"                               ####which measure to do the selection on
+priority        <- "trends" ##~trends-overall
+beta            <- 1                                                    ####For F score: which beta to use (CURRENT CHOICE IS BETWEEN 0.5 AND 1)
+second_measure  <- c("CSI","Fbeta")[which(c("CSI","Fbeta")!=measure)]     ####which second measure to use to break ties
 
-output_names <- list.files(path= file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations"),pattern="quality_scores",full.names = T)
+###read quality score files
+output_names <- list.files(path= file.path(SAVEOUTPUT, "MachineLearning_outcomes_FINAL"),pattern="quality_scores",full.names = T)
 output_names <-output_names[which(!grepl("CHOSEN",output_names))]
 outcomes <- NULL
 for (output_name in output_names){
   outcomes <- rbind(outcomes,read.table(output_name,header=T,stringsAsFactors = F))
 }
 
-beta <- 0.5
+####keep only the lines with the correct beta
 outcomes <- outcomes[which(outcomes$beta==beta),]
 
-outcomes_scores <- outcomes[which(names(outcomes) %in% names(outcomes)[which(grepl("test",names(outcomes))| grepl("training",names(outcomes)))])]
-outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("test",names(outcomes))| grepl("pre_classifier",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
-
-outcomes_to_keep <- outcomes
-
-
+if (priority == "overall"){
+ outcomes_to_keep <- outcomes[which.max(outcomes[,paste(measure,"_test",sep="")]),]
+}else{
+  outcomes_scores <- outcomes[which(names(outcomes) %in% names(outcomes)[which(grepl("test",names(outcomes))| grepl("training",names(outcomes)))])]
+  outcomes_param  <- outcomes[which(!names(outcomes) %in% c(names(outcomes)[which(grepl("test",names(outcomes))| grepl("pre_classifier",names(outcomes))| grepl("training",names(outcomes)))],"proportion_truegrooming_detected","Loop_ID"))]
+  
+  outcomes_to_keep <- outcomes
+  
+  
   for (parameter in c("CAPSULE_FILE","MAX_INTERACTION_GAP",names(outcomes_param)[which(!names(outcomes_param)%in% c("CAPSULE_FILE","MAX_INTERACTION_GAP"))])){
     print(paste("Evaluating best values for parameter",parameter))
     if (length(unique(outcomes_param[,parameter]))>1){
@@ -73,18 +83,26 @@ outcomes_to_keep <- outcomes
     outcomes_to_keep <- outcomes_to_keep[which(as.character(outcomes_to_keep[,parameter])  %in% as.character( get(paste(parameter,"_list",sep=""))) ), ]
   }
   
-  ###selected method: keep the ones with highest score_training
-  outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(measure,"_training",sep="")]==max(outcomes_to_keep[,paste(measure,"_training",sep="")],na.rm=T)),]
-  ###among those, keep the one that has the best generalisation value
-  outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(measure,"_test",sep="")]==max(outcomes_to_keep[,paste(measure,"_test",sep="")],na.rm=T)),]
   print(outcomes_to_keep)
   
+   ###among those, keep the one that has the best generalisation value
+  outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(measure,"_test",sep="")]==max(outcomes_to_keep[,paste(measure,"_test",sep="")],na.rm=T)),]
+  ###selected method: keep the ones with highest score_training - for priority measure
+  outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(measure,"_training",sep="")]==max(outcomes_to_keep[,paste(measure,"_training",sep="")],na.rm=T)),]
+  print(outcomes_to_keep)
+  
+  
+  ###selected method: keep the ones with highest score_training - for second emasure, in case there are ex-aequos
+  outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(second_measure,"_training",sep="")]==max(outcomes_to_keep[,paste(second_measure,"_training",sep="")],na.rm=T)),]
+  ###among those, keep the one that has the best generalisation value
+  outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(second_measure,"_test",sep="")]==max(outcomes_to_keep[,paste(second_measure,"_test",sep="")],na.rm=T)),]
+  print(outcomes_to_keep)
+  
+  
+  
+}
 
-###selected method: keep the ones with highest score_training
-outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(measure,"_training",sep="")]==max(outcomes_to_keep[,paste(measure,"_training",sep="")],na.rm=T)),]
-###among those, keep the one that has the best generalisation value
-outcomes_to_keep <- outcomes_to_keep[which(outcomes_to_keep[,paste(measure,"_test",sep="")]==max(outcomes_to_keep[,paste(measure,"_test",sep="")],na.rm=T)),]
-print(outcomes_to_keep)
-
-
-write.table(outcomes_to_keep,file=file.path(SAVEOUTPUT, "MachineLearning_outcomes_NewAnnotations",paste("quality_scores_",measure,"_CHOSEN.txt",sep="")),col.names=T,row.names=F,quote=F,append=F)
+if (measure=="Fbeta"){
+  measure <- paste(measure,beta,sep="_")
+}
+write.table(outcomes_to_keep,file=file.path(SAVEOUTPUT, "MachineLearning_outcomes_FINAL",paste("quality_scores_",measure,"_priority",priority,"_CHOSEN.txt",sep="")),col.names=T,row.names=F,quote=F,append=F)
