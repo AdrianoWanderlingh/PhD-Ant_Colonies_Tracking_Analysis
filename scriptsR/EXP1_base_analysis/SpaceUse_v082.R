@@ -7,6 +7,22 @@ SpaceUse <- function(e, start, end){
   require(FortMyrmidon)
   require(mallinfo)
   
+  # parameters (from Sceince2018)
+  options(digits=16) ; options(digits.secs=6) ; options("scipen" = 10)
+  max_time <- 1.5 # max time in sec, for which it is acceptable to calculate a distance moved (e.g. 1.5 sec: allows for up to 2 missing points between two successive detections and still calculates distance moved)
+  min_segment_duration_sec <- 120; Lmin <- FRAME_RATE*min_segment_duration_sec #minimum duration of a bout, in frames
+  max_gap <- 15 ##anything larger than that needs to be subdivided into two different bouts
+  dist_threshold <- 25 # avg is 50px (from the fort experiment calculator) #previous value: 15, everything below that threshold (half a tag length) is considered inactive
+  power <- 0.125 ###power used before clustering
+  
+  
+  ###  Functions
+  insertRow <- function(existingDF, newrow, r) {
+    existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
+    existingDF[r,] <- newrow
+    existingDF
+  }
+  
   #define zones
   #### EXPAND THIS TO EXTRACT ALL ZONES (WATER, SUGAR, ETC)
   zones <- e$spaces[[1]]$zones #function to show the Zones present in the Space
@@ -28,40 +44,34 @@ SpaceUse <- function(e, start, end){
     positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
     positions_list            <- positions$trajectories
     
+    
+    # loop through each dataframe and check for duplicated rows
+    for (i in seq_along(positions_list)) {
+      if (any(duplicated(positions_list[[i]]$time))) {
+        cat("Duplicates found in ant_index", i, "\n")
+        remove_times <- positions_list[[i]][duplicated(positions_list[[i]]$time),"time"]
+        positions_list[[i]] <- positions_list[[i]][which(positions_list[[i]]$time!=remove_times),]
+      }
+    }
+
+    
+    
     ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
     if(!(nrow(positions_summaries)==length(positions_list)))stop("number of rows of positions_summaries is not equal to the length of positions_list")
     ####2/ always make sure that positions_summaries is ordered correctly, using the index column
     positions_summaries <- positions_summaries[order(positions_summaries$index),]
     ###this ensures that the first row in positions_summaries corresponds to the first trajectory in positions_list, etc.
 
+    to_keep <- unique(c(to_keep,ls(),"ant_index")) # "traj_file","to_keep_ori"
+    
     #############################################  
     ####### analyse trajectory ANT BY ANT ####### 
     for ( ant_index in 1:length(positions_list)) {
-      
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
+      print(paste0("ant_index: ",ant_index))
       ####8_process_trajectory_files.R#####
-      # mODIFIED FROM sTROEYMEYT ET AL. 2018
+      # Modified from Stroeymeyt et al. 2018
       #### Defines activity bouts and calculates summary statistics for each trajectory 
       #### Outputs: modified trajectory file and modifed individual behaviour file
-      
-      #################################
-      #### Parameters
-      #to_keep_ori <- to_keep
-      
-      max_time <- 1.5 # max time in sec, for which it is acceptable to calculate a distance moved (e.g. 1.5 sec: allows for up to 2 missing points between two successive detections and still calculates distance moved)
-      
-      ###  Functions
-      insertRow <- function(existingDF, newrow, r) {
-        existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
-        existingDF[r,] <- newrow
-        existingDF
-      }
       
       ####get trajectory list #####
       #input_traj <- paste(data_path,"intermediary_analysis_steps/trajectories",sep="/")
@@ -71,7 +81,7 @@ SpaceUse <- function(e, start, end){
       #### for each ant we will successively consider the Pre-treatment, then the Post-treatment trajectory
       #traj_list <- traj_list[grepl("Pre",traj_list)]
       
-      TAB_ALL <- NULL
+      traj <- NULL
       
       ##################################
       #for (traj_folder in traj_list){
@@ -128,26 +138,32 @@ SpaceUse <- function(e, start, end){
                   ####merge them
                   full_trajectory <- data.frame(traj_1,traj_2)
                   ####calculate time difference between two successive coordinates
-                  full_trajectory["time_diff"] <- full_trajectory$time-full_trajectory$time_previousframe
+                  full_trajectory$time_diff <- full_trajectory$time-full_trajectory$time_previousframe
                   ####round time_diff to nearest (1/FRAME_RATE)
                   full_trajectory$time_diff <- round(full_trajectory$time_diff/(1/FRAME_RATE))*(1/FRAME_RATE);full_trajectory$time_diff[full_trajectory$time_diff==0]<-(1/FRAME_RATE)
                   #### calculate distance moved between two successive frames
-                  full_trajectory[,"total_dist"] <- (sqrt((full_trajectory[,"x"]-full_trajectory[,"x_previousframe"])^2+(full_trajectory[,"y"]-full_trajectory[,"y_previousframe"])^2))
-                  #### calculate a distance per frame (i.e. speed) for intervals that are less than max_time 
-                  full_trajectory[which(full_trajectory$time_diff<=max_time),"dist_per_frame"] <- (sqrt((full_trajectory[which(full_trajectory$time_diff<=max_time),"x"]-full_trajectory[which(full_trajectory$time_diff<=max_time),"x_previousframe"])^2+(full_trajectory[which(full_trajectory$time_diff<=max_time),"y"]-full_trajectory[which(full_trajectory$time_diff<=max_time),"y_previousframe"])^2))/((full_trajectory[which(full_trajectory$time_diff<=max_time),"time_diff"]/(1/FRAME_RATE)))
+                  full_trajectory$total_dist <- (sqrt((full_trajectory$x-full_trajectory$x_previousframe)^2+(full_trajectory$y-full_trajectory$y_previousframe)^2))
+                  #### calculate a distance per frame (i.e. speed) for intervals that are less than max_time
+                  #AW: replaced as too slow
+                  #full_trajectory[which(full_trajectory$time_diff<=max_time),"dist_per_frame"] <- (sqrt((full_trajectory[which(full_trajectory$time_diff<=max_time),"x"]-full_trajectory[which(full_trajectory$time_diff<=max_time),"x_previousframe"])^2+(full_trajectory[which(full_trajectory$time_diff<=max_time),"y"]-full_trajectory[which(full_trajectory$time_diff<=max_time),"y_previousframe"])^2))/((full_trajectory[which(full_trajectory$time_diff<=max_time),"time_diff"]/(1/FRAME_RATE)))
+                  # Create logical vector to subset data
+                  subset_index <- full_trajectory$time_diff <= max_time
+                  #first row can't be calculated
+                  subset_index[is.na(subset_index)] <- FALSE
+                  # Calculate distance per frame using logical vector
+                  full_trajectory$dist_per_frame[subset_index] <- sqrt((full_trajectory$x[subset_index] - full_trajectory$x_previousframe[subset_index])^2 + (full_trajectory$y[subset_index] - full_trajectory$y_previousframe[subset_index])^2) / (full_trajectory$time_diff[subset_index] / (1/FRAME_RATE))
                   #### round
                   full_trajectory$dist_per_frame <- round(100*full_trajectory$dist_per_frame)/100
                   full_trajectory$total_dist <- round(100*full_trajectory$total_dist)/100
                   #### now use this new data to create a new traj file
-                  traj <- full_trajectory[(1:(nrow(full_trajectory)-1)),c("time","x","y","dist_per_frame","total_dist")] #"frame"
+                  traj <- full_trajectory[(1:(nrow(full_trajectory)-1)),c("time","x","y","zone","dist_per_frame","total_dist")] #"frame"
                   
                   #####calculate turn angles
-                  warning("id=ant_index may be calling the incorrect identity")
                   trajectory <- as.ltraj(traj[c("x","y")],date=as.POSIXct(traj$time,origin="1970-01-01"),id=ant_index , typeII=T,slsp="missing") # ,id=gsub("\\.txt","",gsub("ant_","",traj_file))
                   turn_angles <- abs(trajectory[[1]]$rel.angle)
                   #####modify it slightly, because I defined distance as distance moved between current frame and the previous; whereas turn angles are defined between current frame and the next
                   turn_angles <- c(NA,turn_angles[1:(length(turn_angles)-1)])
-                  traj["turn_angle"] <- turn_angles
+                  traj$turn_angle <- turn_angles
                   #####no movement = no turn. Therefore fill in NA turn angles when dist=0
                   traj[which(is.na(traj$turn_angle)&traj$dist_per_frame==0),"turn_angle"] <- 0
                   #####whenever the time separating 2 successive detections is greater than max_time, enter NA; because then the turn angle is not meaningful
@@ -161,14 +177,7 @@ SpaceUse <- function(e, start, end){
                 ####################################################################    
                 #######2. cut trajectory into bouts of activity vs. inactivity #####
                 ####################################################################      
-                #####define paremeters
-                min_segment_duration_sec <- 120; Lmin <- FRAME_RATE*min_segment_duration_sec #minimum duration of a bout, in frames
-                max_gap <- 15 ##anything larger than that needs to be subdivided into two different bouts
-                warning("check what is the tag size in px in each system! I assume avg is 50px")
-                dist_threshold <- 25 #15 #everything below that threshold (half a tag length) is considered inactive
-                power <- 0.5 ###power used before clustering
-                
-                
+ 
                 #####define an object that does not contain NAs in the dist_per_frame column
                 traj_noNA <- traj[which(!is.na(traj$dist_per_frame)),]
                 
@@ -180,15 +189,17 @@ SpaceUse <- function(e, start, end){
                   
                   #####use function cpt.meanvar to find breakpoints in the trajectory data
                   if (length(unique(traj_noNA$dist_per_frame))>2){
-                    segments_dist <- cpt.meanvar(traj_noNA$dist_per_frame, method = "PELT",minseglen=Lmin)#####best by far
+                    segments_dist <- changepoint::cpt.meanvar(traj_noNA$dist_per_frame, method = "PELT",minseglen=Lmin)#####best by far
                     breakpoints <- segments_dist@cpts
                     rm(list="segments_dist")
                   }else{
                     breakpoints <- nrow(traj_noNA)
                   }
-                  warning("breakpoints broken, why? how is it supposed to work?")
                   #####use breakpoints to define start and end times for bouts, and add the information into thr traj file 
                   breakpoints <- match(traj_noNA[breakpoints,"time"],traj$time)
+                  if (min(breakpoints)==nrow(traj)) { #AW # if breakpoints has only one element, it is th minimum value
+                    bout_indices <- data.frame(start=1,end=nrow(traj)) #issue in original code: if no breakpoint, create single bout
+                  }else{
                   #breakpoints <-  breakpoints[!is.na(breakpoints)]#AW
                   breakpoints[length(breakpoints)] <- max(nrow(traj),breakpoints[length(breakpoints)])
                   breakpoints <- c(1,breakpoints)
@@ -196,45 +207,47 @@ SpaceUse <- function(e, start, end){
                   bout_start_indices <- c(first_index,(breakpoints+1)[2:(length(breakpoints)-1)])
                   bout_end_indices <- breakpoints[2:(length(breakpoints))]
                   bout_indices <- data.frame(start=bout_start_indices,end=bout_end_indices)
+                  } #AW
                   bout_count_index <- NULL
                   for (i in 1:nrow(bout_indices)){
                     bout_count_index <- c(  bout_count_index , rep(i,(bout_indices[i,"end"]-bout_indices[i,"start"]+1)))
                   }
                   bout_count_index <- bout_counter + bout_count_index
-                  traj["bout_index"] <- bout_count_index
+                  traj$bout_index <- bout_count_index
                   bout_counter <- max(bout_count_index,na.rm=T)
-                }#if (nrow(traj_noNA)>20)
+                }#if (nrow(traj_noNA)>2*Lmin)
                 #assign(paste("traj",suffix,sep=""),traj)
                 #rm(list=c("traj"))
               #}##for (suffix in c("_Pre","_Post"))
               ###Now combine the two traj objects into a single one for the meta-analysis of active vs. inactive
               #if (ncol(traj_Pre)==ncol(traj_Post)){###do it only if bouts were defined for both periods
+              if (bout_counter>1){###do it only if more than 1 bout is defined
                 #trajectory_table <- rbind(data.frame(period="before",traj_Pre),data.frame(period="after",traj_Post))
                 #TEMP
-                trajectory_table <- traj
+                #trajectory_table <- traj
                 ###Perform cluster analysis on the whole table to determine active/inactive using the mean and standard deviation of speed (dist_per_frame) and turn_angle as an input
-                for_multi <- aggregate(na.action="na.pass",cbind(turn_angle,(dist_per_frame)^power)~bout_index,function(x)cbind(mean(x,na.rm=T),sd(x,na.rm=T)),data=trajectory_table)
+                for_multi <- aggregate(na.action="na.pass",cbind(turn_angle,(dist_per_frame)^power)~bout_index,function(x)cbind(mean(x,na.rm=T),sd(x,na.rm=T)),data=traj)
                 for_multi <- data.frame(for_multi$bout_index,for_multi$turn_angle,for_multi$V2);names(for_multi) <- c("bout_index","turn_angle","turn_angle_SD","Dist","Dist_SD")
                 cluster_BOTH <- kmeans( na.omit( for_multi   [c("turn_angle","Dist","turn_angle_SD","Dist_SD")]),  centers=2) ## clustering on ave & sd of relative turn angle & average distance
                 ####Distinguish between active and inactive bout using the speed (active corresponds to higher speed)
                 types_BOTH <- c("inactive","active")[order(data.frame(cluster_BOTH["centers"])$centers.Dist)]
-                trajectory_table$type <- types_BOTH[cluster_BOTH$cluster[trajectory_table$bout_index]]
+                traj$type <- types_BOTH[cluster_BOTH$cluster[traj$bout_index]]
                 
                 ####Use the results from the cluster analysis to define bouts and interbouts
-                if (length(unique(trajectory_table$type))==1){
-                  if (unique(trajectory_table$type)=="active"){to_fill <- "bout1"}else{to_fill <- "interbout1"}
-                  trajectory_table[1:nrow(trajectory_table),"bout_id"] <- to_fill
+                if (length(unique(traj$type))==1){
+                  if (unique(traj$type)=="active"){to_fill <- "bout1"}else{to_fill <- "interbout1"}
+                  traj[1:nrow(traj),"bout_id"] <- to_fill
                   
                 }else{
                   ##find indices of changes in activity type, in order to pool successive bouts of the same type together
-                  changes <- data.frame(type=c(NA,trajectory_table$type),type.2=c(trajectory_table$type,NA))
+                  changes <- data.frame(type=c(NA,traj$type),type.2=c(traj$type,NA))
                   changes$change <- changes$type==changes$type.2
                   breakpoints <- which(!changes$change[1:(length(changes$change)-1)])
                   
                   start_indices <- c(1,breakpoints)
-                  end_indices <- c(breakpoints-1,nrow(trajectory_table))
+                  end_indices <- c(breakpoints-1,nrow(traj))
                   
-                  if(trajectory_table[1,"type"]!="active"){
+                  if(traj[1,"type"]!="active"){
                     interbout_indices <- 1+2*c(0:(ceiling(length(start_indices)/2)-1))
                     bout_indices <- 2*c(1:floor(length(start_indices)/2))
                   }else{
@@ -245,7 +258,7 @@ SpaceUse <- function(e, start, end){
                   bout_indices <- data.frame(start=start_indices[bout_indices],end=end_indices[bout_indices])
                   interbout_indices <- data.frame(start=start_indices[interbout_indices],end=end_indices[interbout_indices])
                   
-                  ###copy the new bout information into the trajectory_table object
+                  ###copy the new bout information into the traj object
                   bout_index_list <- NULL
                   bout_count_index <- NULL
                   for (i in 1:nrow(bout_indices )){
@@ -259,35 +272,35 @@ SpaceUse <- function(e, start, end){
                     interbout_count_index <- c(  interbout_count_index , rep(i,(interbout_indices[i,"end"]-interbout_indices[i,"start"]+1)))
                   }
                   
-                  trajectory_table[bout_index_list,"bout_id"] <- paste("bout",bout_count_index,sep="")
-                  trajectory_table[interbout_index_list,"bout_id"] <- paste("interbout",interbout_count_index,sep="")
+                  traj[bout_index_list,"bout_id"] <- paste("bout",bout_count_index,sep="")
+                  traj[interbout_index_list,"bout_id"] <- paste("interbout",interbout_count_index,sep="")
                 }
                 ####Finally, find large gaps in trajectory and subdivide each bout that was defined across the gap
                 ####separate bout_id into root and index
-                temp <- gregexpr("[0-9]+", trajectory_table$bout_id)
-                trajectory_table["idx"] <- as.numeric(unlist(regmatches(trajectory_table$bout_id,temp)))
-                trajectory_table[paste("bout",trajectory_table$idx,sep="")==trajectory_table$bout_id,"root"] <- "bout"
-                trajectory_table[paste("interbout",trajectory_table$idx,sep="")==trajectory_table$bout_id,"root"] <- "interbout"
+                temp <- gregexpr("[0-9]+", traj$bout_id)
+                traj$idx <- as.numeric(unlist(regmatches(traj$bout_id,temp)))
+                traj[paste("bout",traj$idx,sep="")==traj$bout_id,"root"] <- "bout"
+                traj[paste("interbout",traj$idx,sep="")==traj$bout_id,"root"] <- "interbout"
                 
                 ###get times where more than 15 min gap
-                times_1 <- c(NA,trajectory_table$time);times_2 <- c(trajectory_table$time,NA);time_diff <- times_2-times_1;time_diff <- time_diff[1:(length(time_diff)-1)]
+                times_1 <- c(NA,traj$time);times_2 <- c(traj$time,NA);time_diff <- times_2-times_1;time_diff <- time_diff[1:(length(time_diff)-1)]
                 indices <- which(time_diff>(60*max_gap))
                 for (index in indices){
-                  trajectory_table[(index:nrow(trajectory_table)),][trajectory_table[(index:nrow(trajectory_table)),"root"]==trajectory_table[index,"root"],"idx"] <-       trajectory_table[(index:nrow(trajectory_table)),][trajectory_table[(index:nrow(trajectory_table)),"root"]==trajectory_table[index,"root"],"idx"] + 1
+                  traj[(index:nrow(traj)),][traj[(index:nrow(traj)),"root"]==traj[index,"root"],"idx"] <-       traj[(index:nrow(traj)),][traj[(index:nrow(traj)),"root"]==traj[index,"root"],"idx"] + 1
                 }
                 
                 ###copy new bout id into the table
-                trajectory_table <- within(trajectory_table, bout_id <- paste(root,idx,sep=""))
+                traj <- within(traj, bout_id <- paste(root,idx,sep=""))
                 
                 # ###Finally, divide the trajectory:table into pre- and post-treatment trajectories
                 # traj_Pre <-trajectory_table[which(trajectory_table$period=="before"),]
                 # traj_Post <-trajectory_table[which(trajectory_table$period=="after"),]
-              # }else{
+              }else{
               #   ###In case one of the periods did not have enough data for bouts to be defined, fill the columns with NA 
               #   traj_Pre  <- data.frame(period="before",traj_Pre); traj_Pre["bout_id"] <- NA; traj_Pre["type"] <- NA
               #   traj_Post <- data.frame(period="after",traj_Post); traj_Post["bout_id"] <- NA; traj_Post["type"] <- NA
-              # }
-              
+              traj$bout_id <- NA; traj$type <- NA #AW
+                }
               #for (suffix in c("_Pre","_Post")){
                 # ###Add metadata and for each of the pre-treatment and pre-treatment trajectories
                 # splitinfo           <- get(paste("splitinfo",suffix,sep=""))
@@ -298,8 +311,7 @@ SpaceUse <- function(e, start, end){
                 # traj["colony"]      <- colony
                 # traj["treatment"]   <- info[which(info$colony==as.numeric(gsub("colony","",colony))),"treatment"]
                 #traj                <- traj[c("time","frame","x","y","dist_per_frame","total_dist","turn_angle","type","bout_id")] #"colony","treatment","box","period","time_hours","time_of_day",
-                traj                <- trajectory_table[c("time","x","y","dist_per_frame","total_dist","turn_angle","type","bout_id")] #"colony","treatment","box","period","time_hours","time_of_day",   "frame",
-                warning("check if trajectory_table is actually needed or not in my version")
+                traj                <- traj[c("time","x","y","dist_per_frame","total_dist","turn_angle","type","bout_id")] #"colony","treatment","box","period","time_hours","time_of_day",   "frame",
                 ##################################
                 ####### Now analyse trajectory ###
                 ##################################
@@ -373,22 +385,19 @@ SpaceUse <- function(e, start, end){
         #}#for (traj_file in traj_files)
       #}# for (traj_folder in traj_list)
       #to_keep <- to_keep_ori
-      warning("make sure to remove leftovers data generated in this process")
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
-      #--------------------------------------------------------------- 
+     rm(list=ls()[which(!ls()%in%c(to_keep))]) #close experiment
       #--------------------------------------------------------------- 
       
       # OUTPUTS
       positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]%in%foraging_zone))
       positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]%in%nest_zone))
       positions_summaries[ant_index,"prop_time_outside"] <- positions_summaries[ant_index,"nb_frames_outside"] /(positions_summaries[ant_index,"nb_frames_outside"] + positions_summaries[ant_index,"nb_frames_inside"])
-
-      warning("continue from here")
-      }
+    }
+    
+    
+    #round
+    positions_summaries[, sapply(positions_summaries, is.numeric)] <- round(positions_summaries[, sapply(positions_summaries, is.numeric)], 3)
+    
     #match antID and tagID (live tracking gives tagID). 
     IDs <- e$identificationsAt(fmTimeCreate(offset=fmQueryGetDataInformations(e)$start))
     IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
@@ -401,7 +410,7 @@ SpaceUse <- function(e, start, end){
                                   proportion_time_active,
                                   average_bout_speed_pixpersec,
                                   total_distance_travelled_pix
-                                  ) ~ antID + tag_hex_ID, FUN = sum, na.rm=T,na.action=na.pass,positions_summaries )
+                                  ) ~ antID + tag_hex_ID, FUN = sum,na.action=na.pass,positions_summaries ) #, na.rm=T
    
     # rm(list=ls()[which(!ls()%in%c("SpaceUsage","e","foraging_zone","nest_zone","AntID_list","hour_chunk_start","TimeWindow","loop_N"))]) #close experiment
     # gc()

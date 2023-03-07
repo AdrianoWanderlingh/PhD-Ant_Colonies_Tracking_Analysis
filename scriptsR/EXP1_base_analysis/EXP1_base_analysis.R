@@ -51,6 +51,14 @@ library(lubridate)
 library(pals)
 library(dplyr)
 # library(reshape)
+library(adehabitatHR)
+library(adehabitatLT)
+library(changepoint)
+library(e1071)
+library(igraph)
+library(gtools)
+library(Rcpp)
+library(survival)
 
 # starting params
 # USER <- "2A13_Office" # Nath_office 
@@ -173,11 +181,11 @@ files_list <- files_list[grep("REP", files_list)]
 #   unlink(file.path(DATADIR, "NetworkAnalysis_outcomes"),recursive=T)
 # }
 
-### create folder
-dir.create(file.path(SAVEDIR, OUTPUT_FOLDER), recursive = T) 
-### define name of general output files
-NET_properties_collective <- file.path(SAVEDIR, OUTPUT_FOLDER, "NetworkProp_collective.txt") # (saved INSIDE the folder)
-NET_properties_individual <- file.path(SAVEDIR, OUTPUT_FOLDER, "NetworkProp_individual.txt") # (saved INSIDE the folder)
+# ### create folder
+# dir.create(file.path(SAVEDIR, OUTPUT_FOLDER), recursive = T) 
+# ### define name of general output files
+# NET_properties_collective <- file.path(SAVEDIR, OUTPUT_FOLDER, "NetworkProp_collective.txt") # (saved INSIDE the folder)
+# NET_properties_individual <- file.path(SAVEDIR, OUTPUT_FOLDER, "NetworkProp_individual.txt") # (saved INSIDE the folder)
 
 ##### RUNNING TIME
 loop_start_time <- Sys.time()
@@ -442,19 +450,21 @@ for (REP.n in 1:length(files_list)) {
       
       if (RUN_SPACEUSE) {
         print("Computing SpaceUse based on 24h time-window pre AND post exposure")
+        SpaceUse_loop_start_time <- Sys.time()
         # TIME_HOURS zero is the moment of exposed ants return
         for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)]) { ## increments by 3 hours for 48 hours
+          # TIME_OF_DAY
+          TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
+          print(paste("TIME_HOURS", TIME_HOURS,"TIME_OF_DAY", TIME_OF_DAY,"PERIOD",PERIOD,sep=" "))
           
           #time windows
           time_start_h <- fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 24) * TimeWind)) # time_stop minus 48 hours plus incremental time
           time_stop_h  <- fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 21) * TimeWind)) # time_stop minus 45 hours plus incremental time
           ##TEMP TIME STOP
           # warning("using tiny time window for testing")
-          time_stop_h <-  fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 24) * TimeWind + 20*60) ) 
+          #time_stop_h <-  fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 24) * TimeWind + 40*60) ) 
           
-          # TIME_OF_DAY
-          TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
-
+         
           ############ SPACE USE ##########################
           # SPACE USAGE
           SpaceUsage <- SpaceUse(e = e, start = time_start_h, end = time_stop_h)
@@ -487,7 +497,10 @@ for (REP.n in 1:length(files_list)) {
             } else {
               write.table(SpaceUsage, file = SPACE_USE, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
             }
-          }
+        }
+        SpaceUse_loop_end_time <- Sys.time()
+        print(paste("spaceUse 3h chunk took ", as.numeric(difftime(SpaceUse_loop_end_time, SpaceUse_loop_start_time, units = "secs")), " sec to complete"))
+        
         }
       } # PERIOD
     }
