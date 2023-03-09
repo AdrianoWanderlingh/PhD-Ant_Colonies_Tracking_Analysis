@@ -51,6 +51,7 @@ for (input_folder in input_folders){
     summary_collective <- NULL
     summary_individual <- NULL
     for (network_file in network_files){
+      # network_file <- network_files[361]
       print(network_file)
       ####get file metadata
       root_name          <- gsub("_interactions.txt","",unlist(strsplit(network_file,split="/"))[grepl("colony",unlist(strsplit(network_file,split="/")))])
@@ -127,17 +128,9 @@ for (input_folder in input_folders){
         interactions_with_treated["colony"] <- colony
         interactions_with_treated["time_hours"] <- time_hours
         ###write results
-        ###individual behaviour: pre_vs_post treatment
-        #FLAG
-        
-        
-        
-        
-        
-        
-        
         if (grepl("main",data_path)){
           behav <- read.table(paste(data_path,"/processed_data/individual_behaviour/pre_vs_post_treatment/individual_behavioural_data.txt",sep=""),header=T,stringsAsFactors = F)
+          colnames(behav)[which(colnames(behav)=="Tag")] <- "tag" #AW
           if (!"duration_of_contact_with_treated_min"%in%names(behav)){
             behav[c("duration_of_contact_with_treated_min")] <- NA
           }
