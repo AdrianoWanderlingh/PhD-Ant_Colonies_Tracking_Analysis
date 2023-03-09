@@ -480,9 +480,7 @@ SpaceUse <- function(e, start, end){
     # combine the results into a single data frame
     summary_df <- do.call(rbind, results_list)
     positions_summaries <- merge(positions_summaries, summary_df,by="index",all.x=T) 
-    #round
-    positions_summaries[, sapply(positions_summaries, is.numeric)] <- round(positions_summaries[, sapply(positions_summaries, is.numeric)], 3)
-    
+
     #match antID and tagID (live tracking gives tagID). 
     IDs <- e$identificationsAt(fmTimeCreate(offset=fmQueryGetDataInformations(e)$start))
     IDs[sapply(IDs, is.null)] <- NA # assign NA to dead ants
@@ -503,6 +501,11 @@ SpaceUse <- function(e, start, end){
     #it does not make sense to calculate the prop_time_outside beforehand as, if you have a doubled id, it will be messed up. 
     SpaceUsage$prop_time_outside <- SpaceUsage$nb_frames_outside /(SpaceUsage$nb_frames_outside + SpaceUsage$nb_frames_inside)
     
+    #order output
+    SpaceUsage <- SpaceUsage[, c("antID","nb_frames_outside","nb_frames_inside","prop_time_outside","proportion_time_active","average_bout_speed_pixpersec","total_distance_travelled_pix")]
+    
+    #round
+    SpaceUsage[, sapply(SpaceUsage, is.numeric)] <- round(SpaceUsage[, sapply(SpaceUsage, is.numeric)], 3)
     
     # rm(list=ls()[which(!ls()%in%c("SpaceUsage","e","foraging_zone","nest_zone","AntID_list","hour_chunk_start","TimeWindow","loop_N"))]) #close experiment
     # gc()

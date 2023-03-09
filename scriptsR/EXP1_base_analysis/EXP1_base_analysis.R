@@ -470,16 +470,14 @@ for (REP.n in 1:length(files_list)) {
         # TIME_HOURS zero is the moment of exposed ants return
         for (TIME_HOURS in Time_dictionary_PERIOD$time_hours[seq(1, length(Time_dictionary_PERIOD$time_hours), 3)]) { ## increments by 3 hours for 48 hours
           
-          
           # TIME_OF_DAY
           TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
-          print(paste("TIME_HOURS", TIME_HOURS,"TIME_OF_DAY", TIME_OF_DAY,"PERIOD",PERIOD,sep=" "))
-          
             # has the time_hour been computed already? 
             if (TIME_HOURS %in% spaceUse_done) {
-              print("DONE, SKIP TO NEXT 3-HOURS BLOCK >>")
+              cat("\rDONE UP TO: TIME_HOURS", TIME_HOURS,"TIME_OF_DAY", TIME_OF_DAY,"PERIOD",PERIOD,"| SKIP >>")
                       }else{
-          
+                        print(paste("TIME_HOURS", TIME_HOURS,"TIME_OF_DAY", TIME_OF_DAY,"PERIOD",PERIOD,sep=" "))
+                        
           #time windows
           time_start_h <- fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 24) * TimeWind)) # time_stop minus 48 hours plus incremental time
           time_stop_h  <- fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 21) * TimeWind)) # time_stop minus 45 hours plus incremental time
