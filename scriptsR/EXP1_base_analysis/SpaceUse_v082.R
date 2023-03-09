@@ -489,14 +489,21 @@ SpaceUse <- function(e, start, end){
     IDs <- data.frame(tag_hex_ID=unlist(IDs), antID=1:length(IDs),stringsAsFactors = F)
     positions_summaries$tag_hex_ID <- IDs[ match(positions_summaries$antID,IDs$antID)     , "tag_hex_ID"]
     
-    SpaceUsage <- aggregate(cbind(nb_frames_outside,
-                                  nb_frames_inside,
-                                  prop_time_outside,
-                                  proportion_time_active,
-                                  average_bout_speed_pixpersec,
-                                  total_distance_travelled_pix
-                                  ) ~ antID + tag_hex_ID, FUN = sum,na.action=na.pass,positions_summaries ) #, na.rm=T
-   
+    # SpaceUsage <- aggregate(cbind(nb_frames_outside,
+    #                               nb_frames_inside,
+    #                               prop_time_outside,
+    #                               proportion_time_active,
+    #                               average_bout_speed_pixpersec,
+    #                               total_distance_travelled_pix
+    #                               ) ~ antID + tag_hex_ID, FUN = sum,na.action=na.pass,positions_summaries ) #, na.rm=T
+
+    SpaceUsage <- aggregate(cbind(nb_frames_outside, nb_frames_inside, prop_time_outside, total_distance_travelled_pix) ~ antID, data = positions_summaries, sum, na.rm=T,drop = FALSE)
+    SpaceUsage <- cbind(SpaceUsage, aggregate(cbind(proportion_time_active, average_bout_speed_pixpersec) ~ antID, data = positions_summaries, mean,na.rm=T,drop = FALSE)[2:3])
+    
+    #it does not make sense to calculate the prop_time_outside beforehand as, if you have a doubled id, it will be messed up. 
+    SpaceUsage$prop_time_outside <- SpaceUsage$nb_frames_outside /(SpaceUsage$nb_frames_outside + SpaceUsage$nb_frames_inside)
+    
+    
     # rm(list=ls()[which(!ls()%in%c("SpaceUsage","e","foraging_zone","nest_zone","AntID_list","hour_chunk_start","TimeWindow","loop_N"))]) #close experiment
     # gc()
     # mallinfo::malloc.trim(0L)
@@ -509,7 +516,7 @@ SpaceUse <- function(e, start, end){
   for (MISSING in missing_ants) {
   for (id in length(e$ants[[MISSING]]$identifications)) {
    #print ( e$ants[[MISSING]]$identifications[[id]]$tagValue )
-    missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING, tag_hex_ID= e$ants[[MISSING]]$identifications[[id]]$tagValue))
+    missing_ants_table <- rbind(missing_ants_table, data.frame(antID=MISSING)) # , tag_hex_ID= e$ants[[MISSING]]$identifications[[id]]$tagValue
   }}
   
   if (nrow(missing_ants_table)>0) {
@@ -518,8 +525,7 @@ SpaceUse <- function(e, start, end){
   SpaceUsage <- rbind(SpaceUsage, missing_ants_table)
   }
   SpaceUsage <- SpaceUsage[order(SpaceUsage$antID),]
-  #rename antId to Tag to comply with Science2018
-  SpaceUsage$tag_hex_ID <- NULL
+  #SpaceUsage$tag_hex_ID <- NULL
   
   rm(list=ls()[which(!ls()%in%c("SpaceUsage"))]) #close experiment
   gc()

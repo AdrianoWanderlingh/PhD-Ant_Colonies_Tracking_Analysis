@@ -463,9 +463,9 @@ for (REP.n in 1:length(files_list)) {
       if (RUN_SPACEUSE) {
         print("Computing SpaceUse based on 24h time-window pre AND post exposure")
         warning("the Space Use Script can be substantially sped up by computing trajectories beforehand, then cutting the result by 3h chunks and performing operations on them.
-                \n -This is because trajectories stitching is slow so may be better to perform it once
+                \n -This is because trajectories stitching is slow so may be better to perform it once. see inspiration from 8_process_trajectory_files.R
                 \n -This will require saving the summary stats per ant in a safe place (possibly the trajectories summary as now but with clearing of the vars at each time cycle)
-                \n -parallelisation of ant computation could also greatly improve speed: at the current rate of 2.1 sec per ant per 3h chunk, it takes 70h to only perform the summary stats computations (traj stitching excluded)")
+                \n -parallelisation of ant computation greatly improve speed. Before parallelisation of SpaceUse calculations: 2.1 sec per ant per 3h chunk (70h), after 0.21 sec with 10 cores. this includes only the summary stats computations (traj stitching excluded)")
         SpaceUse_loop_start_time <- Sys.time()
         # TIME_HOURS zero is the moment of exposed ants return
         for (TIME_HOURS in Time_dictionary_PERIOD$time_hours[seq(1, length(Time_dictionary_PERIOD$time_hours), 3)]) { ## increments by 3 hours for 48 hours
@@ -493,7 +493,7 @@ for (REP.n in 1:length(files_list)) {
           SpaceUsage <- SpaceUse(e = e, start = time_start_h, end = time_stop_h)
           
           SpaceUsage <- dplyr::left_join(SpaceUsage, metadata[which(metadata$REP_treat==REP_TREAT),c("status_ant", "antID","IsAlive")], by = "antID") # Apply left_join dplyr function
-          colnames(SpaceUsage)[which(colnames(SpaceUsage)=="antID")] <- "Tag"
+          colnames(SpaceUsage)[which(colnames(SpaceUsage)=="antID")] <- "tag"
           colnames(SpaceUsage)[which(colnames(SpaceUsage)=="status_ant")] <- "status"
           
           #remove dead ants
