@@ -354,6 +354,8 @@ for (REP.n in 1:length(files_list)) {
     
     for (PERIOD in c("pre","post")) {
     
+      #segment the time dictionary
+      Time_dictionary_PERIOD <- Time_dictionary[which(Time_dictionary$period==PERIOD),]
       #conform naming to science2018
       # colony code
       REP_NUM           <- substring(REP_TREAT, 2, nchar(REP_TREAT))
@@ -400,6 +402,7 @@ for (REP.n in 1:length(files_list)) {
       Interactions$time_hours   <- NA
       Interactions$time_of_day  <- NA
       # TIME_HOURS zero is the moment of exposed ants return
+      warning("interaction binning loop should be fixed as done later for the SpaceUse, see TIME_HOURS ")
       for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)]) { ## increments by 3 hours for 48 hours
         
         # TIME_OF_DAY
@@ -448,14 +451,34 @@ for (REP.n in 1:length(files_list)) {
     }
       }# RUN_INTERACT
       
+      if (file.exists(SPACE_USE)) {
+        print("file exists")
+        spaceUse_done <- read.table(SPACE_USE, header = T, stringsAsFactors = F, sep = "\t")
+        spaceUse_done <- spaceUse_done[which(spaceUse_done$colony==colony),"time_hours"]
+      }else{
+        spaceUse_done <- c() # placeholder
+      }
+        
+      
       if (RUN_SPACEUSE) {
         print("Computing SpaceUse based on 24h time-window pre AND post exposure")
+        warning("the Space Use Script can be substantially sped up by computing trajectories beforehand, then cutting the result by 3h chunks and performing operations on them.
+                \n -This is because trajectories stitching is slow so may be better to perform it once
+                \n -This will require saving the summary stats per ant in a safe place (possibly the trajectories summary as now but with clearing of the vars at each time cycle)
+                \n -parallelisation of ant computation could also greatly improve speed: at the current rate of 2.1 sec per ant per 3h chunk, it takes 70h to only perform the summary stats computations (traj stitching excluded)")
         SpaceUse_loop_start_time <- Sys.time()
         # TIME_HOURS zero is the moment of exposed ants return
-        for (TIME_HOURS in Time_dictionary$time_hours[seq(1, length(Time_dictionary$time_hours), 3)]) { ## increments by 3 hours for 48 hours
+        for (TIME_HOURS in Time_dictionary_PERIOD$time_hours[seq(1, length(Time_dictionary_PERIOD$time_hours), 3)]) { ## increments by 3 hours for 48 hours
+          
+          
           # TIME_OF_DAY
           TIME_OF_DAY <- Time_dictionary[which(Time_dictionary$time_hours == TIME_HOURS), "time_of_day"]
           print(paste("TIME_HOURS", TIME_HOURS,"TIME_OF_DAY", TIME_OF_DAY,"PERIOD",PERIOD,sep=" "))
+          
+            # has the time_hour been computed already? 
+            if (TIME_HOURS %in% spaceUse_done) {
+              print("DONE, SKIP TO NEXT 3-HOURS BLOCK >>")
+                      }else{
           
           #time windows
           time_start_h <- fmTimeCreate(offset = (time_window_all[time_window_all$REPLICATE==REP_TREAT,"time_stop"] + (TIME_HOURS - 24) * TimeWind)) # time_stop minus 48 hours plus incremental time
@@ -497,10 +520,10 @@ for (REP.n in 1:length(files_list)) {
             } else {
               write.table(SpaceUsage, file = SPACE_USE, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
             }
-        }
+          } # if present already
+        } # hour loop
         SpaceUse_loop_end_time <- Sys.time()
         print(paste("spaceUse 3h chunk took ", as.numeric(difftime(SpaceUse_loop_end_time, SpaceUse_loop_start_time, units = "secs")), " sec to complete"))
-        
         }
       } # PERIOD
     }

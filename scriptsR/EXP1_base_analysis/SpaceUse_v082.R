@@ -6,6 +6,9 @@ SpaceUse <- function(e, start, end){
   require(lubridate)
   require(FortMyrmidon)
   require(mallinfo)
+  #require(parallel)
+  require(doParallel)
+  require(data.table)
   
   # parameters (from Sceince2018)
   options(digits=16) ; options(digits.secs=6) ; options("scipen" = 10)
@@ -14,7 +17,7 @@ SpaceUse <- function(e, start, end){
   max_gap <- 15 ##anything larger than that needs to be subdivided into two different bouts
   dist_threshold <- 25 # avg is 50px (from the fort experiment calculator) #previous value: 15, everything below that threshold (half a tag length) is considered inactive
   power <- 0.125 ###power used before clustering
-  
+  CORE_N <- 10
   
   ###  Functions
   insertRow <- function(existingDF, newrow, r) {
@@ -37,9 +40,30 @@ SpaceUse <- function(e, start, end){
   AntID_list <- NULL
   for (ant in   1: length(e$ants)) {
     AntID_list <- c(AntID_list,e$ants[[ant]]$ID)}
-
+  
+  
+  
+  
+  print("Querying frames...")
+  IdentifyFrames      <- fmQueryIdentifyFrames(e,start, end,showProgress = FALSE)
+  IF_frames           <- IdentifyFrames$frames
+  rm(list=c("IdentifyFrames"))
+  gc()
+  mallinfo::malloc.trim(0L)
+  
+  # Assign a frame to each time since start and use it as baseline for all matching and computation
+  IF_frames$frame_num <- as.numeric(seq.int(nrow(IF_frames)))
+  
+  # assign a time in sec to match annotation time (UNIX hard to use for class mismatch)
+  IF_frames$time_sec <- round(as.numeric(IF_frames$time),N_DECIMALS)
+  IF_frames$cum_diff <- c(0, with(IF_frames, diff(time)))
+  IF_frames$cum_diff <- cumsum(IF_frames$cum_diff)
+  
+  
+  
     #   print(paste(" Time interval from hour",HOUR_start,"to",(HOUR_start-TimeWindow),"until e end",sep = " "))
-    positions                 <- fmQueryComputeAntTrajectories(e,start,end,maximumGap = fmHour(24*365),computeZones = TRUE,singleThreaded=FALSE)
+    #positions                 <- fmQueryComputeAntTrajectories(e,start,end,maximumGap = fmHour(24*365),computeZones = TRUE,singleThreaded=FALSE)
+    positions <- extract_trajectories(e, start , end, maximumGap = fmHour(24*365),computeZones = T,showProgress = F,IF_frames=IF_frames)
     positions_summaries       <- positions$trajectories_summary
     positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
     positions_list            <- positions$trajectories
@@ -48,13 +72,12 @@ SpaceUse <- function(e, start, end){
     # loop through each dataframe and check for duplicated rows
     for (i in seq_along(positions_list)) {
       if (any(duplicated(positions_list[[i]]$time))) {
-        cat("Duplicates found in ant_index", i, "\n")
         remove_times <- positions_list[[i]][duplicated(positions_list[[i]]$time),"time"]
-        positions_list[[i]] <- positions_list[[i]][which(positions_list[[i]]$time!=remove_times),]
+        positions_list[[i]] <- positions_list[[i]][which(!positions_list[[i]]$time %in% remove_times),]
+        print(paste(length(remove_times),"duplicates found in ant_index ", i, sep=" "))
       }
     }
-
-    
+ 
     
     ####1/ always check that the number of rows of positions_summaries is equal to the length of positions_list
     if(!(nrow(positions_summaries)==length(positions_list)))stop("number of rows of positions_summaries is not equal to the length of positions_list")
@@ -62,12 +85,23 @@ SpaceUse <- function(e, start, end){
     positions_summaries <- positions_summaries[order(positions_summaries$index),]
     ###this ensures that the first row in positions_summaries corresponds to the first trajectory in positions_list, etc.
 
+    ### parallelise process
+    # register a parallel backend with x cores
+    registerDoParallel(CORE_N)
+    
     to_keep <- unique(c(to_keep,ls(),"ant_index")) # "traj_file","to_keep_ori"
     
+    SpaceUse_loop_start_time <- Sys.time()
+    
+    # parallel loop to calculate summary statistics for each dataframe in the list
+    results <- foreach(ant_index = 1:length(positions_list)) %dopar% { #, .combine = "list"
+
     #############################################  
     ####### analyse trajectory ANT BY ANT ####### 
-    for ( ant_index in 1:length(positions_list)) {
-      print(paste0("ant_index: ",ant_index))
+    #SpaceUse_ant <- function(positions_list_ant_index) {
+    #for ( ant_index in 1:length(positions_list)) {
+      #print(paste0("ant_index: ",ant_index))
+      #cat("\rant_index:", ant_index, "of", length(positions_list))
       ####8_process_trajectory_files.R#####
       # Modified from Stroeymeyt et al. 2018
       #### Defines activity bouts and calculates summary statistics for each trajectory 
@@ -124,7 +158,9 @@ SpaceUse <- function(e, start, end){
                 
                 #output <- system(paste( "head -1 ",get(paste("traj_file",suffix,sep=""))),intern=T)
                 #if (!grepl("bout_id",output)){
-                  traj <- positions_list[[ant_index]]#read.table(get(paste("traj_file",suffix,sep="")),header=T,sep=",",comment.char="%")
+              #warning("positions_list_ant_index also afterwards in the function!")
+                  traj <- positions_list[[ant_index]] #read.table(get(paste("traj_file",suffix,sep="")),header=T,sep=",",comment.char="%")
+                  #traj <- positions_list_ant_index
                   #names(traj)[names(traj)=="X.frame"] <- "frame"
                   #####Remove occasional duplicates
                   #traj <- traj[!duplicated(traj$frame),]
@@ -197,11 +233,11 @@ SpaceUse <- function(e, start, end){
                   }
                   #####use breakpoints to define start and end times for bouts, and add the information into thr traj file 
                   breakpoints <- match(traj_noNA[breakpoints,"time"],traj$time)
+                  breakpoints[length(breakpoints)] <- max(nrow(traj),breakpoints[length(breakpoints)])
                   if (min(breakpoints)==nrow(traj)) { #AW # if breakpoints has only one element, it is th minimum value
                     bout_indices <- data.frame(start=1,end=nrow(traj)) #issue in original code: if no breakpoint, create single bout
                   }else{
                   #breakpoints <-  breakpoints[!is.na(breakpoints)]#AW
-                  breakpoints[length(breakpoints)] <- max(nrow(traj),breakpoints[length(breakpoints)])
                   breakpoints <- c(1,breakpoints)
                   first_index <- breakpoints[1]
                   bout_start_indices <- c(first_index,(breakpoints+1)[2:(length(breakpoints)-1)])
@@ -221,7 +257,7 @@ SpaceUse <- function(e, start, end){
               #}##for (suffix in c("_Pre","_Post"))
               ###Now combine the two traj objects into a single one for the meta-analysis of active vs. inactive
               #if (ncol(traj_Pre)==ncol(traj_Post)){###do it only if bouts were defined for both periods
-              if (bout_counter>1){###do it only if more than 1 bout is defined
+              if (bout_counter>2){###do it only if more than 1 bout is defined
                 #trajectory_table <- rbind(data.frame(period="before",traj_Pre),data.frame(period="after",traj_Post))
                 #TEMP
                 #trajectory_table <- traj
@@ -311,7 +347,7 @@ SpaceUse <- function(e, start, end){
                 # traj["colony"]      <- colony
                 # traj["treatment"]   <- info[which(info$colony==as.numeric(gsub("colony","",colony))),"treatment"]
                 #traj                <- traj[c("time","frame","x","y","dist_per_frame","total_dist","turn_angle","type","bout_id")] #"colony","treatment","box","period","time_hours","time_of_day",
-                traj                <- traj[c("time","x","y","dist_per_frame","total_dist","turn_angle","type","bout_id")] #"colony","treatment","box","period","time_hours","time_of_day",   "frame",
+                traj                <- traj[c("time","x","y","zone","dist_per_frame","total_dist","turn_angle","type","bout_id")] #"colony","treatment","box","period","time_hours","time_of_day",   "frame",
                 ##################################
                 ####### Now analyse trajectory ###
                 ##################################
@@ -325,6 +361,18 @@ SpaceUse <- function(e, start, end){
                 ###Analyse separately for each time point
                 #for (time_point in unique(tab$time_hours)){
                   #subtraj <- traj[which(traj$time_hours==time_point),]
+                
+                # calculate summary statistics
+                tab <- data.frame(
+                  index=ant_index,
+                  nb_frames_outside=NA ,
+                  nb_frames_inside=NA ,
+                  prop_time_outside=NA ,
+                  proportion_time_active=NA ,
+                  average_bout_speed_pixpersec=NA ,
+                  total_distance_travelled_pix=NA 
+                )
+                
                   if (!all(is.na(traj$type))){
                     bouts <- traj[which(traj$type=="active"),]
                     interbouts <- traj[which(traj$type=="inactive"),]
@@ -333,16 +381,20 @@ SpaceUse <- function(e, start, end){
                     interbout_number <- length(unique(interbouts$bout_id))
                     if (!(bout_number==0&interbout_number==0)){###if there is no bout data, leave everything as NA
                       if (bout_number==0){###if ant completely inactive
-                        positions_summaries[ant_index,c("proportion_time_active","total_distance_travelled_pix")] <- 0
+                        #positions_summaries[ant_index,c("proportion_time_active","total_distance_travelled_pix")] <- 0
+                        tab$proportion_time_active <- 0;  tab$total_distance_travelled_pix <- 0
                         # tab[which(tab$time_hours==time_point),c("proportion_time_active","total_distance_travelled_pix")] <- 0
                       }else {###if ant shows at least some activity
                         # tab[which(tab$time_hours==time_point),"total_distance_travelled_pix"] <- sum(bouts$total_dist,na.rm=T)
-                        positions_summaries[ant_index,"total_distance_travelled_pix"] <- sum(bouts$total_dist,na.rm=T)
+                        #positions_summaries[ant_index,"total_distance_travelled_pix"] <- sum(bouts$total_dist,na.rm=T)
+                        tab$total_distance_travelled_pix <- sum(bouts$total_dist,na.rm=T)
                         bout_speed <- aggregate(na.rm=T,na.action="na.pass",dist_per_frame~bout_id,FUN=mean,data=bouts)
-                        positions_summaries[ant_index,"average_bout_speed_pixpersec"] <- mean(bout_speed$dist_per_frame,na.rm = T)*FRAME_RATE ####multiply by 2 because each frame lasts 0.5sec
+                        #positions_summaries[ant_index,"average_bout_speed_pixpersec"] <- mean(bout_speed$dist_per_frame,na.rm = T)*FRAME_RATE ####multiply by 2 because each frame lasts 0.5sec
+                        tab$average_bout_speed_pixpersec <- mean(bout_speed$dist_per_frame,na.rm = T)*FRAME_RATE ####multiply by 2 because each frame lasts 0.5sec
                         #tab[which(tab$time_hours==time_point),"average_bout_speed_pixpersec"] <- mean(bout_speed$dist_per_frame,na.rm = T)*2 ####multiply by 2 because each frame lasts 0.5sec
                         if (interbout_number==0){###if ant completely active
-                          positions_summaries[ant_index,"proportion_time_active"] <- 1
+                          #positions_summaries[ant_index,"proportion_time_active"] <- 1
+                          tab$proportion_time_active <- 1
                           # tab[which(tab$time_hours==time_point),"proportion_time_active"] <- 1
                         }else{###if ant shows both activity and inactivity
                           ###calculate cumulated bout duration
@@ -356,7 +408,8 @@ SpaceUse <- function(e, start, end){
                           interbout_durations <- merge(interbout_starts,interbout_ends)
                           interbout_duration <-  sum(interbout_durations$Stoptime-interbout_durations$Starttime+(1/FRAME_RATE),na.rm=T)
                           
-                          positions_summaries[ant_index,"proportion_time_active"] <- bout_duration/(bout_duration+interbout_duration)
+                          #positions_summaries[ant_index,"proportion_time_active"] <- bout_duration/(bout_duration+interbout_duration)
+                          tab$proportion_time_active <- bout_duration/(bout_duration+interbout_duration)
                           #tab[which(tab$time_hours==time_point),"proportion_time_active"] <- bout_duration/(bout_duration+interbout_duration)
                         }
                       }
@@ -385,16 +438,48 @@ SpaceUse <- function(e, start, end){
         #}#for (traj_file in traj_files)
       #}# for (traj_folder in traj_list)
       #to_keep <- to_keep_ori
-     rm(list=ls()[which(!ls()%in%c(to_keep))]) #close experiment
       #--------------------------------------------------------------- 
       
       # OUTPUTS
-      positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]%in%foraging_zone))
-      positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]%in%nest_zone))
-      positions_summaries[ant_index,"prop_time_outside"] <- positions_summaries[ant_index,"nb_frames_outside"] /(positions_summaries[ant_index,"nb_frames_outside"] + positions_summaries[ant_index,"nb_frames_inside"])
-    }
+      # positions_summaries[ant_index,"nb_frames_outside"]  <- length(which(positions_list[[ant_index]][,"zone"]%in%foraging_zone))
+      # positions_summaries[ant_index,"nb_frames_inside"] <- length(which(positions_list[[ant_index]][,"zone"]%in%nest_zone))
+      # positions_summaries[ant_index,"prop_time_outside"] <- positions_summaries[ant_index,"nb_frames_outside"] /(positions_summaries[ant_index,"nb_frames_outside"] + positions_summaries[ant_index,"nb_frames_inside"])
+      tab$nb_frames_outside <- length(which(traj[,"zone"]%in%foraging_zone))
+      tab$nb_frames_inside  <- length(which(traj[,"zone"]%in%nest_zone))
+      tab$prop_time_outside <- tab$nb_frames_outside /(tab$nb_frames_outside + tab$nb_frames_inside)
+      
+      # save summary statistics as new columns in the summary dataframe
+      #positions_summaries[ant_index, names(tab)] <- as.vector(unlist(tab))
+      
+      return(list(ant_index=ant_index, data=tab))
     
+      #may conflict with parallelization?
+      #rm(list=ls()[which(!ls()%in%c(to_keep))]) #close experiment
+       #}
+    } # function SpaceUse_ant
     
+    SpaceUse_loop_end_time <- Sys.time()
+    print(paste("spaceUse 3h chunk took ", round(as.numeric(difftime(SpaceUse_loop_end_time, SpaceUse_loop_start_time, units = "secs")),1), " sec to complete"))
+    
+    # stop the parallel backend
+    stopImplicitCluster()
+    
+    # convert the results to a list by individual index
+    results_list <- lapply(seq_along(results), function(i) {
+      # extract the result corresponding to the current individual index
+      result <- results[[i]]
+      if (!is.null(result)) {
+        # return the summary statistics as a data frame
+        return(result$data)
+      } else {
+        # return an empty data frame
+        return(data.frame())
+      }
+    })
+    
+    # combine the results into a single data frame
+    summary_df <- do.call(rbind, results_list)
+    positions_summaries <- merge(positions_summaries, summary_df,by="index",all.x=T) 
     #round
     positions_summaries[, sapply(positions_summaries, is.numeric)] <- round(positions_summaries[, sapply(positions_summaries, is.numeric)], 3)
     
