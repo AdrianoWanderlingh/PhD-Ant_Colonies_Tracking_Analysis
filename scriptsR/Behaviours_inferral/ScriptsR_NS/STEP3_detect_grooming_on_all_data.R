@@ -111,7 +111,7 @@ names(classifier) <- chosen[,"classifier"]
 ###### LIST MYRMIDON FILES ON WHICH TO PERFORM GROOMING DETECTION ##################################
 ###############################################################################
 setwd(DATADIR)
-myrmidon_files <- list.files(pattern="_AutoOriented_withMetaData_NS",recursive = T)
+myrmidon_files <- list.files(pattern="_AutoOriented_withMetaData",recursive = T) #_NS
 myrmidon_files <- myrmidon_files[which(grepl(CAPSULE_FILE,myrmidon_files))]
 
 to_keep <- c(ls(),"to_keep","myrmidon_file")
