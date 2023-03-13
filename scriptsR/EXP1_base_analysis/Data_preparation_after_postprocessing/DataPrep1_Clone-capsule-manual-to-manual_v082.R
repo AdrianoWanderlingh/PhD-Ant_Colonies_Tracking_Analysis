@@ -18,7 +18,7 @@ library(R.utils)
 
 ### directory of data and myrmidon files
 #dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/' # /media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA/REP3/CapsuleDef3_R3SP_ManualOriented_base.myrmidon
-dir_data <- '/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA/'
+dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA/'
 #dir_data <- '/home/cf19810/Documents/TEMP/EXPERIMENT_DATA/'
 
 

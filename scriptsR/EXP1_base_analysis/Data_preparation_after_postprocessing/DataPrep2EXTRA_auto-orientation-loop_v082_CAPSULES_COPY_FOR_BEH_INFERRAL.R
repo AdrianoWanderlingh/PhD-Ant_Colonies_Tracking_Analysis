@@ -43,7 +43,7 @@ list.dirs.depth.n <- function(p, n) {
 #sourceCpp("/home/bzniks/Downloads/PhD-exp1-data-analysis-main/scriptsR/EXP1_base_analysis/determine_angle_automatically/Get_Movement_Angle.cpp")
 
 ### directory of data and myrmidon files
-dir_data <- '/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA'
+dir_data <- '/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA'
 #dir_data <- "/media/eg15396/DISK4/ADRIANO/EXPERIMENT_DATA"
 # dir_data <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
 #dir_data  <- "/media/cf19810/Seagate Portable Drive/ADRIANO/EXPERIMENT_DATA_EXTRAPOLATED"
@@ -104,6 +104,14 @@ for (REP.n in 1:length(files_list)) {
   }
 }
 
+### REMOVE FILES PREVIOUSLY GENERATED TO OVERWRITE THEM AND NOT ASSIGN THEM NEW CAPSULES AGAIN!
+###IF YOU DO NOT WANT TO ELIMINATE FILES ALREADY GENERATED, DEACTIVATE THIS SEGMENT OF THE SCRIPT
+# subset rows where the string in the `path_name` variable contains only one of the substrings
+EXP_list <- EXP_list[!(grepl("AntsCreated", EXP_list$path_name) & grepl("CapsuleDef2018", EXP_list$path_name)), ]
+#REMOVE CORE MANUAL FILE
+EXP_list <- EXP_list[!(grepl("CapsuleDef2018_R3SP_ManualOriented_base", EXP_list$path_name)), ]
+#CHECK that only the  base oriented files are selected when calling the designed capsule name
+EXP_list[grepl("CapsuleDef2018", EXP_list$path_name), ]
 
 # Select the metadata-rich files
 Metadata_list <- EXP_list[which(grepl(EXP_list$path_name,pattern = "DeathRecord_NoOrient|ManOriented.myr")),]
@@ -115,7 +123,7 @@ Metadata_list <- Metadata_list[which(!grepl(Metadata_list$path_name,pattern = "b
 
 
 # flag which ones are the base oriented files
-EXP_list$OrientedCapsule = ifelse(grepl("CapsuleDef",EXP_list$path_name),"true","false")
+EXP_list$OrientedCapsule = ifelse(grepl("ManOriented_CapsuleDef2018.myrmidon",EXP_list$path_name),"true","false")
 #EXP_list$OrientedCapsule = ifelse(grepl("ManOriented_CapsuleDef3.myrmidon",EXP_list$path_name),"true","false") # To use as base the CapsuleDef3!
 
 ### manually oriented ref file name
@@ -272,9 +280,9 @@ for (CAPSULEDEF in unique(CAPS_vector)){
   for (ToOrient_myr_file in ToOrient_data_list){
     #ToOrient_myr_file <- ToOrient_data_list[9] #temp
     
-    # if the CAPDEF file file doesn't exist, then continue
-    if (!file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_",CAPSULEDEF,".myrmidon"))) {
-      
+    # # if the CAPDEF file file doesn't exist, then continue
+    # if (!file.exists(paste0(sub("\\..*", "", ToOrient_myr_file),"_",CAPSULEDEF,".myrmidon"))) {
+    #   
 
     # EXP_list[which( grepl(CAPSULEDEF,EXP_list$path_name) ),"path_name"]
   
@@ -384,9 +392,9 @@ for (CAPSULEDEF in unique(CAPS_vector)){
     gc()
   #} # IF EXISTS, SKIP PROCESSING
     
-  }else {
-    print(paste(CAPSULEDEF,"exists for",sub("\\_.*", "", basename(ToOrient_myr_file)),"- SKIP"))
-  }
+  # }else {
+  #   print(paste(CAPSULEDEF,"exists for",sub("\\_.*", "", basename(ToOrient_myr_file)),"- SKIP"))
+  # }
     #} # IF STRING NOT NULL, CONTINUE
     #print(paste("File ",basename(ToOrient_myr_file), " exists already" ,sep =""))
   } #To orient LOOP
