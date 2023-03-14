@@ -41,6 +41,8 @@ struct interaction_developed {
   int ant2;
   double start;
   double end;
+  int start_frame;
+  int end_frame;
   double space;
   vector <string> type;
   vector <double> x1;
@@ -59,6 +61,8 @@ struct summarised_interaction {
   int ant2;
   double start;
   double end;
+  double start_frame;
+  double end_frame;
   double space;
   string type;
   double mean_x1;
@@ -69,6 +73,7 @@ struct summarised_interaction {
   double mean_angle2;
   string zone1;
   string zone2;
+  int detections;
 };
 
 typedef vector <interaction_developed>  developed_interactions; 
@@ -158,6 +163,8 @@ interaction_developed define_new_interaction(int coll, collision_list all_collis
   new_interaction.ant2  =   all_collisions.ant2[coll];
   new_interaction.start = all_collisions.time[coll];
   new_interaction.end   = all_collisions.time[coll];
+  new_interaction.start_frame = all_collisions.frame[coll];
+  new_interaction.end_frame   = all_collisions.frame[coll];
   new_interaction.space = all_collisions.space[coll];
   new_interaction.type.push_back(string(all_collisions.type[coll]));
   new_interaction.x1.push_back(all_collisions.x1[coll]);    
@@ -174,6 +181,7 @@ interaction_developed define_new_interaction(int coll, collision_list all_collis
 
 void update_interaction(interaction_developed& current_interaction, int coll, collision_list all_collisions){
   current_interaction.end     =                all_collisions.time  [coll];
+  current_interaction.end_frame     =                all_collisions.frame  [coll];
   current_interaction.type   .push_back(string(all_collisions.type  [coll]));
   current_interaction.x1     .push_back(       all_collisions.x1    [coll]);    
   current_interaction.y1     .push_back(       all_collisions.y1    [coll]);    
@@ -197,6 +205,9 @@ summarised_interaction close_interaction(interaction_developed& current_interact
   interaction_summary.ant2         =                     current_interaction.ant2;
   interaction_summary.start        =                     current_interaction.start;
   interaction_summary.end          =                     current_interaction.end;
+  interaction_summary.start_frame  =                     current_interaction.start_frame;
+  interaction_summary.end_frame    =                     current_interaction.end_frame;
+  
   interaction_summary.space        =                     current_interaction.space;
   interaction_summary.type         = simplify_type_list (current_interaction.type);
   interaction_summary.mean_x1      = get_Average        (current_interaction.x1);
@@ -207,6 +218,7 @@ summarised_interaction close_interaction(interaction_developed& current_interact
   interaction_summary.mean_angle2  = get_Circular_Mean  (current_interaction.angle2);
   interaction_summary.zone1        = simplify_type_list (current_interaction.zone1) ;
   interaction_summary.zone2        = simplify_type_list (current_interaction.zone2) ;
+  interaction_summary.detections   = current_interaction.x1.size();
   
   return(interaction_summary);
 };
@@ -258,6 +270,7 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
   interaction_developed last_interaction;
   double last_x1; double last_y1; double last_x2; double last_y2; double current_x1; double current_y1; double current_x2; double current_y2;
   double last_time; double current_time;
+  int last_frame; int current_frame;
   int last_space; double current_space;
   double time_diff; double distance_diff1;double distance_diff2;
   for (int coll(0); coll < collisions_size;coll++){ //read all collisions
@@ -275,6 +288,7 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
       last_y1   = last_interaction.y1[last_interaction.y1.size()-1];
       last_y2   = last_interaction.y2[last_interaction.y2.size()-1];
       last_time = last_interaction.end;
+      last_frame = last_interaction.end_frame;
       last_space = last_interaction.space;
       
       ///second, extract the current positions and current time of collision
@@ -283,6 +297,7 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
       current_y1   = all_collisions.y1[coll];
       current_y2   = all_collisions.y2[coll];
       current_time = all_collisions.time[coll];
+      current_frame = all_collisions.frame[coll];
       current_space = all_collisions.space[coll];
       
       //use this to calculate distance diff
@@ -322,6 +337,8 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
   vector <int>    ant2_interact;
   vector <double> start_interact;
   vector <double> end_interact;
+  vector <int>    start_interact_frame;
+  vector <int>    end_interact_frame;
   vector <int>    space_interact;
   vector <string> type_interact;
   vector <double> meanx1_interact;
@@ -332,7 +349,7 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
   vector <double> meanangle2_interact;
   vector <string> zone1_interact;
   vector <string> zone2_interact;
-  
+  vector <int>    detections;
   /////////////////////////////////////////////
   ///loop over all_summarised_interactions
   for (int inter(0);inter < all_summarised_interactions.size();inter++){
@@ -340,6 +357,8 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
     ant2_interact      .push_back(all_summarised_interactions[inter].ant2);
     start_interact     .push_back(all_summarised_interactions[inter].start);
     end_interact       .push_back(all_summarised_interactions[inter].end);
+    start_interact_frame     .push_back(all_summarised_interactions[inter].start_frame);
+    end_interact_frame       .push_back(all_summarised_interactions[inter].end_frame);
     space_interact     .push_back(all_summarised_interactions[inter].space);
     type_interact      .push_back(all_summarised_interactions[inter].type);
     meanx1_interact    .push_back(all_summarised_interactions[inter].mean_x1);
@@ -350,7 +369,7 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
     meanangle2_interact.push_back(all_summarised_interactions[inter].mean_angle2);
     zone1_interact     .push_back(all_summarised_interactions[inter].zone1);
     zone2_interact     .push_back(all_summarised_interactions[inter].zone2);
-    
+    detections         .push_back(all_summarised_interactions[inter].detections);
   }
   
   
@@ -360,6 +379,8 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
                            _["ant2"]             = ant2_interact,
                            _["start"]            = start_interact,
                            _["end"]              = end_interact,
+                           _["startframe"]       = start_interact_frame,
+                           _["endframe"]         = end_interact_frame,
                            _["space"]            = space_interact,
                            _["types"]            = type_interact,
                            _["ant1.mean.x"]      = meanx1_interact,
@@ -369,7 +390,8 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
                            _["ant2.mean.y"]      = meany2_interact,
                            _["ant2.mean.angle"]  = meanangle2_interact,
                            _["ant1.zones"]       = zone1_interact,
-                           _["ant2.zones"]       = zone2_interact
+                           _["ant2.zones"]       = zone2_interact,
+                           _["detections"]       = detections
   );
   
 }
