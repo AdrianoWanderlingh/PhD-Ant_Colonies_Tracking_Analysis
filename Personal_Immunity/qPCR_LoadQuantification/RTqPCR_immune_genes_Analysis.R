@@ -44,6 +44,7 @@ library(lmerTest)
 library(car)
 library(nlme) # lme
 library(afex)
+library(pracma) # calculate shoulders in a curve
 
 ###source function scripts
 print("Loading functions and libraries...")
@@ -307,8 +308,45 @@ genes_data[which(genes_data$Ant_status=="queen"),"GROUP"] <- "QUEEN"
 genes_data[which(genes_data$Ant_status=="treated nurse"),"GROUP"] <- "TREATED_W"
 genes_data[which(genes_data$Ant_status %in% c("untreated forager","untreated nurse")),"GROUP"] <- "UNTREATED_W"
 
-####### CHECK FOR DISTRIBUTION OF MISSING DATA ########################################################
-##################### INVESTIGATING NON-DETECTS #####################
+
+###########################################################
+#######       DETERMINE DETECTION THRESHOLD        ########
+###########################################################
+
+###### determine detection threshold of the qPCR machine.
+## threshold calculated as the shoulder of the values curve (scatterplot of the ordered Cts), which are the peaks of the second derivative.
+
+#### Find shoulder
+sorted_vector <- sort(genes_data$Ct)
+# Fit a spline curve with a high spar smoothing parameter
+smoothed_curve <- smooth.spline(sorted_vector, spar = 1)
+# Find the second derivative of the smoothed curve
+smoothed_diff <- diff(smoothed_curve$y, differences = 1)
+smoothed_x_diff <- diff(smoothed_curve$x, differences = 1)
+second_derivative <- diff(smoothed_diff) / (head(smoothed_x_diff, -1) * tail(smoothed_x_diff, -1))
+# Compute the absolute value of the second derivative
+abs_second_derivative <- abs(diff(second_derivative))
+sorted_vector <- sorted_vector[-1]
+# Smooth the absolute value curve
+original_second_derivative <- diff(diff(sorted_vector))
+abs_second_derivative <- abs(original_second_derivative)
+# Find the peaks of the smoothed absolute value curve
+peaks <- as.data.frame(pracma::findpeaks(abs_second_derivative))
+peaks <- peaks[which(peaks$V1>=0.2),"V2"]
+# Extract the corresponding x-coordinates from the smoothed curve
+shoulder_points <- data.frame(x = smoothed_curve$x[peaks], y = smoothed_curve$y[peaks])
+# Machine Detection_Threshold
+Detection_Threshold <- max(shoulder_points$y)
+warning("show Florent!")
+# Plot the curve
+plot(sorted_vector, col = "black", type = "l", main = "Smoothed Curve",lwd=3)
+points(shoulder_points$x,shoulder_points$y , col = "red", pch = 19)
+
+###########################################################
+#######   CHECK FOR DISTRIBUTION OF MISSING DATA   ########
+###########################################################
+
+# INVESTIGATING NON-DETECTS
 # For each gene, we compute the proportion of non-detects and the average Ct value across replicate samples (Fig. 3).
 # There appears to be a strong relationship between the average expression of the genes across replicate samples and the proportion of non-detects.
 
@@ -384,8 +422,71 @@ ggplot(mean_data_Col, aes(x = gene, y = propNA,colour=Treatment)) + #, label= Co
 # warning("here is where files too far away from mean +- 2sd are discarded")
 # genes_data[which(genes_data$Excessive_divergence=="discard"),"Ct"] <- NA
 
+###########################################################
+#######   STEP 1: REMOVE INVALID HOUSEKEEPING CTs   #######
+###########################################################
+
+# valid: both Ct<mean+-2*sd, diff.Ct<0.5
+# invalid: everything else
+
+##### ISOLATE SUSPICIOUS DATAPOINTS (CONTAMINATIONS, BAD EXTRACTIONS, ETC)
+# Calculate standard deviation by group
+stdev_by_group <- genes_data %>%
+  group_by(gene) %>%
+  summarise(st.dev_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, sd(mean_Ct, na.rm = TRUE)), 
+            grand_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, mean(mean_Ct, na.rm = TRUE)))
+
+# CHECK EF1 with mean_Ct value greater than 2*st.dev mean_Ct value for each group
+#exclude Queens from outliers (on the lowerbound, they are expected to have a lot of datapoints -low Ct-, but the upperbound should be cleaned)
+# outliers are not removed or filtered at this stage
+outliers <- genes_data %>%
+  inner_join(stdev_by_group, by = "gene") %>%
+  filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
+  filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
+
+# plot a scatterplot with lines connecting Ct values between groups
+ggplot(outliers, aes(x = gene, y = mean_Ct, group = Code)) +
+  geom_point(aes(color = gene)) +
+  geom_line(alpha = 0.1) +
+  ggtitle("Scatterplot of mean_Ct values by group gene with lines connecting values") +
+  xlab("Group") +
+  ylab("mean_Ct value") #+
+# scale_color_discrete(name = "Group", labels = unique(outliers$gene))
+
+##### REMOVE INVALID HOUSEKEEPING GENE'S EXPRESSION
+# EF1alpha is expected to show expression values inside a gaussian range (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
+# given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
+#excluding EF1 values over threshold (12 only before) and as we can't base the expression of the other genes on it
+# genes_data <- genes_data[!is.na(genes_data$ref_Ct),]
+
+
+#
+# START FROM HERE!!!!
+# OUTPUT THE "CODE" FOR EACH INSTANCE IN WHICH POINTS ARE VALID:
+# ONLY FOR EF1, Ct<mean_Ct+-2*st.dev(OVERALL), diff.Ct<0.5
+# THEN SUBSET THE DATA REMOVING ANY ROW CONTAINING THE "CODE" IN THE EXCLUSION VECTOR (8 ROWS PER CODE)
+#
+#
+#
+#
+
+
+# # check outliers min upper threshold
+outliers_limit <- min(outliers %>%
+                        filter(gene == "EF1") %>%
+                        filter(mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
+                        pull(mean_Ct))
+#outliers_limit <-  mean(genes_data$mean_Ct,na.rm=T)+2*sd(genes_data$mean_Ct,na.rm=T)
+
+
+## we then discard samples with EF1 mean_ct > 32 as they are probably low quality samples (bad extraction, bad crushing, etc)
+## filter rows with mean_Ct value greater than 32 for group EF1
+#genes_data <- genes_data[!(genes_data$gene == "EF1") | !(genes_data$mean_Ct >= outliers_limit),]
+genes_data[which(genes_data$gene == "EF1" & genes_data$mean_Ct >= outliers_limit),"mean_Ct"] <- NA
 
 #####################################
+
+
 
 # combine all the duplicates to have meanCts
 # Group by gene and calculate mean and sd of Ct values
@@ -398,10 +499,10 @@ genes_data_Dups <- genes_data %>%
 # Join the mean and sd values to the original dataframe
 genes_data <- left_join(genes_data, genes_data_Dups, by = c("Sample_Well", "gene_rep"))
 # assign absolute_difference of 0 if there is only 1 sample available
-genes_data[is.na(genes_data$abs_diff_Ct),"abs_diff_Ct"] <- 0
+#genes_data[is.na(genes_data$abs_diff_Ct),"abs_diff_Ct"] <- 0
 
 
-
+## STEP 1: 
 ####### CHECK FOR Ct values Discrepancy! ########################################################
 
 # remove extra cols to compress dataframe
@@ -548,54 +649,6 @@ table(genes_data$QC,genes_data$gene, useNA="ifany")
 # remove extra cols to allow DELTA_Ct method
 genes_data <- genes_data[,!(names(genes_data) %in% c("CTDiffAcc_15PipErr","CTDiffAcc_0.5","CtBigger35"))]
 
-
-####################################
-####################################
-
-##### ISOLATE SUSPICIOUS DATAPOINTS (CONTAMINATIONS, BAD EXTRACTIONS, ETC)
-# Calculate standard deviation by group
-stdev_by_group <- genes_data %>%
-  group_by(gene) %>%
-  summarise(st.dev_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, sd(mean_Ct, na.rm = TRUE)), 
-            grand_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, mean(mean_Ct, na.rm = TRUE)))
-
-# CHECK EF1 with mean_Ct value greater than 2*st.dev mean_Ct value for each group
-#exclude Queens from outliers (on the lowerbound, they are expected to have a lot of datapoints -low Ct-, but the upperbound should be cleaned)
-# outliers are not removed or filtered at this stage
-outliers <- genes_data %>%
-  inner_join(stdev_by_group, by = "gene") %>%
-  filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
-  filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
-
-# plot a scatterplot with lines connecting Ct values between groups
-ggplot(outliers, aes(x = gene, y = mean_Ct, group = Code)) +
-  geom_point(aes(color = gene)) +
-  geom_line(alpha = 0.1) +
-  ggtitle("Scatterplot of mean_Ct values by group gene with lines connecting values") +
-  xlab("Group") +
-  ylab("mean_Ct value") #+
-# scale_color_discrete(name = "Group", labels = unique(outliers$gene))
-
-
-##### REMOVE HOUSEKEEPING GENE'S EXPRESSION OVER THRESHOLD
-# EF1alpha is expected () to show expression values ranging between 25+-2 (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
-# given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
-#
-#excluding EF1 values over threshold (12 only before) and as we can't base the expression of the other genes on it
-# genes_data <- genes_data[!is.na(genes_data$ref_Ct),]
-
-# # check outliers min upper threshold
-outliers_limit <- min(outliers %>%
-  filter(gene == "EF1") %>%
-  filter(mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
-  pull(mean_Ct))
-#outliers_limit <-  mean(genes_data$mean_Ct,na.rm=T)+2*sd(genes_data$mean_Ct,na.rm=T)
-
-
-## we then discard samples with EF1 mean_ct > 32 as they are probably low quality samples (bad extraction, bad crushing, etc)
-## filter rows with mean_Ct value greater than 32 for group EF1
-#genes_data <- genes_data[!(genes_data$gene == "EF1") | !(genes_data$mean_Ct >= outliers_limit),]
-genes_data[which(genes_data$gene == "EF1" & genes_data$mean_Ct >= outliers_limit),"mean_Ct"] <- NA
 
 ################################################################################################################
 ############## REASSIGN VALUES AFTER QUALITY CONTROLS #########################################################
