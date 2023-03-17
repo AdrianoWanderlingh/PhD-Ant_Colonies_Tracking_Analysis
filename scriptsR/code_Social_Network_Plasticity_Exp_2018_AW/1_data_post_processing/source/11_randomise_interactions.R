@@ -26,13 +26,14 @@ to_keep <- c(ls(),"to_keep","i","interac")
 for (i in 1:100){#####perform 100 randomisations
   print(paste("Performing randomisations",i,"out of 100..."))
   for (interac in interac_list){
-    print(paste("Interaction file",which(interac==interac_list),"out of",length(interac_list)))
+    #print(paste("Interaction file",which(interac==interac_list),"out of",length(interac_list)))
     root_name          <- unlist(strsplit(interac,split="/"))[grepl("colony",unlist(strsplit(interac,split="/")))]
     folder_name        <- gsub(paste("/",root_name,sep=""),"",interac)
     outputfolder       <- gsub("observed",paste("random_",paste(rep(0,3-nchar(i)),collapse=""),i,sep=""),folder_name)
     if (!file.exists(outputfolder)){dir.create(outputfolder)}
     outfile <- paste(outputfolder,root_name,sep="/")
     if (!file.exists(outfile)){
+      #cat("\rInteraction file",which(interac==interac_list),"out of",length(interac_list))
       #####read-in file
       interactions                 <- read.table(interac,header=T,stringsAsFactors=F)
       randomised_partners          <- randomise_edges(interactions[c("Tag1","Tag2","Startframe","Stopframe")])

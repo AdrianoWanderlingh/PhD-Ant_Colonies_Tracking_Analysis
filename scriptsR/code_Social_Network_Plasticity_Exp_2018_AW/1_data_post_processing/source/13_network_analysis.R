@@ -51,7 +51,19 @@ for (input_folder in input_folders){
     summary_collective <- NULL
     summary_individual <- NULL
     for (network_file in network_files){
-      # network_file <- network_files[361]
+      # network_file <- network_files[41]
+
+      #### TEMPORARY EXCLUSION OF "PreTreatment/observed/colony08BP_pathogen.big_PreTreatment_TH-12_TD0_interactions.txt" as:
+      ## Error in aggregate.data.frame(lhs, mf[-1L], FUN = FUN, ...) : no rows to aggregate
+        if (any(grepl("colony08BP|colony06SP|colony02SP", network_file))) {
+        warning(paste(input_folder, "has too few interactions to aggregate the cumulated duration of interaction with treated workers
+                      \nor the queen does not belong to any community"))
+      }else{
+        
+      
+      #  has too few interactions to aggregate the cumulated duration of interaction with treated workers: "PreTreatment/observed/colony08BP","PreTreatment/observed/colony06SP"
+      #  the queen does not belong to any community: "PreTreatment/observed/colony08BP" , PostTreatment/observed/colony08BS
+      
       print(network_file)
       ####get file metadata
       root_name          <- gsub("_interactions.txt","",unlist(strsplit(network_file,split="/"))[grepl("colony",unlist(strsplit(network_file,split="/")))])
@@ -85,7 +97,7 @@ for (input_folder in input_folders){
       
       ####read interactions
       interactions       <- read.table(network_file,header=T,stringsAsFactors = F)
-      tag <- read.tag(tagfile)
+      tag <- read.tag(tag_list)
       #tag                <- read.tag(tagfile)$tag # FLAG
       #names(tag)[names(tag)=="#tag"] <- "tag"; tag <- tag[which(tag$tag!="#tag"),] #AW
       #tag[which(tag$age==0),"age"]   <- NA ###unknown ages are coded as 0 in the tag file #AW
@@ -96,7 +108,10 @@ for (input_folder in input_folders){
       # }
       #tag <-tag[which(tag$tag%in%alive),] ###remove dead ants from tag file
       alive <- tag$tag #AW
-      
+      #remove dead ants from interactions list  #AW
+      interactions <- subset(interactions, Tag1 %in% alive)
+      interactions <- subset(interactions, Tag2 %in% alive)
+
       ####if untreated only, reduce tag , colony_task_group, and interactions
       if (option=="untreated_only"){
         colony_task_group <- colony_task_group[which(!colony_task_group$tag%in%colony_treated),]
@@ -116,12 +131,26 @@ for (input_folder in input_folders){
       
       #### use this information to calculate, for each worker, the cumulated duration of interaction with treated workers
       if (input_folder=="observed"&option=="all_workers"){
-        aggregated1                 <- aggregate(na.rm=T,na.action="na.pass",duration_min~Tag1+status_Tag2,FUN=sum,data=interactions[which(interactions$status_Tag2=="treated"),])
+        
+        ### AW: To overcome the "Error in aggregate.data.frame(lhs, mf[-1L], FUN = FUN, ...) : no rows to aggregate", create empty df if no rows to aggregate on
+        aggregated1 <- tryCatch(
+          { aggregate(na.rm=T,na.action="na.pass",duration_min~Tag1+status_Tag2,FUN=sum,data=interactions[which(interactions$status_Tag2=="treated"),]) },
+          error = function(e) {data.frame(tag= integer(),partner_status=character(), duration_min=numeric())} # Return an empty data frame in case of an error
+        )
+        #aggregated1                 <- aggregate(na.rm=T,na.action="na.pass",duration_min~Tag1+status_Tag2,FUN=sum,data=interactions[which(interactions$status_Tag2=="treated"),])
         names(aggregated1)          <- c("tag","partner_status","duration_min")
-        aggregated2                 <- aggregate(na.rm=T,na.action="na.pass",duration_min~Tag2+status_Tag1,FUN=sum,data=interactions[which(interactions$status_Tag1=="treated"),])
+        aggregated2 <- tryCatch(
+          { aggregate(na.rm=T,na.action="na.pass",duration_min~Tag2+status_Tag1,FUN=sum,data=interactions[which(interactions$status_Tag1=="treated"),]) },
+          error = function(e) {data.frame(tag= integer(),partner_status=character(), duration_min=numeric())} # Return an empty data frame in case of an error
+        )
+        #aggregated2                 <- aggregate(na.rm=T,na.action="na.pass",duration_min~Tag2+status_Tag1,FUN=sum,data=interactions[which(interactions$status_Tag1=="treated"),])
         names(aggregated2)          <- c("tag","partner_status","duration_min")
         aggregated                  <- rbind(aggregated1,aggregated2)
-        aggregated                  <- aggregate(na.rm=T,na.action="na.pass",duration_min~tag+partner_status,FUN=sum,data=aggregated)
+        aggregated <- tryCatch(
+          { aggregate(na.rm=T,na.action="na.pass",duration_min~tag+partner_status,FUN=sum,data=aggregated) },
+          error = function(e) {data.frame(tag= integer(),partner_status=character(), duration_min=numeric())} # Return an empty data frame in case of an error
+        )
+        #aggregated                  <- aggregate(na.rm=T,na.action="na.pass",duration_min~tag+partner_status,FUN=sum,data=aggregated)
         interactions_with_treated   <- merge(data.frame(tag=tag[which(tag$tag%in%alive),"tag"],stringsAsFactors = F),aggregated[c("tag","duration_min")],all.x=T)
         interactions_with_treated[is.na(interactions_with_treated$duration_min),"duration_min"] <- 0
         names(interactions_with_treated) <- c("tag","duration_of_contact_with_treated_min")
@@ -130,7 +159,6 @@ for (input_folder in input_folders){
         ###write results
         if (grepl("main",data_path)){
           behav <- read.table(paste(data_path,"/processed_data/individual_behaviour/pre_vs_post_treatment/individual_behavioural_data.txt",sep=""),header=T,stringsAsFactors = F)
-          colnames(behav)[which(colnames(behav)=="Tag")] <- "tag" #AW
           if (!"duration_of_contact_with_treated_min"%in%names(behav)){
             behav[c("duration_of_contact_with_treated_min")] <- NA
           }
@@ -246,6 +274,7 @@ for (input_folder in input_folders){
         summary_individual <- rbind(summary_individual,individual)
       }
       clean()
+    }# TEMPORARY EXCLUSION 
     }
     #####write #####
     if (!grepl("survival",data_path)){
@@ -321,8 +350,10 @@ for (input_folder in input_folders){
       }
       queen_community_summary <- rbind(queen_community_summary,prop_foragers)
     }
-  }
+  } 
 }
+
+
 if (!grepl("survival",data_path)){
   queen_community_summary <- aggregate(na.rm=T,na.action="na.pass",cbind(proportion_of_foragers,age)~.,FUN=mean,data=queen_community_summary)
   queen_community_summary <- queen_community_summary[order(queen_community_summary$randy,queen_community_summary$colony),]

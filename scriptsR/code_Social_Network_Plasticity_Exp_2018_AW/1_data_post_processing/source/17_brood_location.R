@@ -41,8 +41,8 @@ for (folder in input_list){
     t <- data.frame(X=t$X,Y=t$Y,obs=1)
     
     #######modify t; indeed heatmaps and nest entrance position were calculated using cells of 5*5 pixels whereas t currently holds the real coordinates in pixels
-    t$X <- floor(t$X/5)
-    t$Y <- floor(t$Y/5)
+    # t$X <- floor(t$X/5)
+    # t$Y <- floor(t$Y/5)
     observations <- aggregate(obs~X+Y,FUN=sum,data=t)
     
     #######calculate centroid location
@@ -53,7 +53,7 @@ for (folder in input_list){
       fac <- -1
     }
     distance_to_entrance <- fac*euc.dist(centroid,nest_entrance)   #####this corresponds to a distance in 5*pixels
-    distance_to_entrance <- distance_to_entrance * 5               ##### this corresponds to a distance in real pixels
+    # distance_to_entrance <- distance_to_entrance * 5               ##### this corresponds to a distance in real pixels
     
     ####record data
     brood_COG <- rbind(brood_COG,data.frame(colony=colony,colony_size=colony_size,treatment=treatment,period=period,time_hours=time_hours,time_of_day=time_of_day,distance_from_nest_entrance_pix=distance_to_entrance,stringsAsFactors = F))

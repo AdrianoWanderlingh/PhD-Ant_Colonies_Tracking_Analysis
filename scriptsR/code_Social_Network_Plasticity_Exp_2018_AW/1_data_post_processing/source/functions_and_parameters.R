@@ -9,7 +9,7 @@ closest_match <- function(x,y){
   return(min(which(abs(x-y)==min(abs(x-y))),na.rm=T))
 }
 
-read.tag <- function(tagfile){ #AW
+read.tag <- function(tag_list){ #AW
   tag <- paste0(tag_list,list.files(tag_list)[grep(colony,list.files(tag_list))])
   tag <- read.table(tag,header=T,stringsAsFactors = F) #AW
 return(tag)

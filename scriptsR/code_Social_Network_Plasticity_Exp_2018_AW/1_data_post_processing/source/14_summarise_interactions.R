@@ -34,14 +34,15 @@ for (input_folder in input_folders){
   summary_pairs        <- NULL
   all_interactions     <- NULL
   for (network_file in network_files){
+    # network_file <- network_files[361]
     print(network_file)
-    ####get file metadata 
+    ####get file metadata
     root_name          <- gsub("_interactions.txt","",unlist(strsplit(network_file,split="/"))[grepl("colony",unlist(strsplit(network_file,split="/")))])
     components         <- unlist(strsplit(root_name,split="_"))
     colony             <- components[grepl("colony",components)]
-    colony_number      <- as.numeric(gsub("colony","",colony))
-    treatment          <- info[which(info$colony==colony_number),"treatment"]
-    colony_size        <- info[which(info$colony==colony_number),"colony_size"]
+    treatment          <- info[which(info$colony==colony),"treatment"] #AW: no need for as.numeric() 
+    colony_size        <- info[which(info$colony==colony),"colony_size"]
+    
     if (!all(!grepl("PreTreatment",components))){period <- "before"}else{period <- "after"}
     time_hours         <- as.numeric(gsub("TH","",components[which(grepl("TH",components))]))
     time_of_day        <- as.numeric(gsub("TD","",components[which(grepl("TD",components))]))
@@ -52,16 +53,23 @@ for (input_folder in input_folders){
     ####get appropriate task_group list, treated list and tag
     colony_treated     <- treated[which(treated$colony==colony_number),"tag"]
     colony_task_group  <- task_groups[which(task_groups$colony==colony),]
-    tagfile            <- tag_list[which(grepl(colony,tag_list))]
-    if (length(tagfile)>1){
-      tagfile <- tagfile[grepl(components[grepl("Treatment",components)],tagfile)]
-    }
-    tag                <- read.tag(tagfile)$tag
-    names(tag)[names(tag)=="#tag"] <- "tag"; tag <- tag[which(tag$tag!="#tag"),]
+    queenid            <- colony_task_group[which(colony_task_group$task_group=="queen"),"tag"] #AW: call specific queen tag instead of fixed 665
+    #tagfile            <- tag_list[which(grepl(colony,tag_list))]
+    tag <- read.tag(tag_list) #AW
+    # if (length(tagfile)>1){
+    #   tagfile <- tagfile[grepl(components[grepl("Treatment",components)],tagfile)]
+    # }
+    # tag                <- read.tag(tagfile)$tag
+    #names(tag)[names(tag)=="#tag"] <- "tag"; tag <- tag[which(tag$tag!="#tag"),]
     tag[which(tag$age==0),"age"]   <- NA ###unknown ages are coded as 0 in the tag file
-    tag <-tag[which(tag$final_status=="alive"),] ###remove dead ants from tag file
+    #tag <-tag[which(tag$final_status=="alive"),] ###remove dead ants from tag file
     ####read interactions
     interactions       <- read.table(network_file,header=T,stringsAsFactors = F)  
+    alive <- tag$tag #AW
+    #remove dead ants from interactions list #AW
+    interactions <- subset(interactions, Tag1 %in% alive)
+    interactions <- subset(interactions, Tag2 %in% alive)
+    
     
     #### add a column contaning interaction duration in min
     interactions["duration_min"] <- (interactions$Stoptime - interactions$Starttime + (1/FRAME_RATE)) /60 ###duration in minutes (one frame = 0.125 second) #AW
