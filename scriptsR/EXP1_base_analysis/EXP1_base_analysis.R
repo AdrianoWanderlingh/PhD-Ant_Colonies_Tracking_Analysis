@@ -160,8 +160,8 @@ Time_dictionary$period <- ifelse(Time_dictionary$time_hours<0, "pre", "post")
 SPACE_USE     <-  file.path(BEHDIR,"pre_vs_post_treatment","individual_behavioural_data.txt")
 
 #### FLAGS
-RUN_INTERACT     <- FALSE
-RUN_SPACEUSE     <- TRUE
+RUN_INTERACT     <- TRUE
+RUN_SPACEUSE     <- FALSE
 RUN_NETWORKS     <- FALSE
 warning(paste("RUN_INTERACT is set to:",RUN_INTERACT,
               "\nRUN_SPACEUSE is set to:",RUN_SPACEUSE,
@@ -380,6 +380,7 @@ for (REP.n in 1:length(files_list)) {
       
       
       if (RUN_INTERACT) {
+        INTERACT_loop_start_time <- Sys.time()
       # DESTINATION FOLDER
       INTERACTIONS_FULL   <-  file.path(INTDIR,"full_interaction_lists",period_code,"observed", 
                                  paste(colony,treatment_code,period_code,"interactions.txt",sep="_"))
@@ -441,7 +442,7 @@ for (REP.n in 1:length(files_list)) {
           #labels for subsets
           TH <- paste0("TH",unique(Interactions[which(Interactions$time_hours==TIME_HOURS),"time_hours"]))
           TD <- paste0("TD",unique(Interactions[which(Interactions$time_hours==TIME_HOURS),"time_of_day"]))
-          print(paste("TIME_HOURS", TH,"TIME_OF_DAY", TD,"PERIOD",PERIOD,sep=" "))
+          cat("\rTIME_HOURS", TH,"TIME_OF_DAY", TD,"PERIOD",PERIOD)
           
           INTERACTIONS_BINNED <-  file.path(INTDIR,"binned_interaction_lists",period_code,"observed", 
                                             paste(colony,treatment_code,period_code,TH,TD,"interactions.txt",sep="_"))
@@ -449,6 +450,8 @@ for (REP.n in 1:length(files_list)) {
           write.table(Interactions[which(Interactions$time_hours==TIME_HOURS),], file = INTERACTIONS_BINNED, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
           }
     }
+      INTERACT_loop_end_time <- Sys.time()
+      print(paste("Interactions 3h chunk took ", round(as.numeric(difftime(INTERACT_loop_end_time, INTERACT_loop_start_time, units = "secs")),1), " sec to complete"))
       }# RUN_INTERACT
       
       if (file.exists(SPACE_USE)) {
