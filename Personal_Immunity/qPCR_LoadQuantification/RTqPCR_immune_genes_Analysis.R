@@ -51,6 +51,20 @@ print("Loading functions and libraries...")
 source(paste("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/FUNCTIONS_Analysis_and_Styling.R",sep="/"))
 warning("FIX THE PLOTTING COLOURS")
 
+#### MAXIMUM ACCEPTED DIFF IN CT between duplicates WITH 15% PIPETTING ERROR# #Efficiency is between 1.95 and 2.05, differing CT values.
+# FUNCTION MODIFIED FROM  # https://rnajournal.cshlp.org/content/23/5/811.full.pdf, BASED ON THE ABOVE
+assign_CTDiff_15PipErr <- function(mean_Ct) {
+  if (is.na(mean_Ct)) {
+    return(0)
+  } else if (mean_Ct > 34.5) {return(1.9)
+  } else if (mean_Ct > 33.5) {return(1.3)
+  } else if (mean_Ct > 32.5) {return(0.9)
+  } else if (mean_Ct > 31.5) {return(0.7)  
+  } else if (mean_Ct >    0) {return(0.5)
+  } else                     {return(0)
+  }
+}
+
 ##################################################################
 ################## QUALITY CHECK #################################
 ##################################################################
@@ -430,80 +444,138 @@ ggplot(mean_data_Col, aes(x = gene, y = propNA,colour=Treatment)) + #, label= Co
 # invalid: everything else
 
 ##### ISOLATE SUSPICIOUS DATAPOINTS (CONTAMINATIONS, BAD EXTRACTIONS, ETC)
-# Calculate standard deviation by group
-stdev_by_group <- genes_data %>%
+# Calculate mean and standard deviation by gene
+genes_data_byGroup <- genes_data %>%
   group_by(gene) %>%
-  summarise(st.dev_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, sd(mean_Ct, na.rm = TRUE)), 
-            grand_mean_Ct = ifelse(all(is.na(mean_Ct)), NA, mean(mean_Ct, na.rm = TRUE)))
-
-# CHECK EF1 with mean_Ct value greater than 2*st.dev mean_Ct value for each group
-#exclude Queens from outliers (on the lowerbound, they are expected to have a lot of datapoints -low Ct-, but the upperbound should be cleaned)
-# outliers are not removed or filtered at this stage
-outliers <- genes_data %>%
-  inner_join(stdev_by_group, by = "gene") %>%
-  filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
-  filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
-
-# plot a scatterplot with lines connecting Ct values between groups
-ggplot(outliers, aes(x = gene, y = mean_Ct, group = Code)) +
-  geom_point(aes(color = gene)) +
-  geom_line(alpha = 0.1) +
-  ggtitle("Scatterplot of mean_Ct values by group gene with lines connecting values") +
-  xlab("Group") +
-  ylab("mean_Ct value") #+
-# scale_color_discrete(name = "Group", labels = unique(outliers$gene))
-
-##### REMOVE INVALID HOUSEKEEPING GENE'S EXPRESSION
-# EF1alpha is expected to show expression values inside a gaussian range (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
-# given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
-#excluding EF1 values over threshold (12 only before) and as we can't base the expression of the other genes on it
-# genes_data <- genes_data[!is.na(genes_data$ref_Ct),]
-
-
-#
-# START FROM HERE!!!!
-# OUTPUT THE "CODE" FOR EACH INSTANCE IN WHICH POINTS ARE VALID:
-# ONLY FOR EF1, Ct<mean_Ct+-2*st.dev(OVERALL), diff.Ct<0.5
-# THEN SUBSET THE DATA REMOVING ANY ROW CONTAINING THE "CODE" IN THE EXCLUSION VECTOR (8 ROWS PER CODE)
-#
-#
-#
-#
-
-
-# # check outliers min upper threshold
-outliers_limit <- min(outliers %>%
-                        filter(gene == "EF1") %>%
-                        filter(mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
-                        pull(mean_Ct))
-#outliers_limit <-  mean(genes_data$mean_Ct,na.rm=T)+2*sd(genes_data$mean_Ct,na.rm=T)
-
-
-## we then discard samples with EF1 mean_ct > 32 as they are probably low quality samples (bad extraction, bad crushing, etc)
-## filter rows with mean_Ct value greater than 32 for group EF1
-#genes_data <- genes_data[!(genes_data$gene == "EF1") | !(genes_data$mean_Ct >= outliers_limit),]
-genes_data[which(genes_data$gene == "EF1" & genes_data$mean_Ct >= outliers_limit),"mean_Ct"] <- NA
-
-#####################################
-
+  summarise(st.dev_mean_Ct = ifelse(all(is.na(Ct)), NA, sd(Ct, na.rm = TRUE)), 
+            grand_mean_Ct = ifelse(all(is.na(Ct)), NA, mean(Ct, na.rm = TRUE)))
 
 
 # combine all the duplicates to have meanCts
 # Group by gene and calculate mean and sd of Ct values
+# Note: means will be NA if one of the two values is NA
 genes_data_Dups <- genes_data %>%
   group_by(Sample_Well, gene_rep) %>%
-  summarise(mean_Ct = ifelse(all(is.na(Ct)), NA, mean(Ct, na.rm = TRUE)), #without this, if both NA, NaNs will be created
-            mean_Tm = ifelse(all(is.na(Tm_Product)), NA, mean(Tm_Product, na.rm = TRUE)),
-            abs_diff_Ct = ifelse(all(is.na(Ct)), NA, abs(diff(Ct))))
+  summarise(mean_Ct = ifelse(all(is.na(Ct)), NA, mean(Ct)), #, na.rm = TRUE) #  #without ifelse, if both NA, NaNs will be created
+            mean_Tm = ifelse(all(is.na(Tm_Product)), NA, mean(Tm_Product)),
+            abs_diff_Ct = ifelse(all(is.na(Ct)), NA, round(abs(diff(Ct)),3)))
 
 # Join the mean and sd values to the original dataframe
-genes_data <- left_join(genes_data, genes_data_Dups, by = c("Sample_Well", "gene_rep"))
-# assign absolute_difference of 0 if there is only 1 sample available
-#genes_data[is.na(genes_data$abs_diff_Ct),"abs_diff_Ct"] <- 0
+genes_data <- left_join(genes_data, genes_data_Dups, by = c("Sample_Well", "gene_rep")) #by duplicate
+genes_data <- left_join(genes_data, genes_data_byGroup, by = "gene") # by gene
+
+##### REMOVE INVALID HOUSEKEEPING GENE'S EXPRESSION
+# EF1alpha is expected to show expression values inside a gaussian range (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
+# given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
+#excluding EF1 values over threshold and as we can't base the expression of the other genes on it
+# valid datapoints: Ct < mean_Ct+-2*st.dev, diff.Ct<0.5, both Ct dups are not NA
+
+# any on the duplicate is NA
+EF1_discards <- NULL
+EF1_discards <- genes_data %>%
+  filter(gene == "EF1") %>%
+  group_by(Code) %>%
+  filter(any(is.na(Ct)))
+# abs_diff_Ct is > 0.5
+EF1_discards <-rbind(EF1_discards, subset(genes_data, gene == "EF1" & abs_diff_Ct > 0.5))
+# Ct < mean_Ct+-2*st.dev
+EF1_discards <-rbind(EF1_discards,subset(genes_data, gene == "EF1" & (Ct < (grand_mean_Ct - 2*st.dev_mean_Ct) | Ct > (grand_mean_Ct + 2*st.dev_mean_Ct) )))
+EF1_discards <- unique(EF1_discards$Code)
+
+# Remove invalid EF1 datapoints and all the points depending on them (4genes*2dups per code)
+genes_data <- genes_data[which(!genes_data$Code %in% EF1_discards),]
+
+###########################################################
+#######            STEP 2: CHECK MEAN_Ct            #######
+###########################################################
+
+#here, several checks are implemented on the Mean_Ct to assign a flag "Category", which is later used to manipulate the dataset.
+
+##test DF
+# DF <- structure(list(Ct = c(NA, NA, 39.27, NA, NA, 36.99, 35.8,30.74),
+#                      gene = structure(c(3L, 4L, 1L, 3L, 2L, 1L, 2L, 4L),
+#                      .Label = c("DEF","EF1", "HYM", "PO"), class = "factor"), Code = c("11-A7", "11-A7","11-A7", "11-A7", "11-A7", "11-A7", "11-A7", "11-A7"),
+#                      Category = c(NA,NA, NA, NA, NA, NA, NA, NA)), row.names = 1937:1944, class = "data.frame")
+
+## if mean_Ct is NA (1 or 2 Ct values missing):
+## 1 NA value:
+## - other Ct value >32 -> "impute" mean
+## - other Ct value <32 -> "discard  NA Ct" -> mean_Ct for these points is recalculated as calculated as  mean(Ct, na.rm = TRUE)
+## 2 NA values:
+## -> "impute" mean
+
+genes_data$Category <- NA
+genes_data <- genes_data %>%
+  group_by(gene, Code) %>%
+  mutate(Category = ifelse(sum(is.na(Ct)) == 2, "impute", 
+                       ifelse(sum(is.na(Ct)) == 1 & sum(!is.na(Ct) & Ct > 32) == 1, "impute", #When a logical vector is used in a numeric context, FALSE is converted to 0 and TRUE is converted to 1. The sum() function then sums up the resulting 0's and 1's to give the total number of TRUE values.
+                              ifelse(sum(is.na(Ct)) == 1 & sum(!is.na(Ct) & Ct < 32) == 1, "discard_NA_Ct", NA))))
+
+## if mean_Ct does not contain any Na values
+## if mean_Ct > Detection threshold -> "impute"
+## if mean_Ct < Detection threshold -> evaluate abs_diff_Ct
+genes_data <- genes_data %>%
+  group_by(gene, Code) %>%
+  mutate(Category = ifelse(!any(is.na(Ct)), #if there are NAs, reassign Category
+                       ifelse(mean_Ct >= Detection_Threshold, "impute", "evaluate_abs_diff_Ct"),
+                       Category))
+
+##Check that all duplicates have the same label
+# Table <- genes_data %>%
+#   group_by(gene, Code) %>%
+#   summarise(same_Category = n_distinct(Category) == 1) %>%
+#   ungroup()
+# 
+# table(Table$same_Category)
+
+###########################################################
+#######           STEP 3: CHECK Abs_Diff_Ct         #######
+###########################################################
+
+# https://rnajournal.cshlp.org/content/23/5/811.full.pdf
+# Most qPCR reactions are conducted as replicates. To avoid unnecessary loss of data points (discarding all replicates with >0.5 cycles difference), as discussed
+# above, we used the Poisson distribution to calculate the acceptable Cq range between replicate measurements for different template numbers in the reaction.
+# The acceptable Cq range is defined as the interval in which 95% of the Cq values are expected to be found, given a certain Cq value
+
+# Assign CTDiff_15PipErr (not a flag replacement but the actual threshold values)
+genes_data$CTDiff_15PipErr <- sapply(genes_data$mean_Ct, assign_CTDiff_15PipErr)
+
+# in R for values of "Category" equal to "evaluate_abs_diff_Ct", update "Category" value according to the following:
+#   -  abs_diff_Ct <= "CTDiffAcc_15PipErr", assign "valid"
+#   -  abs_diff_Ct > 3, assign "discard higher Ct"
+#   -  any other abs_diff_Ct, assign "invalid"
 
 
-## STEP 1: 
-####### CHECK FOR Ct values Discrepancy! ########################################################
+df$Category[df$Category=="evaluate_abs_diff_Ct" & df$abs_diff_Ct <= df$CTDiffAcc_15PipErr] <- "valid"
+
+df$Category[df$Category=="evaluate_abs_diff_Ct" & df$abs_diff_Ct > 3] <- "discard higher Ct"
+
+df$Category[df$Category=="evaluate_abs_diff_Ct" & (df$abs_diff_Ct > df$CTDiffAcc_15PipErr & df$abs_diff_Ct <= 3)] <- "invalid"
+
+
+
+
+
+
+#dput(as.data.frame(genes_data[which(genes_data$Code=="1-F2"),c(5,10,11,24,26,29)]))
+
+
+
+
+
+
+
+##How to treat the following "Category" labels:
+# "discard_NA_Ct":        Recalculate mean_Ct by duplicate aa above but dropping NAs - mean(Ct, na.rm = TRUE)
+# "evaluate_abs_diff_Ct": Check the absolute difference in Ct values and update to "valid", "invalid", "discard higher Ct value"
+# "impute":               Replace by NAs
+
+
+
+
+
+
+
 
 # remove extra cols to compress dataframe
 genes_data <- genes_data[,!(names(genes_data) %in% c("Threshold","Ct","Tm_Product","name","machine_num","Excessive_divergence"))]
@@ -518,136 +590,19 @@ genes_data <- genes_data %>% distinct()
     xlab("Mean Ct") +
     ylab("Absolute difference in Ct values")
 
-# Define the range of cutoff values and the step size
-cutoff_range <- seq(0.5, 0.7, by = 0.05)
 
-# Create an empty vector to store the number of data points for each cutoff
-count_vector <- numeric(length(cutoff_range))
-
-# Loop over the cutoff values and count the number of data points
-for (i in seq_along(cutoff_range)) {
-  cutoff <- cutoff_range[i]
-  count <- genes_data %>% filter(abs_diff_Ct <= cutoff) %>% nrow()
-  count_vector[i] <- count
-}
-
-# Create a data frame with the cutoff values and the number of data points
-count_df <- data.frame(cutoff = cutoff_range, count = count_vector/nrow(genes_data[!is.na(genes_data$abs_diff_Ct),]))
-
-# Create a bar plot of the number of data points for each cutoff value
-ggplot(count_df, aes(x = as.factor(cutoff), y = count)) +
-  geom_bar(stat = "identity") +
-  xlab("Cutoff value") +
-  ylab("% of data points retained") +
-  ggtitle("proportion of points retained depending on absolute difference cut-off value, NAs not included")
-
-# https://rnajournal.cshlp.org/content/23/5/811.full.pdf
-# Most qPCR reactions are conducted as replicates. To avoid unnecessary loss of
-# data points (discarding all replicates with >0.5 cycles difference), as discussed
-# above, we used the Poisson distribution to calculate the acceptable Cq range be-
-# tween replicate measurements for different template numbers in the reaction.
-# The acceptable Cq range is defined as the interval in which 95% of the Cq val-
-# ues are expected to be found, given a certain Cq value
-
-#### ASSIGN label (0 or 1) to determine the MAXIMUM ACCEPTED DIFF IN CT between duplicates
-genes_data$CTDiffAcc_15PipErr <- 0
-
-# #Efficiency is between 1.95 and 2.05, differing CT values.
-# note that PCR$CqDiffAcc = 0 for all mean Cqs > 35 (undetectables).
-# FUNCTION MODIFIED FROM  # https://rnajournal.cshlp.org/content/23/5/811.full.pdf, BASED ON THE ABOVE
-###### MAXIMUM ACCEPTED DIFF IN CT between duplicates WITH 15% PIPETTING ERROR
-# CTDiffAcc_15PipErr
-#0=value not accepted
-#1=value accepted
-genes_data$CTDiffAcc_15PipErr <- ifelse(
-  cut(genes_data$mean_Ct,
-      breaks = c(0, 31.5, 32.5, 33.5, 34.5, 35.5, Inf),
-      labels = c(1,1,1,1,1, NA)) == 1 & genes_data$abs_diff_Ct <= c(0.5, 0.7, 0.9, 1.3, 1.9)[findInterval(genes_data$mean_Ct, c(31.5, 32.5, 33.5, 34.5, 35.5)) + 1],
-  1,
-  genes_data$CTDiffAcc_15PipErr
-)
-
-#base vals
-sum(is.na(genes_data$mean_Ct))
-genes_data$NA_Ct <- ifelse(is.na(genes_data$mean_Ct),NA,"values")
-table(genes_data$NA_Ct,genes_data$gene, useNA = "ifany")
-#Accepted Ct diff (0= non-acceptable, 1= acceptable)
-table(genes_data$CTDiffAcc_15PipErr,genes_data$gene, useNA = "ifany")
-# assign accepted to missing mean_Ct
-genes_data[which(genes_data$abs_diff_Ct==0),"CTDiffAcc_15PipErr"] <- 1
-
-# ORIGINAL
-# genes_data$CTDiffAcc_15PipErr <- ifelse(((genes_data$mean_Ct<31.5)&(genes_data$abs_diff_Ct<=0.5)),1,genes_data$CTDiffAcc_15PipErr)
-# genes_data$CTDiffAcc_15PipErr <- ifelse(((genes_data$mean_Ct>=31.5 & genes_data$mean_Ct<32.5)&(genes_data$abs_diff_Ct<=0.7)),1,genes_data$CTDiffAcc_15PipErr)
-# genes_data$CTDiffAcc_15PipErr <- ifelse(((genes_data$mean_Ct>=32.5 & genes_data$mean_Ct<33.5)&(genes_data$abs_diff_Ct<=0.9)),1,genes_data$CTDiffAcc_15PipErr)
-# genes_data$CTDiffAcc_15PipErr <- ifelse(((genes_data$mean_Ct>=33.5 & genes_data$mean_Ct<34.5)&(genes_data$abs_diff_Ct<=1.3)),1,genes_data$CTDiffAcc_15PipErr)
-# genes_data$CTDiffAcc_15PipErr <- ifelse(((genes_data$mean_Ct>=34.5 & genes_data$mean_Ct<35.5)&(genes_data$abs_diff_Ct<=1.9)),1,genes_data$CTDiffAcc_15PipErr)
-# note that genes_data$CTDiffAcc_15PipErr = 0 for all mean Cqs > 35 (undetectables).
-
-##### HOW TO DEAL WITH ABS DIFF = NA? SHOULD THESE BE IMPUTED TOO? OR WE KEEP THEM AS POSITIVE EVEN IF WE DON'T HAVE THEIR COUNTERPART? THESE COULD BE A LOT OF POINTS
-# % of saved datapoints (1) with threshold at 0.5 # see plot too
-genes_data$CTDiffAcc_0.5 <- 0
-genes_data$CTDiffAcc_0.5 <- ifelse((genes_data$abs_diff_Ct<=0.5),1,genes_data$CTDiffAcc_0.5)
-table(genes_data$CTDiffAcc_0.5,useNA = "ifany")/nrow(genes_data)
-
-# N of saved datapoints (1) with poisson adjusted threshold
-table(genes_data$CTDiffAcc_15PipErr,useNA = "ifany")/nrow(genes_data) ## MORE POINTS RETAINED
-
-#########Step 3: If mean Ct>critical value (35), recode as nondetect##########
-##############################################################################
-#If Ct>=35 THEN recode as nondetect (0)
-#If Ct=0 in both duplo's, also recode as nondetect (0).
-genes_data$CtBigger35 <- 1
-genes_data$CtBigger35 <- ifelse((genes_data$mean_Ct>=35 ),0,1) #| genes_data$mean_Ct <1
-table(genes_data$CtBigger35, genes_data$gene, useNA="ifany")
-#if the mean is missing, reassing default value
-genes_data[is.na(genes_data$CtBigger35),"CtBigger35"] <- 1
-#########Step 4: Make final variable##########
-##############################################
-
-###########Ronde et al. 2017 pipeline################
-## THEY SUGGEST TO USE MULTIPLE IMPUTATION
-# QUALITY CONTROL
-#0=impute (invalid) - to be imputed
-#1=valid
-#2=undetectable - set to minimum
-genes_data$QC <- 0
-genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==1),1,genes_data$QC) # if the diff between reps is acceptable & lower than 35, it is valid
-genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==1),0,genes_data$QC) # if the diff between reps is unacceptable and lower than 35, invalid impute
-genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is acceptable and higher than 35, undetectable, set to min
-# OR: genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),1,genes_data$QC)
-genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is unacceptable and higher than 35, undetectable, set to min
-#genes_data$QC <- ifelse((is.na(genes_data$mean_Ct)),0,genes_data$QC) # if mean_ct is missing, impute value (not in Ronde et al. 2017, added by me)
-
-table(genes_data$QC,useNA = "ifany")
-
-table(genes_data$QC,genes_data$gene, useNA="ifany")
-
-# ###########Wei et al. 2018 pipeline################
-# # QUALITY CONTROL
-# #0=impute (invalid) - to be imputed
-# #1=valid
-# #2=undetectable - set to minimum
-# genes_data$QC <- 0
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==1),1,genes_data$QC) # if the diff between reps is acceptable & lower than 35, it is valid
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==1),0,genes_data$QC) # if the diff between reps is unacceptable and lower than 35, invalid impute
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is acceptable and higher than 35, undetectable, set to min
-# # OR: genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),1,genes_data$QC)
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is unacceptable and higher than 35, undetectable, set to min
-# genes_data$QC <- ifelse((is.na(genes_data$mean_Ct)),0,genes_data$QC) # if mean_ct is missing, impute value (not in Ronde et al. 2017, added by me)
-# 
-# table(genes_data$QC,useNA = "ifany")
-# 
-# table(genes_data$gene,genes_data$QC, useNA="ifany")
-# 
-# 
-# genes_data$Wei <- genes_data$QC 
-
-#USELESS?
-#genes_data$Ronde <- genes_data$QC
-
+    
+    
+    
+    
+    
+    
 # remove extra cols to allow DELTA_Ct method
 genes_data <- genes_data[,!(names(genes_data) %in% c("CTDiffAcc_15PipErr","CTDiffAcc_0.5","CtBigger35"))]
+
+
+
+
 
 
 ################################################################################################################
@@ -910,7 +865,7 @@ round(prop.table(table(genes_data$gene,genes_data$non_missing)),2)
 
 ###############
 # clean debris
-remove_debris <- c("stdev_by_group", "outliers", "test_gene_data", "ref_gene_data", "common_col_names4", "outliers_limit", "primers_eff")
+remove_debris <- c("genes_data_byGroup", "outliers", "test_gene_data", "ref_gene_data", "common_col_names4", "outliers_limit", "primers_eff")
 # cleaning
 rm(list = ls()[which(ls() %in% remove_debris)])
 gc()
@@ -1210,7 +1165,6 @@ if (GROUP == "TREATED_W") {
 }
 
 
-#########################
 
 
 
@@ -1225,57 +1179,101 @@ if (GROUP == "TREATED_W") {
 
 
 
-
-##### DELTA-DELTA-Ct METHOD
-# One common way of analysing qPCR data is to use the “delta-delta-Ct” method. This involves calculating the difference between the Ct of the housekeeping gene and the test gene, then calculating the difference between the treated samples and the control.
-# # https://liz-is.github.io/qpcr-analysis-with-r/aio.html
-# # Now we can calculate the delta delta Ct of each replicate compared to the mean of the control sample.
-# mean_control <- filter(treatment_summary, RNAi == "Control") %>% pull(mean_delta_Ct)
-#
-# genes_data <- genes_data %>%
-#   mutate(delta_delta_Ct = mean_control - delta_Ct)
-#
-# ggplot(genes_data, aes(x = RNAi, y = delta_delta_Ct)) +
-#   geom_point()
-#
+##### SCRAPS #################################
 
 
+# # outliers <- genes_data %>%
+# #   inner_join(genes_data_byGroup, by = "gene") %>%
+# #   filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
+# #   filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
+# 
+# 
+# # # CHECK EF1 with mean_Ct value greater than 2*st.dev mean_Ct value for each group
+# # #exclude Queens from outliers (on the lowerbound, they are expected to have a lot of datapoints -low Ct-, but the upperbound should be cleaned)
+# # # outliers are not removed or filtered at this stage
+# # outliers <- genes_data %>%
+# #   inner_join(genes_data_byGroup, by = "gene") %>%
+# #   filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
+# #   filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
+# # 
+# # # plot a scatterplot with lines connecting Ct values between groups
+# # ggplot(outliers, aes(x = gene, y = mean_Ct, group = Code)) +
+# #   geom_point(aes(color = gene)) +
+# #   geom_line(alpha = 0.1) +
+# #   ggtitle("Scatterplot of mean_Ct values by group gene with lines connecting values") +
+# #   xlab("Group") +
+# #   ylab("mean_Ct value") #+
+# # # scale_color_discrete(name = "Group", labels = unique(outliers$gene))
+# 
+# 
+# 
+# # # check outliers min upper threshold
+# outliers_limit <- min(outliers %>%
+#                         filter(gene == "EF1") %>%
+#                         filter(mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
+#                         pull(mean_Ct))
+# #outliers_limit <-  mean(genes_data$mean_Ct,na.rm=T)+2*sd(genes_data$mean_Ct,na.rm=T)
+# 
+# 
+# ## we then discard samples with EF1 mean_ct > 32 as they are probably low quality samples (bad extraction, bad crushing, etc)
+# ## filter rows with mean_Ct value greater than 32 for group EF1
+# #genes_data <- genes_data[!(genes_data$gene == "EF1") | !(genes_data$mean_Ct >= outliers_limit),]
+# genes_data[which(genes_data$gene == "EF1" & genes_data$mean_Ct >= outliers_limit),"mean_Ct"] <- NA
+# 
+# #####################################
+# 
+# 
+# 
+# #base vals
+# sum(is.na(genes_data$mean_Ct))
+# genes_data$NA_Ct <- ifelse(is.na(genes_data$mean_Ct),NA,"values")
+# table(genes_data$NA_Ct,genes_data$gene, useNA = "ifany")
+# #Accepted Ct diff (0= non-acceptable, 1= acceptable)
+# table(genes_data$CTDiffAcc_15PipErr,genes_data$gene, useNA = "ifany")
+# # assign accepted to missing mean_Ct
+# genes_data[which(genes_data$abs_diff_Ct==0),"CTDiffAcc_15PipErr"] <- 1
+# 
+# 
+# ##### HOW TO DEAL WITH ABS DIFF = NA? SHOULD THESE BE IMPUTED TOO? OR WE KEEP THEM AS POSITIVE EVEN IF WE DON'T HAVE THEIR COUNTERPART? THESE COULD BE A LOT OF POINTS
+# # % of saved datapoints (1) with threshold at 0.5 # see plot too
+# genes_data$CTDiffAcc_0.5 <- 0
+# genes_data$CTDiffAcc_0.5 <- ifelse((genes_data$abs_diff_Ct<=0.5),1,genes_data$CTDiffAcc_0.5)
+# table(genes_data$CTDiffAcc_0.5,useNA = "ifany")/nrow(genes_data)
+# 
+# # N of saved datapoints (1) with poisson adjusted threshold
+# table(genes_data$CTDiffAcc_15PipErr,useNA = "ifany")/nrow(genes_data) ## MORE POINTS RETAINED
+# 
+# #########Step 3: If mean Ct>critical value (35), recode as nondetect##########
+# ##############################################################################
+# #If Ct>=35 THEN recode as nondetect (0)
+# #If Ct=0 in both duplo's, also recode as nondetect (0).
+# genes_data$CtBigger35 <- 1
+# genes_data$CtBigger35 <- ifelse((genes_data$mean_Ct>=35 ),0,1) #| genes_data$mean_Ct <1
+# table(genes_data$CtBigger35, genes_data$gene, useNA="ifany")
+# #if the mean is missing, reassing default value
+# genes_data[is.na(genes_data$CtBigger35),"CtBigger35"] <- 1
+# #########Step 4: Make final variable##########
+# ##############################################
+# 
+# ###########Ronde et al. 2017 pipeline################
+# ## THEY SUGGEST TO USE MULTIPLE IMPUTATION
+# # QUALITY CONTROL
+# #0=impute (invalid) - to be imputed
+# #1=valid
+# #2=undetectable - set to minimum
+# genes_data$QC <- 0
+# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==1),1,genes_data$QC) # if the diff between reps is acceptable & lower than 35, it is valid
+# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==1),0,genes_data$QC) # if the diff between reps is unacceptable and lower than 35, invalid impute
+# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is acceptable and higher than 35, undetectable, set to min
+# # OR: genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),1,genes_data$QC)
+# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is unacceptable and higher than 35, undetectable, set to min
+# #genes_data$QC <- ifelse((is.na(genes_data$mean_Ct)),0,genes_data$QC) # if mean_ct is missing, impute value (not in Ronde et al. 2017, added by me)
+# 
+# table(genes_data$QC,useNA = "ifany")
+# 
+# table(genes_data$QC,genes_data$gene, useNA="ifany")
+# 
 
-# # should be split by gene and rep
-# plate_id <- rep(c("My Plate"), each = 96)
-#
-# platetools::z_grid(data = genes_data$mean_Ct,
-#        well = genes_data$Well,
-#        plate_id = plate_id) +
-#   ggtitle("Virus Neutralization Test")
 
 
 
-
-
-# a = slope of the standard curve
-# b = intercept of the standard curve
-# genesDNA <- 10^(slope*average(Ct1-Ct2)+intercept))
-
-
-##### SCRAPS
-
-#
-# # calculate mean of b for group A
-# mean_A <- d %>%
-#   filter(c == "A") %>%
-#   summarize(mean_b = mean(b))
-#
-# # filter rows with mean_Ct value greater than 2*st.dev_mean_Ct value for group EF1
-# outliers_highlight <- genes_data %>%
-#   filter(gene == "EF1") %>%
-#   filter(b > mean_A$mean_b)
-#
-# # plot a scatterplot with lines connecting b values between groups
-# ggplot(genes_data, aes(x = c, y = b, group = id)) +
-#   geom_point(aes(color = c)) +
-#   geom_line() +
-#   geom_point(data = outliers_highlight, shape = 21, size = 5, fill = "red") +
-#   ggtitle("Scatterplot of b values by group c with highlighted lines") +
-#   xlab("Group") +
-#   ylab("b value")
