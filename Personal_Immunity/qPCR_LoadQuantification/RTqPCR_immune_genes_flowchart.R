@@ -52,7 +52,7 @@ fontcolor = red]
 F3   [label = 'rerun RTqPCR\ndiscard\nuse mean',
 fontcolor = darkgreen
 fontsize=9]
-IMP   [label = 'impute',
+IMP   [label = 'impute\nrelative conc.',
 fontcolor = red]
   
   # edges

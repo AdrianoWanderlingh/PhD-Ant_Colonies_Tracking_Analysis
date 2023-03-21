@@ -11,6 +11,7 @@ library(scales) # for colours
 library(ggpubr) # for creating easily publication ready plots
 library(rstatix) #provides pipe-friendly R functions for easy statistical analyses.
 library(gridExtra) #grid of plots
+library(cowplot) # 
 
 ## for qPCR missing values imputation
 # if (!require("BiocManager", quietly = TRUE)){
@@ -455,14 +456,21 @@ genes_data_byGroup <- genes_data %>%
 # Group by gene and calculate mean and sd of Ct values
 # Note: means will be NA if one of the two values is NA
 genes_data_Dups <- genes_data %>%
-  group_by(Sample_Well, gene_rep) %>%
+  group_by(Code, gene) %>%
   summarise(mean_Ct = ifelse(all(is.na(Ct)), NA, mean(Ct)), #, na.rm = TRUE) #  #without ifelse, if both NA, NaNs will be created
             mean_Tm = ifelse(all(is.na(Tm_Product)), NA, mean(Tm_Product)),
             abs_diff_Ct = ifelse(all(is.na(Ct)), NA, round(abs(diff(Ct)),3)))
 
 # Join the mean and sd values to the original dataframe
-genes_data <- left_join(genes_data, genes_data_Dups, by = c("Sample_Well", "gene_rep")) #by duplicate
+genes_data <- left_join(genes_data, genes_data_Dups, by = c("Code", "gene")) #by duplicate
 genes_data <- left_join(genes_data, genes_data_byGroup, by = "gene") # by gene
+
+#plot dataset abs_diff_Ct
+ggplot(genes_data, aes(mean_Ct, abs_diff_Ct)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method = "lm",formula = y ~ x + I(x^2), se = FALSE) +
+  xlab("Mean Ct") +
+  ylab("Absolute difference in Ct values")
 
 ##### REMOVE INVALID HOUSEKEEPING GENE'S EXPRESSION
 # EF1alpha is expected to show expression values inside a gaussian range (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
@@ -537,21 +545,114 @@ genes_data <- genes_data %>%
 # above, we used the Poisson distribution to calculate the acceptable Cq range between replicate measurements for different template numbers in the reaction.
 # The acceptable Cq range is defined as the interval in which 95% of the Cq values are expected to be found, given a certain Cq value
 
-# Assign CTDiff_15PipErr (not a flag replacement but the actual threshold values)
+# Assign the relevant Poisson Error Threshold "CTDiff_15PipErr" (not a flag replacement but the actual threshold values)
 genes_data$CTDiff_15PipErr <- sapply(genes_data$mean_Ct, assign_CTDiff_15PipErr)
 
-# in R for values of "Category" equal to "evaluate_abs_diff_Ct", update "Category" value according to the following:
-#   -  abs_diff_Ct <= "CTDiffAcc_15PipErr", assign "valid"
-#   -  abs_diff_Ct > 3, assign "discard higher Ct"
-#   -  any other abs_diff_Ct, assign "invalid"
+# "evaluate_abs_diff_Ct":
+# if abs_diff_Ct <= "CTDiff_15PipErr", assign "valid"
+# if abs_diff_Ct > 3, assign "discard higher Ct" (Technical Error)
+# if any other abs_diff_Ct, assign "invalid"
+genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & genes_data$abs_diff_Ct <= genes_data$CTDiff_15PipErr] <- "valid"
+genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & genes_data$abs_diff_Ct > 3] <- "discard_higher_Ct"
+genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$abs_diff_Ct > genes_data$CTDiff_15PipErr & genes_data$abs_diff_Ct <= 3)] <- "invalid"
+
+as.data.frame(table(genes_data$Category))
+
+###########################################################
+#######     STEP 4: RE-ASSING VALUES BY CATEGORY    #######
+###########################################################
+
+##How to treat the following "Category" labels:
+# "discard_NA_Ct":        Recalculate mean_Ct by duplicate as above but dropping NAs - mean(Ct, na.rm = TRUE)
+# "discard_higher_Ct":    Discard higher Ct value of the pair
+# "valid":                Use Mean_Ct
+# "impute":               Replace by NAs
+# "invalid":              either discard, use mean or re-run sample (810, 405 duplicates. 336 unique samples)
 
 
-df$Category[df$Category=="evaluate_abs_diff_Ct" & df$abs_diff_Ct <= df$CTDiffAcc_15PipErr] <- "valid"
+# "discard_NA_Ct":        Recalculate mean_Ct by duplicate as above but dropping NAs - mean(Ct, na.rm = TRUE)
+genes_data <- genes_data %>%
+  group_by(gene, Code) %>%
+  mutate(mean_Ct = ifelse(Category == "discard_NA_Ct", mean(Ct, na.rm = TRUE), mean_Ct))
 
-df$Category[df$Category=="evaluate_abs_diff_Ct" & df$abs_diff_Ct > 3] <- "discard higher Ct"
+# "discard_higher_Ct":    Discard higher Ct value of the pair (Technical Error) - mean_Ct is the min. value
+genes_data <- genes_data %>%
+  group_by(gene, Code) %>%
+  mutate(mean_Ct = ifelse(Category == "discard_higher_Ct", min(Ct), mean_Ct))
 
-df$Category[df$Category=="evaluate_abs_diff_Ct" & (df$abs_diff_Ct > df$CTDiffAcc_15PipErr & df$abs_diff_Ct <= 3)] <- "invalid"
+# "impute":               Replace by NAs
+genes_data <- genes_data %>%
+  group_by(gene, Code) %>%
+  mutate(mean_Ct = ifelse(Category == "impute", NA, mean_Ct))
 
+# "invalid":              either discard, use mean or re-run sample (810, 405 duplicates. 336 unique samples)
+## DISCARD DATASET
+genes_data_invDiscard <- genes_data[which(genes_data$Category!="invalid"),]
+#MEAN DATASET IS genes_data
+
+######### LOOP THROUGH THE TWO VARIANTS OF HOW TO TREAT INVALID SAMPLES: ####
+# Combine the data frames into a list
+df_list <- list(genes_data, genes_data_invDiscard)
+
+# Loop through the list and perform a summary analysis
+lapply(df_list, function(CLEAN_DATA) {
+  nrow(CLEAN_DATA)
+  
+  
+  
+}) ### PUT THESE BRACKETS AT THE BOTTOM OF THE ENTIRE SCRIPT
+
+###########################################################
+#######             CALCULATE DELTA-CT              #######
+###########################################################
+
+# remove extra cols to compress dataframe
+genes_data <- genes_data[,!(names(genes_data) %in% c("Threshold","Ct","Tm_Product","name","machine_num"))] #c("CTDiff_15PipErr","Category")
+genes_data <- genes_data %>% distinct()
+# # combine all the duplicates to have meanCts
+## remove columns which are different, then remove duplicated rows
+
+# “delta-Ct”: difference between the Ct of the housekeeping gene and the test gene
+# split test genes from housekeeping
+test_gene_data <- genes_data %>%
+  filter(gene != "EF1")
+# isolate housekeeping and change colnames
+ref_gene_data <- genes_data %>%
+  filter(gene == "EF1") %>%
+  rename("housekeeping" = "gene", "ref_Ct" = "mean_Ct") %>% #, "ref_Tm" = "mean_Tm"
+  #only keep certain columns
+  dplyr::select(housekeeping, ref_Ct, Code)
+
+# recombine data
+# common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
+# common_col_names4 <- common_col_names4[ !common_col_names4 == c("mean_Tm","abs_diff_Ct")] #exclude numeric var
+genes_data <- left_join(test_gene_data, ref_gene_data, by = "Code")
+
+# create a new column containing the delta Ct between the housekeeping gene and our gene of interest, and plot the delta Ct for each treatment and replicate.
+genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
+
+# # plot delta_Ct
+# ggplot(genes_data, aes(x = gene, y = delta_Ct, fill = Treatment)) +
+#   geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3)
+
+# # Calculate the mean delta Ct for each treatment.
+# treatment_summary <- genes_data %>%
+#   group_by(gene) %>%
+#   summarise(mean_delta_Ct = mean(delta_Ct, na.rm = TRUE))
+
+
+# Calculating relative DNA concentration
+# to calculate the relative DNA concentration, you can use the fact that the amount of cDNA theoretically doubles every cycle.
+# PRIMERS EFFICIENCY
+primers_eff <- data.frame(gene = c("EF1", "HYM", "DEF", "PO"), efficiency = c(1.99, 1.99, 2, 1.94))
+# add primers efficiency data
+genes_data <- left_join(genes_data, primers_eff, by = c("gene"))
+
+# as EF1 efficiency is 1.99, it is used as baseline for normalisation
+genes_data <- genes_data %>%
+  mutate(rel_conc = (2 * (efficiency / 1.99))^-delta_Ct)
+
+table(is.na(genes_data$rel_conc),useNA = "ifany")
 
 
 
@@ -564,130 +665,10 @@ df$Category[df$Category=="evaluate_abs_diff_Ct" & (df$abs_diff_Ct > df$CTDiffAcc
 
 
 
-
-##How to treat the following "Category" labels:
-# "discard_NA_Ct":        Recalculate mean_Ct by duplicate aa above but dropping NAs - mean(Ct, na.rm = TRUE)
-# "evaluate_abs_diff_Ct": Check the absolute difference in Ct values and update to "valid", "invalid", "discard higher Ct value"
-# "impute":               Replace by NAs
-
-
-
-
-
-
-
-
-# remove extra cols to compress dataframe
-genes_data <- genes_data[,!(names(genes_data) %in% c("Threshold","Ct","Tm_Product","name","machine_num","Excessive_divergence"))]
-genes_data <- genes_data %>% distinct()
-# # combine all the duplicates to have meanCts
-## remove columns which are different, then remove duplicated rows
-
-#plot dataset abs_diff_Ct
-    ggplot(genes_data, aes(mean_Ct, abs_diff_Ct)) +
-    geom_point(alpha=0.5) +
-    geom_smooth(method = "lm",formula = y ~ x + I(x^2), se = FALSE) +
-    xlab("Mean Ct") +
-    ylab("Absolute difference in Ct values")
-
-
-    
-    
-    
-    
-    
-    
-# remove extra cols to allow DELTA_Ct method
-genes_data <- genes_data[,!(names(genes_data) %in% c("CTDiffAcc_15PipErr","CTDiffAcc_0.5","CtBigger35"))]
-
-
-
-
-
-
-################################################################################################################
-############## REASSIGN VALUES AFTER QUALITY CONTROLS #########################################################
-
-## IF EF1 is undetectable, it means it should be either imputed or fully discarded.
-## here, assume imputed, therefore transform mean_Ct of EF1-QC=2 to NA
-## this means that all other genes depending on this housekeeping will be estimated
-genes_data[which(genes_data$gene=="EF1" & genes_data$QC==2),"mean_Ct"] <- NA
-#update QC value
-genes_data[(is.na(genes_data$mean_Ct) & genes_data$gene=="EF1"),"QC"] <- 0
-table(genes_data$QC,useNA = "ifany")
-
-## compute the delta_ct both on mean_Ct and on updated Ct after Quality Control
-#updated mean_Ct
-genes_data$mean_Ct_QC <- genes_data$mean_Ct 
-
-table(genes_data$QC,genes_data$gene, useNA="ifany")
-
-
-# reassign values based on conditions
-#0=impute (invalid) - to be imputed
-#1=valid
-#2=undetectable - set to minimum # NOT ASSIGNED NOW AS WE DO NOT WANT TO POLLUTE THE IMPUTATION
-# (THEY SHOULD BE THE MIN WITHOUT SAID CLASS 2 VALS)
-genes_data$mean_Ct_QC <- ifelse(genes_data$QC == "0", NA,
-                                ifelse(genes_data$QC == "1", genes_data$mean_Ct_QC,
-                                       genes_data$mean_Ct_QC))
-
-# “delta-Ct”: difference between the Ct of the housekeeping gene and the test gene
-# split test genes from housekeeping
-test_gene_data <- genes_data %>%
-  filter(gene != "EF1")
-# isolate housekeeping and change colnames
-ref_gene_data <- genes_data %>%
-  filter(gene == "EF1") %>%
-  rename("housekeeping" = "gene", "ref_Ct" = "mean_Ct", "ref_Ct_QC" = "mean_Ct_QC") %>% #, "ref_Tm" = "mean_Tm"
-  #only keep certain columns
-  dplyr::select(housekeeping, ref_Ct,ref_Ct_QC, Code)
-
-# recombine data
-# common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
-# common_col_names4 <- common_col_names4[ !common_col_names4 == c("mean_Tm","abs_diff_Ct")] #exclude numeric var
-genes_data <- left_join(test_gene_data, ref_gene_data, by = "Code")
-
-# create a new column containing the delta Ct between the housekeeping gene and our gene of interest, and plot the delta Ct for each treatment and replicate.
-genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct, delta_Ct_QC = mean_Ct_QC - ref_Ct_QC)
-
-# # plot delta_Ct
-# ggplot(genes_data, aes(x = gene, y = delta_Ct, fill = Treatment)) +
-#   geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3)
-#
-# # Calculate the mean delta Ct for each treatment.
-# treatment_summary <- genes_data %>%
-#   group_by(gene) %>%
-#   summarise(mean_delta_Ct = mean(delta_Ct, na.rm = TRUE))
-
-
-
-# Calculating relative DNA concentration
-# to calculate the relative DNA concentration, you can use the fact that the amount of cDNA theoretically doubles every cycle.
-# PRIMERS EFFICIENCY
-primers_eff <- data.frame(gene = c("EF1", "HYM", "DEF", "PO"), efficiency = c(1.99, 1.99, 2, 1.94))
-# add primers efficiency data
-genes_data <- left_join(genes_data, primers_eff, by = c("gene"))
-
-# as EF1 efficiency is 1.99, it is used as baseline for normalisation
-genes_data <- genes_data %>%
-  mutate(rel_conc = (2 * (efficiency / 1.99))^-delta_Ct,
-         rel_conc_QC = (2 * (efficiency / 1.99))^-delta_Ct_QC)
-
-table(is.na(genes_data$rel_conc),useNA = "ifany")
-table(is.na(genes_data$rel_conc_QC),useNA = "ifany")
-
-
 ############
 #### PROPORTION OF ZERO LOAD VS Ant_status BY TREATMENT
 #create flag to show which values are non-missing
-genes_data$non_missing <- as.factor(ifelse(is.na(genes_data$rel_conc),0,1))
-
-table(genes_data$non_missing, genes_data$Treatment, genes_data$Ant_status)
-table(genes_data$non_missing, genes_data$gene, genes_data$Ant_status)
-
-#create flag to show which values are non-missing
-genes_data$non_missing_QC <- as.factor(ifelse(is.na(genes_data$rel_conc_QC),0,1))
+genes_data$non_missing <- as.factor(ifelse(is.na(genes_data$rel_conc),"missing","non-missing"))
 
 table(genes_data$non_missing, genes_data$Treatment, genes_data$Ant_status)
 table(genes_data$non_missing, genes_data$gene, genes_data$Ant_status)
@@ -731,27 +712,23 @@ warning("to fix, the selection deletes the ant status, and at a later stage the 
 ####################################################################################
 
 #### PERFORM DATA IMPUTATION HERE
-# here we are disregarding the non QC samples
 
 # #create new assign minimum and imputed conc. columns
-# #index of min vals
-# index_min <- which(genes_data$QC != "2")
-# genes_data$rel_conc_QC_imputed <- genes_data[which(genes_data$QC != "2"),]
-genes_data$rel_conc_QC_imputed <- genes_data$rel_conc_QC
-genes_data$rel_conc_QC_replace_min <- genes_data$rel_conc_QC
+# genes_data$rel_conc_QC_imputed <- genes_data$rel_conc_QC
+# genes_data$rel_conc_QC_replace_min <- genes_data$rel_conc_QC
 
-# ASSIGN minimum
-#assing value smaller than the minimum to the rel_conc_QC NAs, which are caused by No_Ct values
-# it has been assigned in a similar fashion as in the pathogen load but here applied to the rel-concenrtation instead of load (non present)
-# this may flatten the result, but it is not straightforward to assign an arbitrarly high value to CT for missing values....
-print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
-for (GENE in unique(genes_data$gene)) {
-  #assign the min/2 value by gene to missing datapoints
-  genes_data[is.na(genes_data$rel_conc_QC_replace_min) & genes_data$gene == GENE, "rel_conc_QC_replace_min"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_QC"],na.rm = T)/2
-}
-
-print("replacing NA relative concentrations with QRILC Quantile Regression Imputation of Left Censored Data, proven the most reliable imputation method in Wei, R et al. 2018 ")
-  
+# # ASSIGN minimum
+# #assing value smaller than the minimum to the rel_conc_QC NAs, which are caused by No_Ct values
+# # it has been assigned in a similar fashion as in the pathogen load but here applied to the rel-concenrtation instead of load (non present)
+# # this may flatten the result, but it is not straightforward to assign an arbitrarly high value to CT for missing values....
+# print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
+# for (GENE in unique(genes_data$gene)) {
+#   #assign the min/2 value by gene to missing datapoints
+#   genes_data[is.na(genes_data$rel_conc_QC_replace_min) & genes_data$gene == GENE, "rel_conc_QC_replace_min"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_QC"],na.rm = T)/2
+# }
+# 
+# print("replacing NA relative concentrations with QRILC Quantile Regression Imputation of Left Censored Data, proven the most reliable imputation method in Wei, R et al. 2018 ")
+#   
 #### ASSIGN IMPUTATED VALS, AT THE STAGE OF THE REL.CONCENTRATION, AS IT FOLLOWS THE PAPER
 #### Wei, R., Wang, J., Su, M. et al. Missing Value Imputation Approach for Mass Spectrometry-based Metabolomics Data. Sci Rep 8, 663 (2018). https://doi.org/10.1038/s41598-017-19120-0
 #### QRILC 
@@ -762,37 +739,47 @@ print("replacing NA relative concentrations with QRILC Quantile Regression Imput
 # result <- data %>% log %>% impute.QRILC(., ...) %>% extract2(1) %>% exp
 
   for (GENE in unique(genes_data$gene)) {
-rel_conc_QC_matrix <- as.matrix(genes_data[which(genes_data$gene==GENE), "rel_conc_QC"])
+rel_conc_matrix <- as.matrix(genes_data[which(genes_data$gene==GENE), "rel_conc"])
 # note that tune.sigma = 1 as it is assumed that the complete data distribution is Gaussian (as shown by the complete gene DEF) .
-imputed_rel_conc_QC <- impute.QRILC(log(rel_conc_QC_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
-genes_data[which(genes_data$gene == GENE), "rel_conc_QC_imputed"] <- exp(unlist(imputed_rel_conc_QC[1])) # back-transform with exp
-sum(is.na(genes_data[is.na(genes_data$rel_conc_QC) & genes_data$gene == GENE, "rel_conc_QC_imputed"])) # should be 0
+imputed_rel_conc <- impute.QRILC(log(rel_conc_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
+genes_data[which(genes_data$gene == GENE), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
+sum(is.na(genes_data[is.na(genes_data$rel_conc) & genes_data$gene == GENE, "rel_conc_imputed"])) # should be 0
 
   }
 
-# index_min
-# genes_data[which(genes_data$QC == "2"),"rel_conc_QC_imputed"] <-  genes_data[which(genes_data$QC != "2"),]
-
-
+# Create a list to store the plots
+plot_list <- list()
+# Loop through each gene
 for (GENE in unique(genes_data$gene)) {
-  # plot histogram with separate colors for each group
-  print(
-    ggplot(genes_data[which(genes_data$gene == GENE),], aes(x = rel_conc_QC_imputed, colour = QC)) +
-      geom_histogram(alpha = 0.5, position = "dodge") +
-      labs(x = "Value", y = "Frequency", fill = "QC") +
-      ggtitle(GENE) +
-      scale_x_continuous(trans='log10')
-  )
+  # Generate the plot and add it to the list
+  plot_list[[GENE]] <- ggplot(genes_data[which(genes_data$gene == GENE),], aes(x = rel_conc_imputed, fill = factor(non_missing, levels = c("missing", "non-missing"))  )) + #, fill = factor(non_missing, levels = c("missing", "non-missing"))
+    geom_histogram(alpha = 0.5, position = "dodge") +
+    labs(x = "Value", y = "Frequency", fill = "non_missing") +
+    ggtitle(GENE) +
+    scale_x_continuous(trans='log10') +
+    theme(legend.position = "none") 
 }
 
+# Create a legend plot. Returns a gtable
+plot_list[["legend"]]  <- cowplot::get_legend(plot_list[["HYM"]] + theme(legend.position = "right"))
+  
+# Combine the plots using grid.arrange()
+grid.arrange(
+  plot_list[[1]], plot_list[[2]],
+  plot_list[[3]], plot_list[[4]],
+  ncol = 2, nrow = 2,
+  widths = c(1, 1),
+  heights = c(1, 1),
+  bottom = "QRILC imputation"
+)
 
 ## Check that distributions are normal
 # the imputation assumes that the data distribution is normal, as expected from qPCR data. 
 # we can test that the imputation does not cause the distributions to diverge, considering that DEF is our complete distribution
-genes_data <- genes_data %>% group_by(gene) %>% mutate( rel_conc_QC_imput_LogStand = scale(log(rel_conc_QC_imputed),center=T,scale=T) )
+genes_data <- genes_data %>% group_by(gene) %>% mutate( rel_conc_imput_LogStand = scale(log(rel_conc_imputed),center=T,scale=T) )
 
 # create the ANOVA model
-model <- aov(rel_conc_QC_imput_LogStand ~ gene, data = genes_data)
+model <- aov(rel_conc_imput_LogStand ~ gene, data = genes_data)
 summary(model)
 
 # check if the ANOVA is significant
@@ -809,30 +796,22 @@ if (summary(model)[[1]]$"Pr(>F)"[1] < 0.05) {
 
 # plot standardised 
 # plot smoothed curve with separate colors for each GENE
-# note: rel_conc_QC_imputed variable has negative values, this causes a flipping in the standardised distribution
+# note: rel_conc_imputed variable has negative values, this causes a flipping in the standardised distribution
 print(
-  ggplot(genes_data, aes(x = rel_conc_QC_imput_LogStand, colour = gene)) +
+  ggplot(genes_data, aes(x = rel_conc_imput_LogStand, colour = gene)) +
     geom_density(alpha = 0.5) +
     labs(x = "Log transformed standardised relative concentrations", y = "Density", fill = "gene") +
-    ggtitle("all genes distribution", subtitle = "rel_conc_QC_imputed and standardised") +
+    ggtitle("all genes distribution", subtitle = "rel_conc_imputed and standardised") +
     annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, label = paste("ANOVA, P=", pvalue))
 )
 
 
-#### assign min to undetectables
-#0=impute (invalid) - to be imputed
-#1=valid
-#2=undetectable - set to minimum
-for (GENE in unique(genes_data$gene)) {
-  #assign the min/2 value by gene to missing datapoints
-  genes_data[which(genes_data$QC == "2" & genes_data$gene == GENE), "rel_conc_QC_imputed"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_QC_replace_min"],na.rm = T)/2
-}
 
 
 ####################################################################################
 
-# genes_data[is.na(genes_data$rel_conc_QC),"rel_conc_QC"] <- 1e-06
-for (REL_CONC in c("rel_conc_QC","rel_conc_QC_imputed","rel_conc_QC_replace_min")) {
+# genes_data[is.na(genes_data$rel_conc),"rel_conc"] <- 1e-06
+for (REL_CONC in c("rel_conc","rel_conc_imputed")) { # "rel_conc_replace_min"
 
 # plot the relative concentration.
 print(
@@ -850,6 +829,11 @@ print(
 round(prop.table(table(genes_data$Ant_status,genes_data$non_missing)),2)
 # proportion imputed by gene
 round(prop.table(table(genes_data$gene,genes_data$non_missing)),2)
+
+
+
+warning("\nLOST QUEENS IN CLEANING, CHECK AT WHICH STAGE!\n\nUPDATE PLOTS & STATS WITH BOTH DISCARD AND USE MEANS")
+
 
 
 # # Queen data
@@ -874,7 +858,7 @@ gc()
 
 ggplot(
   data = genes_data,
-  aes(x = Ant_status, y = rel_conc_QC_imputed, color = Treatment)
+  aes(x = Ant_status, y = rel_conc_imputed, color = Treatment)
 ) + # ,group = Exposed,color = Exposed
   #geom_point(aes(fill = Treatment, colour = Colony), position = position_jitter() , size = 1, alpha = 0.3, show.legend = FALSE) + # # ,alpha= 0.8,stroke=0
   geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
@@ -895,7 +879,7 @@ ggplot(
 
 # ggplot(
 #   data = genes_data,
-#   aes(x = Ant_status, y = rel_conc_QC_imputed)
+#   aes(x = Ant_status, y = rel_conc_imputed)
 # ) + 
 #   geom_jitter(aes(group = Treatment, colour = Colony), size = 1, alpha = 0.3, width = 0.2, height = 0, show.legend = FALSE) +
 #   colScale_Colony +
@@ -908,7 +892,7 @@ ggplot(
 #   print(
 #     ggplot(
 #       data = genes_data[which(genes_data$GROUP==GROUP),],
-#       aes(x = gene, y = rel_conc_QC_imputed)
+#       aes(x = gene, y = rel_conc_imputed)
 #     ) + # ,group = Exposed,color = Exposed
 #       geom_point(aes(fill = Treatment, colour = Colony), position = position_jitterdodge(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
 #       geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.3) + #
@@ -921,7 +905,7 @@ ggplot(
 
 # ggplot(
 #         data = genes_data,
-#         aes(x = Ant_status, y = rel_conc_QC_imputed)
+#         aes(x = Ant_status, y = rel_conc_imputed)
 #       ) + # ,group = Exposed,color = Exposed
 #         geom_point(aes(fill = Treatment, colour = Colony), position = position_jitter(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
 #         geom_boxplot( lwd = 0.8, alpha = 0.3) + #
@@ -954,6 +938,8 @@ ggplot(
 # - Untreated nurses and foragers
 # these ants can be compared
 
+QUEEN_data_OK <- FALSE # queen data may be woth to reprocess as they get discarded
+warning(paste0("QUEEN_data_OK: ", QUEEN_data_OK))
 
 #create list of significance outputs for Q data
 mod_Q_list <- list()
@@ -968,8 +954,8 @@ for (GENE in unique(genes_data$gene)) {
   GENE_data <- genes_data[which(genes_data$gene==GENE & genes_data$GROUP==GROUP),]
 
   # create constant to make values below zeros a small number
-  GENE_cost <- min(GENE_data$rel_conc_QC_imputed, na.rm = T) * 1.1
-  # hist(log10(GENE_data$rel_conc_QC_imputed+GENE_cost))
+  GENE_cost <- min(GENE_data$rel_conc_imputed, na.rm = T) * 1.1
+  # hist(log10(GENE_data$rel_conc_imputed+GENE_cost))
 
   # As there are imbalances in the sample sizes, use a weighted mixed-effects model. 
   # The weights can be incorporated into the model by modifying the likelihood function, which then gives more weight to the smaller group in the analysis.
@@ -979,14 +965,14 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   # Calculate the weights based on the imbalance in the sample sizes
   #GENE_data$weights <- calculate_weights(GENE_data$Treatment)
   # First, fit linear models to explain variation in density
-  mod1 <- lmer(log10(rel_conc_QC_imputed + GENE_cost) ~ Treatment + (1 | Colony), data = GENE_data) # ,weights = weights
+  mod1 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + (1 | Colony), data = GENE_data) # ,weights = weights
   print(GENE)
   output_lmer(mod1)
   # hist(residuals(mod1))
   # qqnorm(residuals(mod1))
   # qqline(residuals(mod1))
   out.put <- model.sel(mod1)
-  # models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc_QC_imputed
+  # models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc_imputed
   sel.table <- nice_print_model_sel(out.put)    
   print(GENE)
   print(sel.table)
@@ -999,7 +985,10 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   #### QUEENS (no status grouping, no random)
   else if (unique(GENE_data$GROUP)=="QUEEN") {
     
-    mod1 <- glm(log10(rel_conc_QC_imputed + GENE_cost) ~ Treatment, data = GENE_data) # ,weights = weights
+    if (QUEEN_data_OK) {
+
+    
+    mod1 <- glm(log10(rel_conc_imputed + GENE_cost) ~ Treatment, data = GENE_data) # ,weights = weights
     print(GENE)
     output_lmer(mod1)
     # run anova and store the significant variables in the object SIG
@@ -1022,25 +1011,26 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
     
     #given the tiny group size, and the non-relevance of the random factor Colony, use a non-parametric test
     #  Wilcoxon rank-sum test (also known as the Mann-Whitney U test)
-    #mod_Q <- rstatix::wilcox_test(rel_conc_QC_imputed ~ Treatment, data = GENE_data, alternative = "two.sided")
+    #mod_Q <- rstatix::wilcox_test(rel_conc_imputed ~ Treatment, data = GENE_data, alternative = "two.sided")
     # #save test information
     # mod_Q_list <- c(mod_Q_list, list(mod_Q))
     # ID_model <- paste(GROUP,GENE,sep="-")
     # names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
     #mod_Q_list[length(mod_Q_list)]
-  
+    
+    }
   }
   #### UNTREATED INDIVIDUALS
   else{
     # Calculate the weights based on the imbalance in the sample sizes
     #GENE_data$weights <- calculate_weights(GENE_data$Treatment)
   # First,fir candidate linear models to explain variation in density
-  mod1 <- lmer(log10(rel_conc_QC_imputed + GENE_cost) ~ Treatment * Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
-  mod2 <- lmer(log10(rel_conc_QC_imputed + GENE_cost) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
+  mod1 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment * Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
+  mod2 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
   # We can now use the mod.sel to conduct model selection. The default model selection criteria is Akaike’s information criteria (AIC) with small sample bias adjustment, AICc
   # delta AICc, and the model weights
   out.put <- model.sel(mod1,mod2)
-  # models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc_QC_imputed
+  # models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc_imputed
   sel.table <- nice_print_model_sel(out.put)    
   print(paste(GROUP,GENE,sep=" : "))
   print(sel.table)
@@ -1095,7 +1085,7 @@ if (GROUP == "TREATED_W") {
   print(
   ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc_QC_imputed, color = Treatment)
+    aes(x = gene, y = rel_conc_imputed, color = Treatment)
   ) + 
     geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
     geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
@@ -1107,11 +1097,12 @@ if (GROUP == "TREATED_W") {
   )
 }else if (GROUP == "QUEEN"){
   
+  if (QUEEN_data_OK) {
   # separated from the above as the label is assigned differently!
   print(
   ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc_QC_imputed, color = Treatment)
+    aes(x = gene, y = rel_conc_imputed, color = Treatment)
   ) + 
     geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
     geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
@@ -1122,7 +1113,7 @@ if (GROUP == "TREATED_W") {
   #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
     geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = Pr, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
 )
-  
+  }
 }else if (GROUP == "UNTREATED_W"){
   # PLOT FOR NON-TREATED ANTS
   ## plot by Treatment (size)
@@ -1132,7 +1123,7 @@ if (GROUP == "TREATED_W") {
   
   p1 <- ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc_QC_imputed, color = Treatment)
+    aes(x = gene, y = rel_conc_imputed, color = Treatment)
   ) + 
     geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
     geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
@@ -1147,7 +1138,7 @@ if (GROUP == "TREATED_W") {
   ## plot by Treatment (size)
   p2 <- ggplot(
     data = genes_data[which(genes_data$GROUP==GROUP),],
-    aes(x = Ant_status, y = rel_conc_QC_imputed, color = treatment)
+    aes(x = Ant_status, y = rel_conc_imputed, color = treatment)
   ) + 
     geom_point(aes(colour = Colony),position=position_jitterdodge(), size = 1, alpha = 0.3) +
     geom_boxplot(lwd = 0.8, alpha = 0.2) +
@@ -1275,5 +1266,18 @@ if (GROUP == "TREATED_W") {
 # 
 
 
+
+
+
+
+
+#### assign min to undetectables
+#0=impute (invalid) - to be imputed
+#1=valid
+#2=undetectable - set to minimum
+for (GENE in unique(genes_data$gene)) {
+  #assign the min/2 value by gene to missing datapoints
+  genes_data[which(genes_data$QC == "2" & genes_data$gene == GENE), "rel_conc_imputed"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_replace_min"],na.rm = T)/2
+}
 
 
