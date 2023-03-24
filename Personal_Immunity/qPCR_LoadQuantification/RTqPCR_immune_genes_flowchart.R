@@ -28,7 +28,7 @@ B1   [label = 'gene by gene\nmeanCt']
 B2  [label = 'discard\nall genes',
 fontcolor = red] 
 C1   [label = 'NA']
-C2   [label = '>Detect.Thresh.']
+C2   [label = '>=Detect.Thresh.']
 C3   [label = '<Detect.Thresh.']
 D1   [label = '2 NA']
 D2  [label = '1 NA']
@@ -37,8 +37,10 @@ D2  [label = '1 NA']
 D4   [label = 'diff.Ct']
 #E1   [label = 'impute',
 #fontcolor = red]
-E2   [label = 'remaining Ct\n<32 Ct']
-E3   [label = 'remaining Ct\n>32 Ct']
+E2   [label = 'remaining Ct\n<(Detect.Thresh. - \nTechnical error)',
+fontsize=9]
+E3   [label = 'remaining Ct\n>=(Detect.Thresh. - \nTechnical error)',
+fontsize=9]
 E4   [label = 'discard higher\nCt value',
 fontcolor = red]
 E5   [label = 'valid:\nuse mean Ct',
@@ -57,7 +59,7 @@ fontcolor = red]
   
   # edges
   #######
-A   -> B1 [label = 'valid:\nboth Ct<mean\u00b12*sd, diff.Ct<0.5',
+A   -> B1 [label = 'valid:\n mean-2sd<Ct<mean+2sd\ndiff.Ct<0.5\nneither NA',
             style= dashed]
 A   -> B2 [label = 'invalid',
                         fontcolor = red]

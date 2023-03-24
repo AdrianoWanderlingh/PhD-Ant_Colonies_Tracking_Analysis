@@ -39,6 +39,7 @@ library(lme4)
 library(blmeco) # check dispersion for glmer
 library(emmeans) # post-hoc comparisons
 library(e1071) # calc skewness and other stuff
+library(fitdistrplus)
 library(lawstat) # for levene test (homogeneity of variance)
 library(lmPerm) # for permutations
 library(lmerTest)
@@ -65,6 +66,10 @@ assign_CTDiff_15PipErr <- function(mean_Ct) {
   } else                     {return(0)
   }
 }
+
+### fixed PARAMETERS
+#Technical_error
+Technical_error <- 3
 
 ##################################################################
 ################## QUALITY CHECK #################################
@@ -252,7 +257,7 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   # needed?
 
   ### ADD THE METADATA
-  metadata <- read.table(paste(DATADIR, "/Metadata_Exp1_2021_2022-10-12.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
+  metadata <- read.table(paste(DATADIR, "/Metadata_Exp1_2021_2023-02-27.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
   # rename cols to match the DNA results
   colnames(metadata)[which(colnames(metadata) == "REP_treat")] <- "Colony"
   # MERGE BASED ON TAG ID AS THE PLATE POSTION ANTidS ARE NOT RELIABLE (misalignment issue spotted for Q of R4BP, which had right TagID=228, but wrong antID (153 instead of 152). )
@@ -262,15 +267,13 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   # Merge info file of plate positions with the DNA results
   common_col_names3 <- intersect(names(genes_Results_annotated), names(metadata))
   genes_Results_annotated <- merge(genes_Results_annotated, metadata, by = common_col_names3, all.x = TRUE)
-  # ASSIGN QUEEN LABEL TO QUEEN ISTEAD OF NURSE (SHOULD BE FIXED IN METADATA!!!)
-  genes_Results_annotated[which(genes_Results_annotated$IsQueen == TRUE), "AntTask"] <- "queen"
 
   # #remove extra columns
   genes_Results_annotated <- genes_Results_annotated[, !(names(genes_Results_annotated) %in% c("X.ScanTime", "surviv_time", "ExpStart", "ExpEnd", "Comment", "TagID", "tagIDdecimal", "Ori_Plate", "Ori_Well", "fileName", "identifStart", "identifEnd"))]
   # #remove  dead ants
   # genes_data <- genes_data[which(!is.na(genes_data$AntTask)),]
 
-  names(genes_Results_annotated)[which(names(genes_Results_annotated) == "treatment")] <- "Treatment"
+  names(genes_Results_annotated)[which(names(genes_Results_annotated) == "size_treat")] <- "Treatment"
   # Rename by name
   genes_Results_annotated$Treatment <- as.factor(genes_Results_annotated$Treatment)
   levels(genes_Results_annotated$Treatment)[levels(genes_Results_annotated$Treatment) == "BS"] <- "Big Sham"
@@ -331,6 +334,7 @@ genes_data[which(genes_data$Ant_status %in% c("untreated forager","untreated nur
 ###### determine detection threshold of the qPCR machine.
 ## threshold calculated as the shoulder of the values curve (scatterplot of the ordered Cts), which are the peaks of the second derivative.
 
+
 #### Find shoulder
 sorted_vector <- sort(genes_data$Ct)
 # Fit a spline curve with a high spar smoothing parameter
@@ -351,11 +355,46 @@ peaks <- peaks[which(peaks$V1>=0.2),"V2"]
 # Extract the corresponding x-coordinates from the smoothed curve
 shoulder_points <- data.frame(x = smoothed_curve$x[peaks], y = smoothed_curve$y[peaks])
 # Machine Detection_Threshold
-Detection_Threshold <- max(shoulder_points$y)
-warning("show Florent!")
+Detection_Threshold <- round(max(shoulder_points$y),2)
 # Plot the curve
-plot(sorted_vector, col = "black", type = "l", main = "Smoothed Curve",lwd=3)
+plot(sorted_vector, col = "black", type = "l", main = "Smoothed Curve of raw Ct values",sub=paste("upper Detection Threshold",round(Detection_Threshold,0),sep=" " ),lwd=3)
 points(shoulder_points$x,shoulder_points$y , col = "red", pch = 19)
+  
+########################################
+
+# # Create a 2 by 2 grid of plots
+# par(mfrow=c(2,2))
+# # Loop through each unique gene and perform the analysis on the subset of data
+# for (GENE in unique(genes_data$gene)) {
+#   # Subset the data by gene
+#   gene_data <- genes_data[genes_data$gene == GENE,]
+#   # Find shoulder
+#   sorted_vector <- sort(gene_data$Ct)
+#   # Fit a spline curve with a high spar smoothing parameter
+#   smoothed_curve <- smooth.spline(sorted_vector, spar = 1)
+#   # Find the second derivative of the smoothed curve
+#   smoothed_diff <- diff(smoothed_curve$y, differences = 1)
+#   smoothed_x_diff <- diff(smoothed_curve$x, differences = 1)
+#   second_derivative <- diff(smoothed_diff) / (head(smoothed_x_diff, -1) * tail(smoothed_x_diff, -1))
+#   # Compute the absolute value of the second derivative
+#   abs_second_derivative <- abs(diff(second_derivative))
+#   sorted_vector <- sorted_vector[-1]
+#   # Smooth the absolute value curve
+#   original_second_derivative <- diff(diff(sorted_vector))
+#   abs_second_derivative <- abs(original_second_derivative)
+#   # Find the peaks of the smoothed absolute value curve
+#   peaks <- as.data.frame(pracma::findpeaks(abs_second_derivative))
+#   peaks <- peaks[which(peaks$V1>=0.2),"V2"]
+#   # Extract the corresponding x-coordinates from the smoothed curve
+#   shoulder_points <- data.frame(x = smoothed_curve$x[peaks], y = smoothed_curve$y[peaks])
+#   # Machine Detection_Threshold
+#   Detection_Threshold <- max(shoulder_points$y)
+#   
+#   # Plot the curve
+#   plot(sorted_vector, col = "black", type = "l", main = paste("Smoothed Curve of raw Ct values for gene", GENE), 
+#        sub=paste("upper Detection Threshold",round(Detection_Threshold,0),sep=" " ),lwd=3)
+#   points(shoulder_points$x,shoulder_points$y , col = "red", pch = 19)
+# }
 
 ###########################################################
 #######   CHECK FOR DISTRIBUTION OF MISSING DATA   ########
@@ -446,6 +485,7 @@ ggplot(mean_data_Col, aes(x = gene, y = propNA,colour=Treatment)) + #, label= Co
 
 ##### ISOLATE SUSPICIOUS DATAPOINTS (CONTAMINATIONS, BAD EXTRACTIONS, ETC)
 # Calculate mean and standard deviation by gene
+# here we remove NAs to be able to calculate means by gene
 genes_data_byGroup <- genes_data %>%
   group_by(gene) %>%
   summarise(st.dev_mean_Ct = ifelse(all(is.na(Ct)), NA, sd(Ct, na.rm = TRUE)), 
@@ -474,22 +514,62 @@ ggplot(genes_data, aes(mean_Ct, abs_diff_Ct)) +
 
 ##### REMOVE INVALID HOUSEKEEPING GENE'S EXPRESSION
 # EF1alpha is expected to show expression values inside a gaussian range (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
-# given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
-#excluding EF1 values over threshold and as we can't base the expression of the other genes on it
+# excluding EF1 values over threshold and as we can't base the expression of the other genes on it
+# ALSO: given that we work with single ants, the closest we are to threshold, the harder it is to quantify small samples (small individuals).
 # valid datapoints: Ct < mean_Ct+-2*st.dev, diff.Ct<0.5, both Ct dups are not NA
 
 # any on the duplicate is NA
 EF1_discards <- NULL
-EF1_discards <- genes_data %>%
+
+EF1_discards_NA <- genes_data %>%
   filter(gene == "EF1") %>%
   group_by(Code) %>%
-  filter(any(is.na(Ct)))
-# abs_diff_Ct is > 0.5
-EF1_discards <-rbind(EF1_discards, subset(genes_data, gene == "EF1" & abs_diff_Ct > 0.5))
-# Ct < mean_Ct+-2*st.dev
-EF1_discards <-rbind(EF1_discards,subset(genes_data, gene == "EF1" & (Ct < (grand_mean_Ct - 2*st.dev_mean_Ct) | Ct > (grand_mean_Ct + 2*st.dev_mean_Ct) )))
-EF1_discards <- unique(EF1_discards$Code)
+  filter(any(is.na(Ct))) %>%
+  ungroup()
 
+# abs_diff_Ct is > 0.5
+EF1_discards_05 <-subset(genes_data, gene == "EF1" & abs_diff_Ct > 0.5)
+# mean_Ct-2*st.dev > Ct > mean_Ct+2*st.dev
+#exclude queens from lowerbound as they have higher expression
+keepQ <- subset(genes_data, gene == "EF1" & GROUP == "QUEEN" & (Ct < (grand_mean_Ct - 2*st.dev_mean_Ct) ))
+EF1_discards_dev <-dplyr::anti_join(subset(genes_data, gene == "EF1" & (Ct < (grand_mean_Ct - 2*st.dev_mean_Ct) | Ct > (grand_mean_Ct + 2*st.dev_mean_Ct) )),keepQ )
+#keep all row couples
+EF1_discards_dev <- subset(genes_data, gene == "EF1" & Code %in% EF1_discards_dev$Code)
+
+#add labels for table
+EF1_discards_NA$Category <- "any_is_NA"
+EF1_discards_05$Category <- "diff_Ct>0.5"
+EF1_discards_dev$Category <- "mean+/-sd"
+
+EF1_discards <- rbind(EF1_discards_NA,
+                      EF1_discards_05,
+                      EF1_discards_dev)
+  
+table(EF1_discards$Ant_status,EF1_discards$Category)
+
+# create a frequency table of Code and sort it by frequency
+freq_table <- table(EF1_discards$Code)
+sorted_codes <- names(sort(freq_table, decreasing = TRUE))
+
+# explore pattern of missingness to select possible samples to re-run 
+ggplot(data = EF1_discards, aes(x = factor(Code, levels = sorted_codes), fill = Category)) +
+  geom_bar() + labs(title = "Code vs Category", x = "Code", y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Ant_status, ncol = 1)
+
+# # explore pattern of missingness for treated nurses by colony size
+# ggplot(data = EF1_discards, aes(x = factor(Code, levels = sorted_codes), fill = Category)) +
+#   geom_bar() + labs(title = "Code vs Category", x = "Code", y = "Count") +
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Ant_status, ncol = 1)
+
+#keep only treated nurses
+df_subset <- subset(EF1_discards, Ant_status == "treated nurse")
+#visualise overlaps of invalidity by gene for the same samples
+ggplot(data = df_subset, aes(x = factor(Code, levels = sorted_codes), fill = Category)) +
+  geom_bar() + labs(title = "Code vs Category (only displaying treated nurses)", x = "Code", y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Treatment, ncol = 1)
+
+#get individual codes
+EF1_discards <- unique(EF1_discards$Code)
 # Remove invalid EF1 datapoints and all the points depending on them (4genes*2dups per code)
 genes_data <- genes_data[which(!genes_data$Code %in% EF1_discards),]
 
@@ -507,17 +587,17 @@ genes_data <- genes_data[which(!genes_data$Code %in% EF1_discards),]
 
 ## if mean_Ct is NA (1 or 2 Ct values missing):
 ## 1 NA value:
-## - other Ct value >32 -> "impute" mean
-## - other Ct value <32 -> "discard  NA Ct" -> mean_Ct for these points is recalculated as calculated as  mean(Ct, na.rm = TRUE)
+## - other Ct value >(Detection_Threshold - Technical_error) -> "impute" mean
+## - other Ct value <(Detection_Threshold - Technical_error) -> "discard  NA Ct" -> mean_Ct for these points is recalculated as calculated as  mean(Ct, na.rm = TRUE)
 ## 2 NA values:
 ## -> "impute" mean
 
 genes_data$Category <- NA
 genes_data <- genes_data %>%
   group_by(gene, Code) %>%
-  mutate(Category = ifelse(sum(is.na(Ct)) == 2, "impute", 
-                       ifelse(sum(is.na(Ct)) == 1 & sum(!is.na(Ct) & Ct > 32) == 1, "impute", #When a logical vector is used in a numeric context, FALSE is converted to 0 and TRUE is converted to 1. The sum() function then sums up the resulting 0's and 1's to give the total number of TRUE values.
-                              ifelse(sum(is.na(Ct)) == 1 & sum(!is.na(Ct) & Ct < 32) == 1, "discard_NA_Ct", NA))))
+  mutate(Category = ifelse(sum(is.na(Ct)) == 2, "impute(2NA)", 
+                       ifelse(sum(is.na(Ct)) == 1 & sum(!is.na(Ct) & Ct >= (Detection_Threshold - Technical_error)) == 1, "impute(>D.T.-T.E.)", #When a logical vector is used in a numeric context, FALSE is converted to 0 and TRUE is converted to 1. The sum() function then sums up the resulting 0's and 1's to give the total number of TRUE values.
+                              ifelse(sum(is.na(Ct)) == 1 & sum(!is.na(Ct) & Ct < (Detection_Threshold - Technical_error)) == 1, "discard_NA_Ct", NA))))
 
 ## if mean_Ct does not contain any Na values
 ## if mean_Ct > Detection threshold -> "impute"
@@ -525,7 +605,7 @@ genes_data <- genes_data %>%
 genes_data <- genes_data %>%
   group_by(gene, Code) %>%
   mutate(Category = ifelse(!any(is.na(Ct)), #if there are NAs, reassign Category
-                       ifelse(mean_Ct >= Detection_Threshold, "impute", "evaluate_abs_diff_Ct"),
+                       ifelse(mean_Ct >= Detection_Threshold, "impute(>DT)", "evaluate_abs_diff_Ct"),
                        Category))
 
 ##Check that all duplicates have the same label
@@ -553,10 +633,55 @@ genes_data$CTDiff_15PipErr <- sapply(genes_data$mean_Ct, assign_CTDiff_15PipErr)
 # if abs_diff_Ct > 3, assign "discard higher Ct" (Technical Error)
 # if any other abs_diff_Ct, assign "invalid"
 genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & genes_data$abs_diff_Ct <= genes_data$CTDiff_15PipErr] <- "valid"
-genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & genes_data$abs_diff_Ct > 3] <- "discard_higher_Ct"
-genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$abs_diff_Ct > genes_data$CTDiff_15PipErr & genes_data$abs_diff_Ct <= 3)] <- "invalid"
+genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & genes_data$abs_diff_Ct > Technical_error] <- "discard_higher_Ct"
+genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$abs_diff_Ct > genes_data$CTDiff_15PipErr & genes_data$abs_diff_Ct <= Technical_error)] <- "invalid"
 
-as.data.frame(table(genes_data$Category))
+# indiviual sample Ants by Category 
+#as.data.frame(table(genes_data$Category,genes_data$gene,genes_data$Ant_status)/2)
+#dput(head(genes_data[,c("Category","gene","Ant_status")]))
+
+genes_sub <- unique(genes_data[which(genes_data$gene!="EF1"),c("gene", "Category","Ant_status","Code")])
+
+## explore all data distribution
+ggplot(genes_sub , aes(x = gene, fill = Category)) +
+  geom_bar(position = "stack") +
+  geom_text(position = position_stack(vjust = 0.5), aes(label =after_stat(count)), stat='count',size=2.5) +
+  facet_wrap(~Ant_status, nrow=4)+
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Frequency of Category by Ant_status by gene", x = "Gene", y = "Frequency") +
+  coord_flip() +
+  theme(legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.direction = "horizontal",
+        legend.key.size = unit(0.5, "cm"),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"))+
+  scale_y_continuous(limits = c(0, 450), expand = c(0, 0))
+
+## explore the invalid data distribution
+freq_table <- table(genes_data[which(genes_data$Category=="invalid"),"Code"])
+sorted_codes <- names(sort(freq_table, decreasing = TRUE))
+# create a subset of the data with counts above 2
+df_subset <- subset(genes_data[which(genes_data$Category=="invalid"),], Code %in% names(freq_table[freq_table > 2]))
+#visualise overlaps of invalidity by gene for the same samples
+ggplot(data = df_subset, aes(x = factor(Code, levels = sorted_codes), fill = gene)) +
+  geom_bar() + labs(title = "Code vs Category (only displaying Codes with at least 2 invalid genes)", x = "Code", y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Ant_status, ncol = 1)
+
+#keep only treated nurses / invalid
+df_subset <- subset(genes_data, Ant_status == "treated nurse" & Category=="invalid")
+#visualise overlaps of invalidity by gene for the same samples
+ggplot(data = df_subset, aes(x = Code, fill = gene)) +
+  geom_bar() + labs(title = "Code vs invalid (only displaying treated nurses)", x = "Code", y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Treatment, ncol = 1)
+
+#keep only treated nurses / impute(>D.T.-T.E.)
+df_subset <- subset(genes_data, Ant_status == "treated nurse" & Category=="impute(>D.T.-T.E.)")
+#visualise overlaps of invalidity by gene for the same samples
+ggplot(data = df_subset, aes(x = Code, fill = gene)) +
+  geom_bar() + labs(title = "Code vs impute(>D.T.-T.E.) (only displaying treated nurses)", x = "Code", y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Treatment, ncol = 1)
+
 
 ###########################################################
 #######     STEP 4: RE-ASSING VALUES BY CATEGORY    #######
@@ -568,7 +693,6 @@ as.data.frame(table(genes_data$Category))
 # "valid":                Use Mean_Ct
 # "impute":               Replace by NAs
 # "invalid":              either discard, use mean or re-run sample (810, 405 duplicates. 336 unique samples)
-
 
 # "discard_NA_Ct":        Recalculate mean_Ct by duplicate as above but dropping NAs - mean(Ct, na.rm = TRUE)
 genes_data <- genes_data %>%
@@ -583,41 +707,46 @@ genes_data <- genes_data %>%
 # "impute":               Replace by NAs
 genes_data <- genes_data %>%
   group_by(gene, Code) %>%
-  mutate(mean_Ct = ifelse(Category == "impute", NA, mean_Ct))
+  mutate(mean_Ct = ifelse(grepl("impute", Category), NA, mean_Ct))
 
-# "invalid":              either discard, use mean or re-run sample (810, 405 duplicates. 336 unique samples)
+# "invalid":              either discard, use mean (already calculated) or re-run sample (810, 405 duplicates. 336 unique samples)
 ## DISCARD DATASET
 genes_data_invDiscard <- genes_data[which(genes_data$Category!="invalid"),]
 #MEAN DATASET IS genes_data
 
 ######### LOOP THROUGH THE TWO VARIANTS OF HOW TO TREAT INVALID SAMPLES: ####
 # Combine the data frames into a list
-df_list <- list(genes_data, genes_data_invDiscard)
+df_list <- list(Invalids_MEAN=genes_data, Invalids_DISCARD=genes_data_invDiscard)
 
-# Loop through the list and perform a summary analysis
-lapply(df_list, function(CLEAN_DATA) {
-  nrow(CLEAN_DATA)
-  
-  
-  
-}) ### PUT THESE BRACKETS AT THE BOTTOM OF THE ENTIRE SCRIPT
+df_list <- Map(cbind, df_list, name_df = names(df_list))
+
+### it could be done more cleanly, but for the moment select the DF to use here:
+warning("select the DF to use here. Invalids should be discarded instead of using the means")
+CLEAN_DATA <- df_list$Invalids_DISCARD # df_list$Invalids_MEAN
+NAME_DF    <- unique(CLEAN_DATA$name_df)
+# # Loop through the list and perform a summary analysis
+# lapply(names(df_list), function(CLEAN_DATA) {
+#   nrow(df_list[[CLEAN_DATA]])
+#   cat(CLEAN_DATA,"\n")
+#   })
+
 
 ###########################################################
 #######             CALCULATE DELTA-CT              #######
 ###########################################################
 
 # remove extra cols to compress dataframe
-genes_data <- genes_data[,!(names(genes_data) %in% c("Threshold","Ct","Tm_Product","name","machine_num"))] #c("CTDiff_15PipErr","Category")
-genes_data <- genes_data %>% distinct()
+CLEAN_DATA <- CLEAN_DATA[,!(names(CLEAN_DATA) %in% c("Threshold","Ct","Tm_Product","name","machine_num"))] #c("CTDiff_15PipErr","Category")
+CLEAN_DATA <- CLEAN_DATA %>% distinct()
 # # combine all the duplicates to have meanCts
 ## remove columns which are different, then remove duplicated rows
 
 # “delta-Ct”: difference between the Ct of the housekeeping gene and the test gene
 # split test genes from housekeeping
-test_gene_data <- genes_data %>%
+test_gene_data <- CLEAN_DATA %>%
   filter(gene != "EF1")
 # isolate housekeeping and change colnames
-ref_gene_data <- genes_data %>%
+ref_gene_data <- CLEAN_DATA %>%
   filter(gene == "EF1") %>%
   rename("housekeeping" = "gene", "ref_Ct" = "mean_Ct") %>% #, "ref_Tm" = "mean_Tm"
   #only keep certain columns
@@ -626,17 +755,17 @@ ref_gene_data <- genes_data %>%
 # recombine data
 # common_col_names4 <- intersect(names(ref_gene_data), names(test_gene_data))
 # common_col_names4 <- common_col_names4[ !common_col_names4 == c("mean_Tm","abs_diff_Ct")] #exclude numeric var
-genes_data <- left_join(test_gene_data, ref_gene_data, by = "Code")
+CLEAN_DATA <- left_join(test_gene_data, ref_gene_data, by = "Code")
 
 # create a new column containing the delta Ct between the housekeeping gene and our gene of interest, and plot the delta Ct for each treatment and replicate.
-genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
+CLEAN_DATA <- mutate(CLEAN_DATA, delta_Ct = mean_Ct - ref_Ct)
 
 # # plot delta_Ct
-# ggplot(genes_data, aes(x = gene, y = delta_Ct, fill = Treatment)) +
+# ggplot(CLEAN_DATA, aes(x = gene, y = delta_Ct, fill = Treatment)) +
 #   geom_boxplot(aes(colour = AntTask), lwd = 0.8, alpha = 0.3)
 
 # # Calculate the mean delta Ct for each treatment.
-# treatment_summary <- genes_data %>%
+# treatment_summary <- CLEAN_DATA %>%
 #   group_by(gene) %>%
 #   summarise(mean_delta_Ct = mean(delta_Ct, na.rm = TRUE))
 
@@ -646,19 +775,19 @@ genes_data <- mutate(genes_data, delta_Ct = mean_Ct - ref_Ct)
 # PRIMERS EFFICIENCY
 primers_eff <- data.frame(gene = c("EF1", "HYM", "DEF", "PO"), efficiency = c(1.99, 1.99, 2, 1.94))
 # add primers efficiency data
-genes_data <- left_join(genes_data, primers_eff, by = c("gene"))
+CLEAN_DATA <- left_join(CLEAN_DATA, primers_eff, by = c("gene"))
 
 # as EF1 efficiency is 1.99, it is used as baseline for normalisation
-genes_data <- genes_data %>%
+CLEAN_DATA <- CLEAN_DATA %>%
   mutate(rel_conc = (2 * (efficiency / 1.99))^-delta_Ct)
 
-table(is.na(genes_data$rel_conc),useNA = "ifany")
+table(CLEAN_DATA$gene,is.na(CLEAN_DATA$rel_conc),useNA = "ifany")
 
 
 
 
 
-#dput(as.data.frame(genes_data[which(genes_data$Code=="1-F2"),c(5,10,11,24,26,29)]))
+#dput(as.data.frame(CLEAN_DATA[which(CLEAN_DATA$Code=="1-F2"),c(5,10,11,24,26,29)]))
 
 
 
@@ -667,24 +796,24 @@ table(is.na(genes_data$rel_conc),useNA = "ifany")
 
 ############
 #### PROPORTION OF ZERO LOAD VS Ant_status BY TREATMENT
-#create flag to show which values are non-missing
-genes_data$non_missing <- as.factor(ifelse(is.na(genes_data$rel_conc),"missing","non-missing"))
+#create flag to show which values are valid
+CLEAN_DATA$non_missing <- as.factor(ifelse(is.na(CLEAN_DATA$rel_conc),"to-impute","valid"))
 
-table(genes_data$non_missing, genes_data$Treatment, genes_data$Ant_status)
-table(genes_data$non_missing, genes_data$gene, genes_data$Ant_status)
+table(CLEAN_DATA$non_missing, CLEAN_DATA$Treatment, CLEAN_DATA$Ant_status)
+table(CLEAN_DATA$non_missing, CLEAN_DATA$gene, CLEAN_DATA$Ant_status)
 
 warning("to fix, the selection deletes the ant status, and at a later stage the propZeros")
-# genes_data_ColPropPos <- genes_data %>%
+# CLEAN_DATA_ColPropPos <- CLEAN_DATA %>%
 #   group_by(Colony, Treatment, gene) %>%
 #   summarise(count = n(), non_missing = sum(non_missing == 1))
-# genes_data_ColPropPos$negative <- genes_data_ColPropPos$count - genes_data_ColPropPos$non_missing
+# CLEAN_DATA_ColPropPos$negative <- CLEAN_DATA_ColPropPos$count - CLEAN_DATA_ColPropPos$non_missing
 # # prop of zero
-# genes_data_ColPropPos$propZeros <- (genes_data_ColPropPos$negative / genes_data_ColPropPos$count) * 100
+# CLEAN_DATA_ColPropPos$propZeros <- (CLEAN_DATA_ColPropPos$negative / CLEAN_DATA_ColPropPos$count) * 100
 # #Standard error
-# genes_data_ColPropPos <- genes_data_ColPropPos %>% group_by(Treatment, gene) %>% summarise(se_propZeros = sqrt(propZeros*(100-propZeros)/count)/100, propZeros=propZeros,Colony=Colony)
+# CLEAN_DATA_ColPropPos <- CLEAN_DATA_ColPropPos %>% group_by(Treatment, gene) %>% summarise(se_propZeros = sqrt(propZeros*(100-propZeros)/count)/100, propZeros=propZeros,Colony=Colony)
 # 
 # # select only relevant cols
-# # genes_data_ColPropPos <- genes_data_ColPropPos[, c("Treatment", "Ant_status", "propZeros")]
+# # CLEAN_DATA_ColPropPos <- CLEAN_DATA_ColPropPos[, c("Treatment", "Ant_status", "propZeros")]
 # 
 # 
 #   group_by(Treatment, gene) %>%
@@ -695,9 +824,9 @@ warning("to fix, the selection deletes the ant status, and at a later stage the 
 # 
 # # #bad way to get table, it works as there are single vals per each condition...
 # # #table useless? not possible to test percentages...
-# # genes_data_ColPropPosTABLE <- tapply(genes_data_ColPropPos$propZeros, list(genes_data_ColPropPos$Treatment, genes_data_ColPropPos$Ant_status), mean)
+# # CLEAN_DATA_ColPropPosTABLE <- tapply(CLEAN_DATA_ColPropPos$propZeros, list(CLEAN_DATA_ColPropPos$Treatment, CLEAN_DATA_ColPropPos$Ant_status), mean)
 # 
-# ggplot(genes_data_ColPropPos, aes(fill = Treatment, y = propZeros, x = Ant_status)) +
+# ggplot(CLEAN_DATA_ColPropPos, aes(fill = Treatment, y = propZeros, x = Ant_status)) +
 #   geom_bar(position = "dodge", stat = "identity") +
 #   STYLE +
 #   labs( # title = "Pathogen Quantification Adriano",
@@ -714,17 +843,17 @@ warning("to fix, the selection deletes the ant status, and at a later stage the 
 #### PERFORM DATA IMPUTATION HERE
 
 # #create new assign minimum and imputed conc. columns
-# genes_data$rel_conc_QC_imputed <- genes_data$rel_conc_QC
-# genes_data$rel_conc_QC_replace_min <- genes_data$rel_conc_QC
+# CLEAN_DATA$rel_conc_QC_imputed <- CLEAN_DATA$rel_conc_QC
+# CLEAN_DATA$rel_conc_QC_replace_min <- CLEAN_DATA$rel_conc_QC
 
 # # ASSIGN minimum
 # #assing value smaller than the minimum to the rel_conc_QC NAs, which are caused by No_Ct values
 # # it has been assigned in a similar fashion as in the pathogen load but here applied to the rel-concenrtation instead of load (non present)
 # # this may flatten the result, but it is not straightforward to assign an arbitrarly high value to CT for missing values....
 # print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
-# for (GENE in unique(genes_data$gene)) {
+# for (GENE in unique(CLEAN_DATA$gene)) {
 #   #assign the min/2 value by gene to missing datapoints
-#   genes_data[is.na(genes_data$rel_conc_QC_replace_min) & genes_data$gene == GENE, "rel_conc_QC_replace_min"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_QC"],na.rm = T)/2
+#   CLEAN_DATA[is.na(CLEAN_DATA$rel_conc_QC_replace_min) & CLEAN_DATA$gene == GENE, "rel_conc_QC_replace_min"] <- min(CLEAN_DATA[which(CLEAN_DATA$gene==GENE),"rel_conc_QC"],na.rm = T)/2
 # }
 # 
 # print("replacing NA relative concentrations with QRILC Quantile Regression Imputation of Left Censored Data, proven the most reliable imputation method in Wei, R et al. 2018 ")
@@ -738,22 +867,22 @@ warning("to fix, the selection deletes the ant status, and at a later stage the 
 # regression. Implemented in the `imputeLCMD::impute.QRILC`
 # result <- data %>% log %>% impute.QRILC(., ...) %>% extract2(1) %>% exp
 
-  for (GENE in unique(genes_data$gene)) {
-rel_conc_matrix <- as.matrix(genes_data[which(genes_data$gene==GENE), "rel_conc"])
+  for (GENE in unique(CLEAN_DATA$gene)) {
+rel_conc_matrix <- as.matrix(CLEAN_DATA[which(CLEAN_DATA$gene==GENE), "rel_conc"])
 # note that tune.sigma = 1 as it is assumed that the complete data distribution is Gaussian (as shown by the complete gene DEF) .
 imputed_rel_conc <- impute.QRILC(log(rel_conc_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
-genes_data[which(genes_data$gene == GENE), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
-sum(is.na(genes_data[is.na(genes_data$rel_conc) & genes_data$gene == GENE, "rel_conc_imputed"])) # should be 0
+CLEAN_DATA[which(CLEAN_DATA$gene == GENE), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
+sum(is.na(CLEAN_DATA[is.na(CLEAN_DATA$rel_conc) & CLEAN_DATA$gene == GENE, "rel_conc_imputed"])) # should be 0
 
   }
 
 # Create a list to store the plots
 plot_list <- list()
 # Loop through each gene
-for (GENE in unique(genes_data$gene)) {
+for (GENE in unique(CLEAN_DATA$gene)) {
   # Generate the plot and add it to the list
-  plot_list[[GENE]] <- ggplot(genes_data[which(genes_data$gene == GENE),], aes(x = rel_conc_imputed, fill = factor(non_missing, levels = c("missing", "non-missing"))  )) + #, fill = factor(non_missing, levels = c("missing", "non-missing"))
-    geom_histogram(alpha = 0.5, position = "dodge") +
+  plot_list[[GENE]] <- ggplot(CLEAN_DATA[which(CLEAN_DATA$gene == GENE),], aes(x = rel_conc_imputed, fill = factor(non_missing, levels = c("to-impute", "valid"))  )) + #, fill = factor(non_missing, levels = c("to-impute", "valid"))
+    geom_histogram(alpha = 0.5, position = "stack") +
     labs(x = "Value", y = "Frequency", fill = "non_missing") +
     ggtitle(GENE) +
     scale_x_continuous(trans='log10') +
@@ -770,16 +899,16 @@ grid.arrange(
   ncol = 2, nrow = 2,
   widths = c(1, 1),
   heights = c(1, 1),
-  bottom = "QRILC imputation"
+  bottom = paste("QRILC imputation, stacked histogram. Data=", NAME_DF)
 )
 
 ## Check that distributions are normal
 # the imputation assumes that the data distribution is normal, as expected from qPCR data. 
 # we can test that the imputation does not cause the distributions to diverge, considering that DEF is our complete distribution
-genes_data <- genes_data %>% group_by(gene) %>% mutate( rel_conc_imput_LogStand = scale(log(rel_conc_imputed),center=T,scale=T) )
+CLEAN_DATA <- CLEAN_DATA %>% group_by(gene) %>% mutate( rel_conc_imput_LogStand = scale(log(rel_conc_imputed),center=T,scale=T) )
 
 # create the ANOVA model
-model <- aov(rel_conc_imput_LogStand ~ gene, data = genes_data)
+model <- aov(rel_conc_imput_LogStand ~ gene, data = CLEAN_DATA)
 summary(model)
 
 # check if the ANOVA is significant
@@ -798,58 +927,39 @@ if (summary(model)[[1]]$"Pr(>F)"[1] < 0.05) {
 # plot smoothed curve with separate colors for each GENE
 # note: rel_conc_imputed variable has negative values, this causes a flipping in the standardised distribution
 print(
-  ggplot(genes_data, aes(x = rel_conc_imput_LogStand, colour = gene)) +
+  ggplot(CLEAN_DATA, aes(x = rel_conc_imput_LogStand, colour = gene)) +
     geom_density(alpha = 0.5) +
     labs(x = "Log transformed standardised relative concentrations", y = "Density", fill = "gene") +
-    ggtitle("all genes distribution", subtitle = "rel_conc_imputed and standardised") +
+    ggtitle("all genes distribution", subtitle = paste("rel_conc_imputed and standardised.", "Data=",NAME_DF,sep=" ")) +
     annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, label = paste("ANOVA, P=", pvalue))
 )
 
 
-
-
 ####################################################################################
 
-# genes_data[is.na(genes_data$rel_conc),"rel_conc"] <- 1e-06
+# CLEAN_DATA[is.na(CLEAN_DATA$rel_conc),"rel_conc"] <- 1e-06
 for (REL_CONC in c("rel_conc","rel_conc_imputed")) { # "rel_conc_replace_min"
 
 # plot the relative concentration.
 print(
-  ggplot(genes_data, aes(x = Ant_status, y = !!sym(REL_CONC),colour=Treatment)) +
+  ggplot(CLEAN_DATA, aes(x = Ant_status, y = !!sym(REL_CONC),colour=Treatment)) +
   geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.3) +
     colScale_Treatment +
     STYLE +
   scale_y_continuous(labels = scales::percent,trans='log10', limits = c(1e-08,1000)) +
-    ggtitle(REL_CONC) +
+    ggtitle(REL_CONC, subtitle =paste("Data=",NAME_DF,sep=" ")) +
     facet_grid(. ~ gene)
 )
 }
 
 # proportion imputed by ant_status
-round(prop.table(table(genes_data$Ant_status,genes_data$non_missing)),2)
+round(prop.table(table(CLEAN_DATA$Ant_status,CLEAN_DATA$non_missing)),2)
 # proportion imputed by gene
-round(prop.table(table(genes_data$gene,genes_data$non_missing)),2)
-
-
-
-warning("\nLOST QUEENS IN CLEANING, CHECK AT WHICH STAGE!\n\nUPDATE PLOTS & STATS WITH BOTH DISCARD AND USE MEANS")
-
-
-
-# # Queen data
-# genes_data_Q <- genes_data %>%
-#   filter(IsQueen == TRUE)
-# # Queen data
-# genes_data_EXP <- genes_data %>%
-#   filter(Exposed == "treated")
-# # unexposed data
-# genes_data <- genes_data %>%
-#   filter(IsQueen == FALSE & Exposed == "untreated")
-# 
+round(prop.table(table(CLEAN_DATA$gene,CLEAN_DATA$non_missing)),2)
 
 ###############
 # clean debris
-remove_debris <- c("genes_data_byGroup", "outliers", "test_gene_data", "ref_gene_data", "common_col_names4", "outliers_limit", "primers_eff")
+remove_debris <- c("CLEAN_DATA_byGroup", "outliers", "test_gene_data", "ref_gene_data", "common_col_names4", "outliers_limit", "primers_eff")
 # cleaning
 rm(list = ls()[which(ls() %in% remove_debris)])
 gc()
@@ -857,7 +967,7 @@ gc()
 ################
 
 ggplot(
-  data = genes_data,
+  data = CLEAN_DATA,
   aes(x = Ant_status, y = rel_conc_imputed, color = Treatment)
 ) + # ,group = Exposed,color = Exposed
   #geom_point(aes(fill = Treatment, colour = Colony), position = position_jitter() , size = 1, alpha = 0.3, show.legend = FALSE) + # # ,alpha= 0.8,stroke=0
@@ -878,7 +988,7 @@ ggplot(
 
 
 # ggplot(
-#   data = genes_data,
+#   data = CLEAN_DATA,
 #   aes(x = Ant_status, y = rel_conc_imputed)
 # ) + 
 #   geom_jitter(aes(group = Treatment, colour = Colony), size = 1, alpha = 0.3, width = 0.2, height = 0, show.legend = FALSE) +
@@ -888,29 +998,29 @@ ggplot(
 #   facet_grid(. ~ gene) 
 
 
-# for (GROUP in unique(genes_data$GROUP)) {
+# for (GROUP in unique(CLEAN_DATA$GROUP)) {
 #   print(
 #     ggplot(
-#       data = genes_data[which(genes_data$GROUP==GROUP),],
+#       data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
 #       aes(x = gene, y = rel_conc_imputed)
 #     ) + # ,group = Exposed,color = Exposed
 #       geom_point(aes(fill = Treatment, colour = Colony), position = position_jitterdodge(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
 #       geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.3) + #
 #       STYLE +
-#       ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+#       ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
 #       scale_y_continuous(labels = scales::percent, trans = "log10") #+
 #     # facet_grid(. ~ gene)
 #   )
 # }
 
 # ggplot(
-#         data = genes_data,
+#         data = CLEAN_DATA,
 #         aes(x = Ant_status, y = rel_conc_imputed)
 #       ) + # ,group = Exposed,color = Exposed
 #         geom_point(aes(fill = Treatment, colour = Colony), position = position_jitter(), size = 1, alpha = 0.3) + # ,alpha= 0.8,stroke=0
 #         geom_boxplot( lwd = 0.8, alpha = 0.3) + #
 #         STYLE +
-#         ggtitle(paste(unique(genes_data[,"Ant_status"]), collapse = ", ")) +
+#         ggtitle(paste(unique(CLEAN_DATA[,"Ant_status"]), collapse = ", ")) +
 #         scale_y_continuous(labels = scales::percent, trans = "log10") +
 #        facet_grid(. ~ gene)
 
@@ -938,20 +1048,20 @@ ggplot(
 # - Untreated nurses and foragers
 # these ants can be compared
 
-QUEEN_data_OK <- FALSE # queen data may be woth to reprocess as they get discarded
+QUEEN_data_OK <- TRUE # queen data may be worth to reprocess as a few get discarded
 warning(paste0("QUEEN_data_OK: ", QUEEN_data_OK))
 
 #create list of significance outputs for Q data
 mod_Q_list <- list()
 
-for (GROUP in unique(genes_data$GROUP)) {
+for (GROUP in unique(CLEAN_DATA$GROUP)) {
   print(GROUP)
-  table(genes_data[which(genes_data$GROUP==GROUP),"Treatment"],genes_data[which(genes_data$GROUP==GROUP),"gene"])
+  table(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Treatment"],CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"gene"])
 
-for (GENE in unique(genes_data$gene)) {
+for (GENE in unique(CLEAN_DATA$gene)) {
   # select subset for 1 gene
   #GENE_data <- DF[which(DF$gene == GENE), ]
-  GENE_data <- genes_data[which(genes_data$gene==GENE & genes_data$GROUP==GROUP),]
+  GENE_data <- CLEAN_DATA[which(CLEAN_DATA$gene==GENE & CLEAN_DATA$GROUP==GROUP),]
 
   # create constant to make values below zeros a small number
   GENE_cost <- min(GENE_data$rel_conc_imputed, na.rm = T) * 1.1
@@ -965,6 +1075,7 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   # Calculate the weights based on the imbalance in the sample sizes
   #GENE_data$weights <- calculate_weights(GENE_data$Treatment)
   # First, fit linear models to explain variation in density
+  # descdist(GENE_data$rel_conc_imputed)
   mod1 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + (1 | Colony), data = GENE_data) # ,weights = weights
   print(GENE)
   output_lmer(mod1)
@@ -1078,20 +1189,20 @@ for (i in seq_along(mod_Q_list)) {
 mod_Q <- do.call(rbind.data.frame, mod_Q_list)
 
 ### PLOTTING ###
-for (GROUP in unique(genes_data$GROUP)) {
+for (GROUP in unique(CLEAN_DATA$GROUP)) {
   
 if (GROUP == "TREATED_W") {
   
   print(
   ggplot(
-    data = genes_data[which(genes_data$GROUP==GROUP),],
+    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
     aes(x = gene, y = rel_conc_imputed, color = Treatment)
   ) + 
     geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
     geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
     colScale_Treatment +
     STYLE +
-    ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+    ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
   geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
   )
@@ -1101,14 +1212,14 @@ if (GROUP == "TREATED_W") {
   # separated from the above as the label is assigned differently!
   print(
   ggplot(
-    data = genes_data[which(genes_data$GROUP==GROUP),],
+    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
     aes(x = gene, y = rel_conc_imputed, color = Treatment)
   ) + 
     geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
     geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
     colScale_Treatment +
     STYLE +
-    ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+    ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
   #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
     geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = Pr, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
@@ -1122,14 +1233,14 @@ if (GROUP == "TREATED_W") {
   p2 <- NULL
   
   p1 <- ggplot(
-    data = genes_data[which(genes_data$GROUP==GROUP),],
+    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
     aes(x = gene, y = rel_conc_imputed, color = Treatment)
   ) + 
     geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
     geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
     colScale_Treatment +
     STYLE +
-    ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+    ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
     geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
 
@@ -1137,14 +1248,14 @@ if (GROUP == "TREATED_W") {
   # PLOT FOR NON-TREATED ANTS
   ## plot by Treatment (size)
   p2 <- ggplot(
-    data = genes_data[which(genes_data$GROUP==GROUP),],
+    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
     aes(x = Ant_status, y = rel_conc_imputed, color = treatment)
   ) + 
     geom_point(aes(colour = Colony),position=position_jitterdodge(), size = 1, alpha = 0.3) +
     geom_boxplot(lwd = 0.8, alpha = 0.2) +
     colScale_Treatment +
     STYLE +
-    ggtitle(paste(unique(genes_data[which(genes_data$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+    ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
     facet_grid(. ~ gene) +
     geom_text(data = label_status[which(label_status$GROUP==GROUP),], aes(x = Ant_status, y = 10, group = Ant_status, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
@@ -1158,11 +1269,14 @@ if (GROUP == "TREATED_W") {
 
 
 
+#}) ### LOOP BETWEEN THE TWO VARIANTS OF HOW TO TREAT THE INVALIDS (KEEP MEAN OR DISCARD VALUES)
 
 
 
 
 
+
+warning("CHECK ALL THE STEPS, REPORT % DATAPOINTS PRESENT, UPDATE SLIDES, PRODUCE PLOTS FOR BOTH CONDITIONS - MODIFY PLOT SUBTITLE TO SPECIFY DATASET USED-")
 
 
 
