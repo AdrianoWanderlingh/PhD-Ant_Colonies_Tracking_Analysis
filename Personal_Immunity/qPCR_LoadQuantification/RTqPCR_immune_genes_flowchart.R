@@ -75,9 +75,9 @@ D2 -> E2
 D2 -> E3
 E2 -> F1
 #E3 -> F2
-D4 -> E4 [label = '>3,\nTechnical error']
-D4 -> E5 [label = '<Poisson Threshold']
-D4 -> E6 [label = 'Poisson threshold < diff.Ct < 3']
+D4 -> E4 [label = '>T.E.,\nTechnical error']
+D4 -> E5 [label = '<=Poisson Threshold']
+D4 -> E6 [label = 'Poisson threshold < diff.Ct <= T.E.']
 E6 -> F3
   
   # grouped edge

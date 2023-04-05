@@ -2,6 +2,10 @@
 ################################## RT qPCR IMMUNE RELATED GENES ##################################
 ##################################################################################################
 
+##### CLEAN UP
+gc()
+mallinfo::malloc.trim(0L)
+
 # load the packages
 library(tidyverse)
 library(platetools) # to plot plate
@@ -12,6 +16,7 @@ library(ggpubr) # for creating easily publication ready plots
 library(rstatix) #provides pipe-friendly R functions for easy statistical analyses.
 library(gridExtra) #grid of plots
 library(cowplot) # 
+library(effects)
 
 ## for qPCR missing values imputation
 # if (!require("BiocManager", quietly = TRUE)){
@@ -47,6 +52,9 @@ library(car)
 library(nlme) # lme
 library(afex)
 library(pracma) # calculate shoulders in a curve
+#library(gamm4)
+library(gamlss) #Generalized Additive Models for Location Scale and Shape
+
 
 ###source function scripts
 print("Loading functions and libraries...")
@@ -357,7 +365,7 @@ shoulder_points <- data.frame(x = smoothed_curve$x[peaks], y = smoothed_curve$y[
 # Machine Detection_Threshold
 Detection_Threshold <- round(max(shoulder_points$y),2)
 # Plot the curve
-plot(sorted_vector, col = "black", type = "l", main = "Smoothed Curve of raw Ct values",sub=paste("upper Detection Threshold",round(Detection_Threshold,0),sep=" " ),lwd=3)
+plot(sorted_vector, col = "black", type = "l", main = "Smoothed Curve of raw Ct values",sub=paste("upper Detection Threshold",Detection_Threshold,sep=" " ),lwd=3)
 points(shoulder_points$x,shoulder_points$y , col = "red", pch = 19)
   
 ########################################
@@ -510,7 +518,8 @@ ggplot(genes_data, aes(mean_Ct, abs_diff_Ct)) +
   geom_point(alpha=0.5) +
   geom_smooth(method = "lm",formula = y ~ x + I(x^2), se = FALSE) +
   xlab("Mean Ct") +
-  ylab("Absolute difference in Ct values")
+  ylab("Absolute difference in Ct values") +
+  facet_wrap(.~Ant_status + Treatment, nrow=2) 
 
 ##### REMOVE INVALID HOUSEKEEPING GENE'S EXPRESSION
 # EF1alpha is expected to show expression values inside a gaussian range (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
@@ -656,7 +665,7 @@ ggplot(genes_sub , aes(x = gene, fill = Category)) +
         legend.key.size = unit(0.5, "cm"),
         legend.text = element_text(size = 10),
         legend.title = element_text(size = 12, face = "bold"))+
-  scale_y_continuous(limits = c(0, 450), expand = c(0, 0))
+  scale_y_continuous(limits = c(0, 380), expand = c(0, 0))
 
 ## explore the invalid data distribution
 freq_table <- table(genes_data[which(genes_data$Category=="invalid"),"Code"])
@@ -736,7 +745,8 @@ NAME_DF    <- unique(CLEAN_DATA$name_df)
 ###########################################################
 
 # remove extra cols to compress dataframe
-CLEAN_DATA <- CLEAN_DATA[,!(names(CLEAN_DATA) %in% c("Threshold","Ct","Tm_Product","name","machine_num"))] #c("CTDiff_15PipErr","Category")
+# here is important to drop the Sample_Well as the extra Queens duplicates won't be eliminated if kept.
+CLEAN_DATA <- CLEAN_DATA[,!(names(CLEAN_DATA) %in% c("Threshold","Ct","Tm_Product","name","machine_num","Sample_Well"))] #c("CTDiff_15PipErr","Category")
 CLEAN_DATA <- CLEAN_DATA %>% distinct()
 # # combine all the duplicates to have meanCts
 ## remove columns which are different, then remove duplicated rows
@@ -797,16 +807,32 @@ table(CLEAN_DATA$gene,is.na(CLEAN_DATA$rel_conc),useNA = "ifany")
 ############
 #### PROPORTION OF ZERO LOAD VS Ant_status BY TREATMENT
 #create flag to show which values are valid
-CLEAN_DATA$non_missing <- as.factor(ifelse(is.na(CLEAN_DATA$rel_conc),"to-impute","valid"))
+CLEAN_DATA$Final_Cat <- as.factor(ifelse(is.na(CLEAN_DATA$rel_conc),"to-impute","valid"))
 
-table(CLEAN_DATA$non_missing, CLEAN_DATA$Treatment, CLEAN_DATA$Ant_status)
-table(CLEAN_DATA$non_missing, CLEAN_DATA$gene, CLEAN_DATA$Ant_status)
+table(CLEAN_DATA$Final_Cat, CLEAN_DATA$Treatment, CLEAN_DATA$Ant_status)
+table(CLEAN_DATA$Final_Cat, CLEAN_DATA$gene, CLEAN_DATA$Ant_status)
+
+## explore all data distribution
+ggplot(CLEAN_DATA , aes(x = gene, fill = Final_Cat)) +
+  geom_bar(position = "stack") +
+  geom_text(position = position_stack(vjust = 0.5), aes(label =after_stat(count)), stat='count',size=3) +
+  facet_wrap(~Ant_status+Treatment, nrow=4)+
+  #scale_fill_brewer(palette = "Set2") +
+  labs(title = "Frequency of Category by Ant_status by gene", x = "Gene", y = "Frequency") +
+  coord_flip() +
+  theme(legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.direction = "horizontal",
+        legend.key.size = unit(0.5, "cm"),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12, face = "bold"))+
+  scale_y_continuous(limits = c(0, 430), expand = c(0, 0))
 
 warning("to fix, the selection deletes the ant status, and at a later stage the propZeros")
 # CLEAN_DATA_ColPropPos <- CLEAN_DATA %>%
 #   group_by(Colony, Treatment, gene) %>%
-#   summarise(count = n(), non_missing = sum(non_missing == 1))
-# CLEAN_DATA_ColPropPos$negative <- CLEAN_DATA_ColPropPos$count - CLEAN_DATA_ColPropPos$non_missing
+#   summarise(count = n(), Final_Cat = sum(Final_Cat == 1))
+# CLEAN_DATA_ColPropPos$negative <- CLEAN_DATA_ColPropPos$count - CLEAN_DATA_ColPropPos$Final_Cat
 # # prop of zero
 # CLEAN_DATA_ColPropPos$propZeros <- (CLEAN_DATA_ColPropPos$negative / CLEAN_DATA_ColPropPos$count) * 100
 # #Standard error
@@ -841,20 +867,21 @@ warning("to fix, the selection deletes the ant status, and at a later stage the 
 ####################################################################################
 
 #### PERFORM DATA IMPUTATION HERE
+#### WRITE HERE REASONS TO DROP QRILC (MORE THAN 80% OF POINTS MISSING, THEREFORE HALF-MIN IS BETTER)
 
-# #create new assign minimum and imputed conc. columns
-# CLEAN_DATA$rel_conc_QC_imputed <- CLEAN_DATA$rel_conc_QC
+#create new assign minimum and imputed conc. columns
+CLEAN_DATA$rel_conc_imputed <- CLEAN_DATA$rel_conc
 # CLEAN_DATA$rel_conc_QC_replace_min <- CLEAN_DATA$rel_conc_QC
 
-# # ASSIGN minimum
-# #assing value smaller than the minimum to the rel_conc_QC NAs, which are caused by No_Ct values
-# # it has been assigned in a similar fashion as in the pathogen load but here applied to the rel-concenrtation instead of load (non present)
-# # this may flatten the result, but it is not straightforward to assign an arbitrarly high value to CT for missing values....
-# print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
-# for (GENE in unique(CLEAN_DATA$gene)) {
-#   #assign the min/2 value by gene to missing datapoints
-#   CLEAN_DATA[is.na(CLEAN_DATA$rel_conc_QC_replace_min) & CLEAN_DATA$gene == GENE, "rel_conc_QC_replace_min"] <- min(CLEAN_DATA[which(CLEAN_DATA$gene==GENE),"rel_conc_QC"],na.rm = T)/2
-# }
+# # ASSIGN HALF-MINIMUM
+# #assing value smaller than the minimum to the rel_conc_QC NAs
+print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
+for (GENE in unique(CLEAN_DATA$gene)) {
+  for (STATUS in unique(CLEAN_DATA$Ant_status)) {
+  #assign the min/2 value by gene to missing datapoints
+  CLEAN_DATA[is.na(CLEAN_DATA$rel_conc_imputed) & CLEAN_DATA$gene == GENE & CLEAN_DATA$Ant_status == STATUS, "rel_conc_imputed"] <- min(CLEAN_DATA[which(CLEAN_DATA$gene==GENE  & CLEAN_DATA$Ant_status == STATUS),"rel_conc"],na.rm = T)/2
+  }
+}
 # 
 # print("replacing NA relative concentrations with QRILC Quantile Regression Imputation of Left Censored Data, proven the most reliable imputation method in Wei, R et al. 2018 ")
 #   
@@ -867,73 +894,75 @@ warning("to fix, the selection deletes the ant status, and at a later stage the 
 # regression. Implemented in the `imputeLCMD::impute.QRILC`
 # result <- data %>% log %>% impute.QRILC(., ...) %>% extract2(1) %>% exp
 
-  for (GENE in unique(CLEAN_DATA$gene)) {
-rel_conc_matrix <- as.matrix(CLEAN_DATA[which(CLEAN_DATA$gene==GENE), "rel_conc"])
-# note that tune.sigma = 1 as it is assumed that the complete data distribution is Gaussian (as shown by the complete gene DEF) .
-imputed_rel_conc <- impute.QRILC(log(rel_conc_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
-CLEAN_DATA[which(CLEAN_DATA$gene == GENE), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
-sum(is.na(CLEAN_DATA[is.na(CLEAN_DATA$rel_conc) & CLEAN_DATA$gene == GENE, "rel_conc_imputed"])) # should be 0
-
-  }
-
-# Create a list to store the plots
-plot_list <- list()
-# Loop through each gene
-for (GENE in unique(CLEAN_DATA$gene)) {
-  # Generate the plot and add it to the list
-  plot_list[[GENE]] <- ggplot(CLEAN_DATA[which(CLEAN_DATA$gene == GENE),], aes(x = rel_conc_imputed, fill = factor(non_missing, levels = c("to-impute", "valid"))  )) + #, fill = factor(non_missing, levels = c("to-impute", "valid"))
-    geom_histogram(alpha = 0.5, position = "stack") +
-    labs(x = "Value", y = "Frequency", fill = "non_missing") +
-    ggtitle(GENE) +
-    scale_x_continuous(trans='log10') +
-    theme(legend.position = "none") 
-}
-
-# Create a legend plot. Returns a gtable
-plot_list[["legend"]]  <- cowplot::get_legend(plot_list[["HYM"]] + theme(legend.position = "right"))
-  
-# Combine the plots using grid.arrange()
-grid.arrange(
-  plot_list[[1]], plot_list[[2]],
-  plot_list[[3]], plot_list[[4]],
-  ncol = 2, nrow = 2,
-  widths = c(1, 1),
-  heights = c(1, 1),
-  bottom = paste("QRILC imputation, stacked histogram. Data=", NAME_DF)
-)
-
-## Check that distributions are normal
-# the imputation assumes that the data distribution is normal, as expected from qPCR data. 
-# we can test that the imputation does not cause the distributions to diverge, considering that DEF is our complete distribution
-CLEAN_DATA <- CLEAN_DATA %>% group_by(gene) %>% mutate( rel_conc_imput_LogStand = scale(log(rel_conc_imputed),center=T,scale=T) )
-
-# create the ANOVA model
-model <- aov(rel_conc_imput_LogStand ~ gene, data = CLEAN_DATA)
-summary(model)
-
-# check if the ANOVA is significant
-if (summary(model)[[1]]$"Pr(>F)"[1] < 0.05) {
-  # if the ANOVA is significant, print the significance value
-  pvalue <- summary(model)[[1]]$"Pr(>F)"[1]
-  cat("The ANOVA is significant (p =", pvalue, ")\n")
-} else {
-  pvalue <- "ns"
-  # if the ANOVA is not significant, print "ns"
-  cat("The ANOVA is not significant\n")
-}
-
-
-# plot standardised 
-# plot smoothed curve with separate colors for each GENE
-# note: rel_conc_imputed variable has negative values, this causes a flipping in the standardised distribution
-print(
-  ggplot(CLEAN_DATA, aes(x = rel_conc_imput_LogStand, colour = gene)) +
-    geom_density(alpha = 0.5) +
-    labs(x = "Log transformed standardised relative concentrations", y = "Density", fill = "gene") +
-    ggtitle("all genes distribution", subtitle = paste("rel_conc_imputed and standardised.", "Data=",NAME_DF,sep=" ")) +
-    annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, label = paste("ANOVA, P=", pvalue))
-)
-
+#   for (GENE in unique(CLEAN_DATA$gene)) {
+#     for (STATUS in unique(CLEAN_DATA$Ant_status)) {
+# rel_conc_matrix <- as.matrix(CLEAN_DATA[which(CLEAN_DATA$gene==GENE &  CLEAN_DATA$Ant_status == STATUS), "rel_conc"])
+# # note that tune.sigma = 1 as it is assumed that the complete data distribution is Gaussian (as shown by the complete gene DEF) .
+# imputed_rel_conc <- impute.QRILC(log(rel_conc_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
+# CLEAN_DATA[which(CLEAN_DATA$gene == GENE  &  CLEAN_DATA$Ant_status == STATUS), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
+# sum(is.na(CLEAN_DATA[is.na(CLEAN_DATA$rel_conc) & CLEAN_DATA$gene == GENE  &  CLEAN_DATA$Ant_status == STATUS, "rel_conc_imputed"])) # should be 0
+# 
+#     }
+#   }
+# 
+# # Create a list to store the plots
+# plot_list <- list()
+# # Loop through each gene
+# for (GENE in unique(CLEAN_DATA$gene)) {
+#   # Generate the plot and add it to the list
+#   plot_list[[GENE]] <- ggplot(CLEAN_DATA[which(CLEAN_DATA$gene == GENE),], aes(x = rel_conc_imputed, fill = factor(Final_Cat, levels = c("to-impute", "valid"))  )) + #, fill = factor(Final_Cat, levels = c("to-impute", "valid"))
+#     geom_histogram(alpha = 0.5, position = "stack") +
+#     labs(x = "Value", y = "Frequency", fill = "Final_Cat") +
+#     ggtitle(GENE) +
+#     scale_x_continuous(trans='log10') +
+#     theme(legend.position = "none") 
+# }
+# 
+# # Create a legend plot. Returns a gtable
+# plot_list[["legend"]]  <- cowplot::get_legend(plot_list[["HYM"]] + theme(legend.position = "right"))
+#   
+# # Combine the plots using grid.arrange()
+# grid.arrange(
+#   plot_list[[1]], plot_list[[2]],
+#   plot_list[[3]], plot_list[[4]],
+#   ncol = 2, nrow = 2,
+#   widths = c(1, 1),
+#   heights = c(1, 1),
+#   bottom = paste("QRILC imputation, stacked histogram. Data=", NAME_DF)
+# )
+# 
+# ## Check that distributions are normal
+# # the imputation assumes that the data distribution is normal, as expected from qPCR data. 
+# # we can test that the imputation does not cause the distributions to diverge, considering that DEF is our complete distribution
+# CLEAN_DATA <- CLEAN_DATA %>% group_by(gene) %>% mutate( rel_conc_imput_LogStand = scale(log(rel_conc_imputed),center=T,scale=T) )
+# 
+# # create the ANOVA model
+# model <- aov(rel_conc_imput_LogStand ~ gene, data = CLEAN_DATA)
+# summary(model)
+# 
+# # check if the ANOVA is significant
+# if (summary(model)[[1]]$"Pr(>F)"[1] < 0.05) {
+#   # if the ANOVA is significant, print the significance value
+#   pvalue <- summary(model)[[1]]$"Pr(>F)"[1]
+#   cat("The ANOVA is significant (p =", pvalue, ")\n")
+# } else {
+#   pvalue <- "ns"
+#   # if the ANOVA is not significant, print "ns"
+#   cat("The ANOVA is not significant\n")
+# }
+# 
+# 
+# # plot standardised 
+# # plot smoothed curve with separate colors for each GENE
+# # note: rel_conc_imputed variable has negative values, this causes a flipping in the standardised distribution
+# print(
+#   ggplot(CLEAN_DATA, aes(x = rel_conc_imput_LogStand, colour = gene)) +
+#     geom_density(alpha = 0.5) +
+#     labs(x = "Log transformed standardised relative concentrations", y = "Density", fill = "gene") +
+#     ggtitle("all genes distribution", subtitle = paste("rel_conc_imputed and standardised.", "Data=",NAME_DF,sep=" ")) +
+#     annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1, label = paste("ANOVA, P=", pvalue))
+# )
+# 
 
 ####################################################################################
 
@@ -946,16 +975,16 @@ print(
   geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.3) +
     colScale_Treatment +
     STYLE +
-  scale_y_continuous(labels = scales::percent,trans='log10', limits = c(1e-08,1000)) +
+  scale_y_continuous(labels = scales::percent,trans='log10') + #, limits = c(1e-08,1000)
     ggtitle(REL_CONC, subtitle =paste("Data=",NAME_DF,sep=" ")) +
     facet_grid(. ~ gene)
 )
 }
 
 # proportion imputed by ant_status
-round(prop.table(table(CLEAN_DATA$Ant_status,CLEAN_DATA$non_missing)),2)
+round(prop.table(table(CLEAN_DATA$Ant_status,CLEAN_DATA$Final_Cat)),2)
 # proportion imputed by gene
-round(prop.table(table(CLEAN_DATA$gene,CLEAN_DATA$non_missing)),2)
+round(prop.table(table(CLEAN_DATA$gene,CLEAN_DATA$Final_Cat)),2)
 
 ###############
 # clean debris
@@ -975,10 +1004,20 @@ ggplot(
   #colScale_Colony +
   # new_scale_color() +
   # new_scale_fill() +
-  geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.5) +
   #geom_violinhalf(aes(fill = Treatment), trim = FALSE, scale = "width", adjust = 1, draw_quantiles = c(0.25, 0.75)) + 
   colScale_Treatment +
   #geom_boxplot(aes( color=alpha("black",0.3)), lwd = 0.8, alpha = 0.3)+
+  STYLE +
+  scale_y_continuous(labels = scales::percent, trans = "log10")+
+  facet_grid(. ~ gene) 
+
+
+
+ggplot(data = CLEAN_DATA, aes(x = Ant_status, y = rel_conc_imputed, fill = Treatment)) +
+  geom_violin(aes(fill= Treatment), trim = FALSE,width =1.2) +
+  geom_boxplot(aes(fill= Treatment), width = 0.1, alpha = 0.5, position = position_dodge(width = 1.2) )+
+  colFill_Treatment +
   STYLE +
   scale_y_continuous(labels = scales::percent, trans = "log10") +
   facet_grid(. ~ gene) 
@@ -1048,11 +1087,19 @@ ggplot(
 # - Untreated nurses and foragers
 # these ants can be compared
 
+CLEAN_DATA$Treatment <- as.factor(CLEAN_DATA$Treatment)
+CLEAN_DATA <- as.data.frame(CLEAN_DATA)
+
 QUEEN_data_OK <- TRUE # queen data may be worth to reprocess as a few get discarded
 warning(paste0("QUEEN_data_OK: ", QUEEN_data_OK))
 
 #create list of significance outputs for Q data
 mod_Q_list <- list()
+#create list of significance outputs for treated data
+mod_T_list <- list()
+##temporary list for untreated
+mod_UN_list <- list()
+
 
 for (GROUP in unique(CLEAN_DATA$GROUP)) {
   print(GROUP)
@@ -1061,86 +1108,144 @@ for (GROUP in unique(CLEAN_DATA$GROUP)) {
 for (GENE in unique(CLEAN_DATA$gene)) {
   # select subset for 1 gene
   #GENE_data <- DF[which(DF$gene == GENE), ]
-  GENE_data <- CLEAN_DATA[which(CLEAN_DATA$gene==GENE & CLEAN_DATA$GROUP==GROUP),]
+  GENE_data <- CLEAN_DATA[which(CLEAN_DATA$gene==GENE & CLEAN_DATA$GROUP==GROUP),
+                          c("Colony","GROUP","Ant_status","gene","Treatment","rel_conc_imputed")]
 
   # create constant to make values below zeros a small number
   GENE_cost <- min(GENE_data$rel_conc_imputed, na.rm = T) * 1.1
   # hist(log10(GENE_data$rel_conc_imputed+GENE_cost))
 
-  # As there are imbalances in the sample sizes, use a weighted mixed-effects model. 
-  # The weights can be incorporated into the model by modifying the likelihood function, which then gives more weight to the smaller group in the analysis.
-  
   #### TREATED INDIVIDUALS (no status grouping)
 if (unique(GENE_data$GROUP)=="TREATED_W") {
-  # Calculate the weights based on the imbalance in the sample sizes
-  #GENE_data$weights <- calculate_weights(GENE_data$Treatment)
   # First, fit linear models to explain variation in density
   # descdist(GENE_data$rel_conc_imputed)
-  mod1 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + (1 | Colony), data = GENE_data) # ,weights = weights
-  print(GENE)
-  output_lmer(mod1)
-  # hist(residuals(mod1))
-  # qqnorm(residuals(mod1))
-  # qqline(residuals(mod1))
-  out.put <- model.sel(mod1)
-  # models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc_imputed
-  sel.table <- nice_print_model_sel(out.put)    
-  print(GENE)
-  print(sel.table)
-  # compute posthocs
-  sel_mod <- get(sel.table[which.max(sel.table$weight), "Model"])
-  ID_model <- paste(GROUP,GENE,sep="-") # to assign name to posthoc's list element
-  posthoc_list <- compute_posthocs(sel_mod)
   
+  # Fit a GAMLSS model with lognormal distribution
+  gamlss_model <- gamlss(rel_conc_imputed ~ Treatment + random(as.factor(Colony)),
+                         data = GENE_data,
+                         family =  ZAGA())
+  # Plot residuals vs. fitted values
+  # plot(fitted(gamlss_model), residuals(gamlss_model), xlab = "Fitted values", ylab = "Pearson residuals")
+  # abline(h = 0, lty = 2, col = "red")
+  # QQ plot of residuals
+  Shap <- shapiro.test(residuals(gamlss_model))
+  qqnorm(residuals(gamlss_model),main = paste(GROUP,GENE,"qqnorm","\nshap.test p=", round(Shap$p.value,4),sep=" "))
+  qqline(residuals(gamlss_model))
+  #https://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf
+  wp(gamlss_model,xvar=~Treatment)
+  
+  #extract significance
+  gamlss_sig <- as.data.frame(summary(gamlss_model, coef.only = TRUE))
+  gamlss_sig$p <- round(gamlss_sig$"Pr(>|t|)",3)
+  gamlss_sig$"Pr(>|t|)" <- NULL
+  mod_T_list <- c(mod_T_list, list(gamlss_sig[!grepl("Intercept", rownames(gamlss_sig)), ]))
+  ID_model <- paste(GROUP,GENE,sep="-")
+  names(mod_T_list)[length(mod_T_list)] <- paste(ID_model, sep = "-")
+  mod_T_list[length(mod_T_list)]
+  
+
+  # # Fit the GAMM
+  # gamm_model <- gamm4((log10(rel_conc_imputed + GENE_cost)) ~ Treatment, random = ~ (1 | Colony), data = GENE_data)
+  # # Extract residuals
+  # gamm_residuals <- resid(gamm_model$gam, type = "pearson")
+  # # Plot residuals vs. fitted values
+  # plot(fitted(gamm_model$gam), gamm_residuals, xlab = "Fitted values", ylab = "Pearson residuals")
+  # abline(h = 0, lty = 2, col = "red")
+  # # QQ plot of residuals
+  # qqnorm(gamm_residuals)
+  # qqline(gamm_residuals)
+  # # Summary of the model
+  # summary(gamm_model$gam)
+  # # Summary of the random effects
+  # summary(gamm_model$lme)
+  # # Check residuals for the GAMM model
+  # plot(gamm_model$lme, resid(., type = "pearson"), xlab = "Fitted values", ylab = "Pearson residuals")
+  # abline(h = 0, lty = 2, col = "red")
+  # qqnorm(resid(gamm_model$lme, type = "pearson"))
+  # qqline(resid(gamm_model$lme, type = "pearson"))
+  
+  
+  
+  # # Step 3: Generalized linear mixed model (GLMM)
+  # # Fit a GLMM with Gamma distribution and log link function
+  # glmm_gamma <- glmmTMB(rel_conc_imputed ~ Treatment + (1 | Colony),
+  #                       data = GENE_data,
+  #                       family = Gamma(link = "log"))
+  # qqnorm(resid(glmm_gamma, type = "pearson"))
+  # qqline(resid(glmm_gamma, type = "pearson"))
+  # 
+  # mod1 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + (1 | Colony), data = GENE_data) # ,weights = weights
+  # print(GENE)
+  # output_lmer(mod1)
+  # # hist(residuals(mod1))
+  # # qqnorm(residuals(mod1))
+  # # qqline(residuals(mod1))
+  # out.put <- model.sel(mod1)
+  # # models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc_imputed
+  # sel.table <- nice_print_model_sel(out.put)
+  # print(GENE)
+  # print(sel.table)
+  # # compute posthocs
+  # sel_mod <- get(sel.table[which.max(sel.table$weight), "Model"])
+  # ID_model <- paste(GROUP,GENE,sep="-") # to assign name to posthoc's list element
+  # posthoc_list <- compute_posthocs(sel_mod)
+
+  
+  # #given the tiny group size, and the non-relevance of the random factor Colony, use a non-parametric test
+  # #Wilcoxon rank-sum test (also known as the Mann-Whitney U test)
+  # mod_T <- rstatix::wilcox_test(rel_conc_imputed ~ Treatment, data = GENE_data, alternative = "two.sided")
+  # #save test information
+  # mod_T_list <- c(mod_T_list, list(mod_T))
+  # ID_model <- paste(GROUP,GENE,sep="-")
+  # names(mod_T_list)[length(mod_T_list)] <- paste(ID_model, sep = "-")
+  # mod_T_list[length(mod_T_list)]
+  # 
   }
   #### QUEENS (no status grouping, no random)
   else if (unique(GENE_data$GROUP)=="QUEEN") {
     
     if (QUEEN_data_OK) {
 
+      #given the tiny group size, and the non-relevance of the random factor Colony, use a non-parametric test
+      #Wilcoxon rank-sum test (also known as the Mann-Whitney U test)
+      mod_Q <- rstatix::wilcox_test(rel_conc_imputed ~ Treatment, data = GENE_data, alternative = "two.sided")
+      #save test information
+      mod_Q_list <- c(mod_Q_list, list(mod_Q))
+      ID_model <- paste(GROUP,GENE,sep="-")
+      names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
+      mod_Q_list[length(mod_Q_list)]
     
-    mod1 <- glm(log10(rel_conc_imputed + GENE_cost) ~ Treatment, data = GENE_data) # ,weights = weights
-    print(GENE)
-    output_lmer(mod1)
-    # run anova and store the significant variables in the object SIG
-    SIG <- as.data.frame(Anova(mod1)[Anova(mod1)$"Pr(>Chisq)" < 0.05])
-    if (ncol(SIG)==0) {
-      SIG <- data.frame(LR.Chisq=NA,Df=NA,Pr="n.s.")
-    }else{
-    SIG$Pr <- round(SIG$"Pr(>Chisq)",3)
-    SIG$"Pr(>Chisq)" <- NULL
-    
-    SIG$LR.Chisq <- SIG$"LR Chisq"
-    SIG$"LR Chisq" <- NULL
-    
-    }
+    # mod1 <- glm(log10(rel_conc_imputed + GENE_cost) ~ Treatment, data = GENE_data) # ,weights = weights
+    # print(GENE)
+    # output_lmer(mod1)
+    # # run anova and store the significant variables in the object SIG
+    # SIG <- as.data.frame(Anova(mod1)[Anova(mod1)$"Pr(>Chisq)" < 0.05])
+    # if (ncol(SIG)==0) {
+    #   SIG <- data.frame(LR.Chisq=NA,Df=NA,Pr="n.s.")
+    # }else{
+    # SIG$Pr <- round(SIG$"Pr(>Chisq)",3)
+    # SIG$"Pr(>Chisq)" <- NULL
+    # 
+    # SIG$LR.Chisq <- SIG$"LR Chisq"
+    # SIG$"LR Chisq" <- NULL
+    # 
+    # }
     
     # #save test information
-    mod_Q_list <- c(mod_Q_list, list(SIG))
-    ID_model <- paste(GROUP,GENE,sep="-")
-    names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
-    
-    #given the tiny group size, and the non-relevance of the random factor Colony, use a non-parametric test
-    #  Wilcoxon rank-sum test (also known as the Mann-Whitney U test)
-    #mod_Q <- rstatix::wilcox_test(rel_conc_imputed ~ Treatment, data = GENE_data, alternative = "two.sided")
-    # #save test information
-    # mod_Q_list <- c(mod_Q_list, list(mod_Q))
-    # ID_model <- paste(GROUP,GENE,sep="-")
-    # names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
-    #mod_Q_list[length(mod_Q_list)]
-    
+    #mod_Q_list <- c(mod_Q_list, list(SIG))
+    #ID_model <- paste(GROUP,GENE,sep="-")
+    #names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
+
     }
   }
   #### UNTREATED INDIVIDUALS
   else{
-    # Calculate the weights based on the imbalance in the sample sizes
-    #GENE_data$weights <- calculate_weights(GENE_data$Treatment)
   # First,fir candidate linear models to explain variation in density
   mod1 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment * Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
-  mod2 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
+  #mod2 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
   # We can now use the mod.sel to conduct model selection. The default model selection criteria is Akaike’s information criteria (AIC) with small sample bias adjustment, AICc
   # delta AICc, and the model weights
-  out.put <- model.sel(mod1,mod2)
+  out.put <- model.sel(mod1) #,mod2
   # models sorted from best (top) to worst (bottom). higher weight is better as it shows that the model is more likely to be the best explanation (hypothesis) for variation in rel_conc_imputed
   sel.table <- nice_print_model_sel(out.put)    
   print(paste(GROUP,GENE,sep=" : "))
@@ -1149,21 +1254,49 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   sel_mod <- get(sel.table[which.max(sel.table$weight), "Model"])
   output_lmer(sel_mod)
   ID_model <- paste(GROUP,GENE,sep="-") # to assign name to posthoc's list element
-  posthoc_list <- compute_posthocs(sel_mod)
-  
-  # using weights causes the model to become significant for UNTREATED : DEF : Ant_status but it should not!!
-  # [1] "Performing posthocs for the significant var: Ant_status"
-  # [1] "sel_mod_Ant_status"
-  # V1        Ant_status
-  # 1  b untreated forager
-  # 2  a   untreated nurse
+  #posthoc_list <- compute_posthocs(sel_mod)
   
   
+  # Create the pairwise comparisons of treatments and ant status:
+  contrasts <- emmeans(sel_mod, pairwise ~ Treatment * Ant_status, adjust = "tukey")
+  lt <- as.data.frame(cld(contrasts, Letters = letters, decreasing = TRUE))
+  # Give the rows meaningful names:
+  mod_UN_list <- c(mod_UN_list,list(lt))
+  names(mod_UN_list)[length(mod_UN_list)] <- paste(ID_model,deparse(substitute(sel_mod)),sep = "-")
+  
+    #emmeans is used to calculate and display the predicted marginal means (i.e., average predicted values) 
+    # for different combinations of the categorical predictor variables Treatment and Ant_status, in the GLM model mod1.
+    posthocDF = data.frame(emmeans(mod1, ~ Treatment * Ant_status, type="response"))
+    
+    print(
+      ggplot(posthocDF, aes(x=Ant_status, y=response, fill=Treatment)) + 
+        geom_bar(stat="identity",position ="dodge", width=0.5) +
+        geom_errorbar(aes(ymin=lower.CL, ymax=upper.CL), width=0, size= .5,
+                      position=position_dodge(.5))+
+        colFill_Treatment +
+        colScale_Treatment +
+        STYLE + #theme_few() +
+        ggtitle(paste(GENE,"\npredicted marginal means", collapse = ", "),) +
+        theme(plot.title = element_text(size = 9)) +
+        ylab("rel. concentration")
+    )
+  
+  
+    #if the interaction is not significant, the lines in the plot should be approximately parallel, indicating that there is no significant difference in the spread of rel_conc_imputed between Task groups across treatments
+    ggplot(posthocDF, aes(x = Ant_status, y = response, group = Treatment, color = Treatment)) +
+      geom_line(size = 1) +
+      geom_ribbon(aes(ymin = lower.CL, ymax = upper.CL, fill = Treatment), alpha = 0.2) +
+      colFill_Treatment +
+      colScale_Treatment +
+      STYLE + #theme_few() +
+      ggtitle(paste(GENE, "\npredicted marginal means", collapse = ", "),) +
+      theme(plot.title = element_text(size = 9)) +
+      ylab("rel. concentration") +
+      scale_x_discrete(expand = c(0, 0))
+    
   }
-
-} 
-  
 }
+  }
   
 #### PREPARE post hoc LABELS FOR THE PLOTS
   
@@ -1178,95 +1311,141 @@ for (i in seq_along(posthoc_list)) {
 label_status <- bind_rows(posthoc_list[grepl("Ant_status", names(posthoc_list))], .id = "column_label")
 label_treatment <- bind_rows(posthoc_list[grepl("Treatment", names(posthoc_list))], .id = "column_label")
 
+# FOR TREATED (Mann-Whitney U test) -MERGE WITH Q ONE -
+for (i in seq_along(mod_T_list)) {
+  mod_T_list[[i]][c("GROUP", "gene")] <- as.data.frame(str_split_fixed(names(mod_T_list[i]), '-', 2))
+}
+mod_T <- do.call(rbind.data.frame, mod_T_list)
+
 # FOR QUEEN (Mann-Whitney U test)
 for (i in seq_along(mod_Q_list)) {
   # posthoc_list[[i]]$GROUP <- sub("-.*", "", names(posthoc_list[i]))
   # posthoc_list[[i]]$variable <- sub(".*-", "", names(posthoc_list[i]))
   mod_Q_list[[i]][c("GROUP", "gene")] <- as.data.frame(str_split_fixed(names(mod_Q_list[i]), '-', 2))
 }
-
-
 mod_Q <- do.call(rbind.data.frame, mod_Q_list)
+
 
 ### PLOTTING ###
 for (GROUP in unique(CLEAN_DATA$GROUP)) {
   
 if (GROUP == "TREATED_W") {
-  
   print(
-  ggplot(
-    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc_imputed, color = Treatment)
-  ) + 
-    geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
-    geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  # ggplot(
+  #   data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
+  #   aes(x = gene, y = rel_conc_imputed, color = Treatment)
+  # ) + 
+  #   geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
+  #   geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  #   colScale_Treatment +
+  #   STYLE +
+  #   ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+  #   scale_y_continuous(labels = scales::percent, trans = "log10") +
+  # #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  #   geom_text(data = mod_T[which(mod_T$GROUP==GROUP),], aes(x = gene, y = 1.5, label = p, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  
+  ggplot(data =  CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),], 
+         aes(x = gene, y = rel_conc_imputed, color = Treatment)
+         ) +
+    geom_violin(aes(fill= Treatment), trim = FALSE,width =1.1, alpha = 0.6) +
+    geom_boxplot(aes(fill= Treatment),colour ="black", width = 0.1, alpha = 0.6, position = position_dodge(width = 1.1) )+
+    colFill_Treatment +
     colScale_Treatment +
     STYLE +
     ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
-  geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-  )
+    geom_text(data = mod_T[which(mod_T$GROUP==GROUP),], aes(x = gene, y = 100, label = p, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+    )
 }else if (GROUP == "QUEEN"){
   
   if (QUEEN_data_OK) {
   # separated from the above as the label is assigned differently!
   print(
-  ggplot(
-    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc_imputed, color = Treatment)
-  ) + 
-    geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
-    geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  # ggplot(
+  #   data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
+  #   aes(x = gene, y = rel_conc_imputed, color = Treatment)
+  # ) + 
+  #   geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
+  #   geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  #   colScale_Treatment +
+  #   STYLE +
+  #   ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+  #   scale_y_continuous(labels = scales::percent, trans = "log10") +
+  # #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  #   geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = p, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+
+  ggplot(data =  CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),], 
+         aes(x = gene, y = rel_conc_imputed, color = Treatment)
+  ) +
+    geom_violin(aes(fill= Treatment), trim = FALSE,width =1.1, alpha = 0.6) +
+    geom_boxplot(aes(fill= Treatment),colour ="black", width = 0.1, alpha = 0.6, position = position_dodge(width = 1.1) )+
+    colFill_Treatment +
     colScale_Treatment +
     STYLE +
     ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
-  #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-    geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = Pr, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-)
+    geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = p, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  )
+  
   }
 }else if (GROUP == "UNTREATED_W"){
-  # PLOT FOR NON-TREATED ANTS
-  ## plot by Treatment (size)
-
-  p1 <- NULL
-  p2 <- NULL
-  
-  p1 <- ggplot(
-    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
-    aes(x = gene, y = rel_conc_imputed, color = Treatment)
-  ) + 
-    geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
-    geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  print(
+  ggplot(data =  CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
+         aes(x = Ant_status, y = rel_conc_imputed, color = Treatment)) +
+    geom_violin(aes(fill= Treatment), trim = FALSE,width =1.1, alpha = 0.6) +
+    geom_boxplot(aes(fill= Treatment),colour ="black", width = 0.1, alpha = 0.6, position = position_dodge(width = 1.1) )+
+    colFill_Treatment +
     colScale_Treatment +
     STYLE +
     ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
     scale_y_continuous(labels = scales::percent, trans = "log10") +
-    geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
-
-
-  # PLOT FOR NON-TREATED ANTS
-  ## plot by Treatment (size)
-  p2 <- ggplot(
-    data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
-    aes(x = Ant_status, y = rel_conc_imputed, color = treatment)
-  ) + 
-    geom_point(aes(colour = Colony),position=position_jitterdodge(), size = 1, alpha = 0.3) +
-    geom_boxplot(lwd = 0.8, alpha = 0.2) +
-    colScale_Treatment +
-    STYLE +
-    ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
-    scale_y_continuous(labels = scales::percent, trans = "log10") +
-    facet_grid(. ~ gene) +
-    geom_text(data = label_status[which(label_status$GROUP==GROUP),], aes(x = Ant_status, y = 10, group = Ant_status, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+    facet_grid(. ~ gene) 
+    #   geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  )  
   
-  # arrange plots side by side
-
-  grid.arrange(p1, p2, ncol = 2)
   }
-}
 
+  # # PLOT FOR NON-TREATED ANTS
+  # ## plot by Treatment (size)
+  # 
+  # p1 <- NULL
+  # p2 <- NULL
+  # 
+  # p1 <- ggplot(
+  #   data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
+  #   aes(x = gene, y = rel_conc_imputed, color = Treatment)
+  # ) + 
+  #   geom_point(position=position_jitterdodge(), size = 1, alpha = 0.3, show.legend = FALSE) +
+  #   geom_boxplot(aes(colour = Treatment), lwd = 0.8, alpha = 0.2) +
+  #   colScale_Treatment +
+  #   STYLE +
+  #   ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+  #   scale_y_continuous(labels = scales::percent, trans = "log10") +
+  #   geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  # 
+  # 
+  # # PLOT FOR NON-TREATED ANTS
+  # # ## plot by Treatment (size)
+  # p2 <- ggplot(
+  #   data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
+  #   aes(x = Ant_status, y = rel_conc_imputed, color = treatment)
+  # ) + 
+  #   geom_point(aes(colour = Colony),position=position_jitterdodge(), size = 1, alpha = 0.3) +
+  #   geom_boxplot(lwd = 0.8, alpha = 0.2) +
+  #   colScale_Treatment +
+  #   STYLE +
+  #   ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+  #   scale_y_continuous(labels = scales::percent, trans = "log10") +
+  #   facet_grid(. ~ gene) +
+  #   geom_text(data = label_status[which(label_status$GROUP==GROUP),], aes(x = Ant_status, y = 10, group = Ant_status, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+  # 
+  # # arrange plots side by side
+  # grid.arrange(p1, p2, ncol = 2)
+  
+  }
+#}
 
+print(mod_UN_list)
 
 
 #}) ### LOOP BETWEEN THE TWO VARIANTS OF HOW TO TREAT THE INVALIDS (KEEP MEAN OR DISCARD VALUES)
@@ -1384,14 +1563,24 @@ warning("CHECK ALL THE STEPS, REPORT % DATAPOINTS PRESENT, UPDATE SLIDES, PRODUC
 
 
 
+# 
+# #### assign min to undetectables
+# #0=impute (invalid) - to be imputed
+# #1=valid
+# #2=undetectable - set to minimum
+# for (GENE in unique(genes_data$gene)) {
+#   #assign the min/2 value by gene to missing datapoints
+#   genes_data[which(genes_data$QC == "2" & genes_data$gene == GENE), "rel_conc_imputed"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_replace_min"],na.rm = T)/2
+# }
+# 
 
-#### assign min to undetectables
-#0=impute (invalid) - to be imputed
-#1=valid
-#2=undetectable - set to minimum
-for (GENE in unique(genes_data$gene)) {
-  #assign the min/2 value by gene to missing datapoints
-  genes_data[which(genes_data$QC == "2" & genes_data$gene == GENE), "rel_conc_imputed"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_replace_min"],na.rm = T)/2
-}
 
 
+
+# Create a minimal reproducible sample
+
+min_sample <- GENE_data %>%
+  group_by(Ant_status, Treatment) %>%
+  slice_sample(n = 1) %>%
+  ungroup()
+dput(as.data.frame(min_sample[,c("Ant_status", "Treatment", "rel_conc_imputed","Colony")]))
