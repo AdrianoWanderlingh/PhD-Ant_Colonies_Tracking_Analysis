@@ -77,7 +77,15 @@ assign_CTDiff_15PipErr <- function(mean_Ct) {
 
 ### fixed PARAMETERS
 #Technical_error
-Technical_error <- 3
+#Technical_error <- 3
+
+### TURN plots on/off
+EXPLORE_PLOT <- FALSE # exploratory plots
+PLOT          <- FALSE # stats plots
+
+
+# Initialize a data frame to store results
+PipelineTesting <- data.frame(gene = character(), P.StatusTreatInt = numeric(), T.E. = numeric(), D.T. = numeric(), imputation  = character(), Invalids  = character())
 
 ##################################################################
 ################## QUALITY CHECK #################################
@@ -298,6 +306,13 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
 
 ################################################################################
 ################################################################################
+
+for (Detection_Threshold in c(35,36,37,37.47)) {
+
+for (Technical_error in c(2,3)) {
+  
+for (IMPUTATION in c("HM","QRILC")) {
+  
 ##### READ STARTING FILE
 # read the csv file
 genes_data <- read.csv(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv", sep = "/"))
@@ -342,7 +357,7 @@ genes_data[which(genes_data$Ant_status %in% c("untreated forager","untreated nur
 ###### determine detection threshold of the qPCR machine.
 ## threshold calculated as the shoulder of the values curve (scatterplot of the ordered Cts), which are the peaks of the second derivative.
 
-
+if (PLOT) {
 #### Find shoulder
 sorted_vector <- sort(genes_data$Ct)
 # Fit a spline curve with a high spar smoothing parameter
@@ -367,7 +382,7 @@ Detection_Threshold <- round(max(shoulder_points$y),2)
 # Plot the curve
 plot(sorted_vector, col = "black", type = "l", main = "Smoothed Curve of raw Ct values",sub=paste("upper Detection Threshold",Detection_Threshold,sep=" " ),lwd=3)
 points(shoulder_points$x,shoulder_points$y , col = "red", pch = 19)
-  
+}
 ########################################
 
 # # Create a 2 by 2 grid of plots
@@ -444,6 +459,7 @@ mean_data_Col <- genes_data %>%
   )
 mean_data_Col <- mean_data_Col %>% distinct()
 
+if (EXPLORE_PLOT) {
 # Plot the distribution of NA by mean Ct per group
 ggplot(mean_data_Col, aes(x = gene, y = propNA,colour=Treatment)) + #, label= Colony
   geom_boxplot() +
@@ -452,7 +468,8 @@ ggplot(mean_data_Col, aes(x = gene, y = propNA,colour=Treatment)) + #, label= Co
   xlab("Mean Ct per group") +
   ylab("Proportion of missing values in Ct") +
   ggtitle("Distribution of NA in Ct by mean Ct per group")
-
+  
+}
 # ####### CHECK FOR Ct values which are very different from the mean, per each gene:group (unreliable reads) ########################################################
 # 
 # ######## REMOVE CTs which are more than 1 Sd from mean, therefore misreads
@@ -513,14 +530,14 @@ genes_data_Dups <- genes_data %>%
 genes_data <- left_join(genes_data, genes_data_Dups, by = c("Code", "gene")) #by duplicate
 genes_data <- left_join(genes_data, genes_data_byGroup, by = "gene") # by gene
 
-#plot dataset abs_diff_Ct
+if (EXPLORE_PLOT) {#plot dataset abs_diff_Ct
 ggplot(genes_data, aes(mean_Ct, abs_diff_Ct)) +
   geom_point(alpha=0.5) +
   geom_smooth(method = "lm",formula = y ~ x + I(x^2), se = FALSE) +
   xlab("Mean Ct") +
   ylab("Absolute difference in Ct values") +
   facet_wrap(.~Ant_status + Treatment, nrow=2) 
-
+}
 ##### REMOVE INVALID HOUSEKEEPING GENE'S EXPRESSION
 # EF1alpha is expected to show expression values inside a gaussian range (CHECK WITH FLORENT ACCORDING TO HIS OBSERVATIONS).
 # excluding EF1 values over threshold and as we can't base the expression of the other genes on it
@@ -556,6 +573,7 @@ EF1_discards <- rbind(EF1_discards_NA,
   
 table(EF1_discards$Ant_status,EF1_discards$Category)
 
+if (EXPLORE_PLOT) {
 # create a frequency table of Code and sort it by frequency
 freq_table <- table(EF1_discards$Code)
 sorted_codes <- names(sort(freq_table, decreasing = TRUE))
@@ -576,7 +594,7 @@ df_subset <- subset(EF1_discards, Ant_status == "treated nurse")
 ggplot(data = df_subset, aes(x = factor(Code, levels = sorted_codes), fill = Category)) +
   geom_bar() + labs(title = "Code vs Category (only displaying treated nurses)", x = "Code", y = "Count") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Treatment, ncol = 1)
-
+}
 #get individual codes
 EF1_discards <- unique(EF1_discards$Code)
 # Remove invalid EF1 datapoints and all the points depending on them (4genes*2dups per code)
@@ -651,6 +669,7 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
 
 genes_sub <- unique(genes_data[which(genes_data$gene!="EF1"),c("gene", "Category","Ant_status","Code")])
 
+if (EXPLORE_PLOT) {
 ## explore all data distribution
 ggplot(genes_sub , aes(x = gene, fill = Category)) +
   geom_bar(position = "stack") +
@@ -691,7 +710,7 @@ ggplot(data = df_subset, aes(x = Code, fill = gene)) +
   geom_bar() + labs(title = "Code vs impute(>D.T.-T.E.) (only displaying treated nurses)", x = "Code", y = "Count") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Treatment, ncol = 1)
 
-
+}
 ###########################################################
 #######     STEP 4: RE-ASSING VALUES BY CATEGORY    #######
 ###########################################################
@@ -731,7 +750,10 @@ df_list <- Map(cbind, df_list, name_df = names(df_list))
 
 ### it could be done more cleanly, but for the moment select the DF to use here:
 warning("select the DF to use here. Invalids should be discarded instead of using the means")
-CLEAN_DATA <- df_list$Invalids_DISCARD # df_list$Invalids_MEAN
+for (INVALIDS in c("Invalids_DISCARD","Invalids_MEAN")) {
+
+  CLEAN_DATA <- df_list[[INVALIDS]]
+#CLEAN_DATA <- df_list$Invalids_DISCARD # df_list$Invalids_MEAN
 NAME_DF    <- unique(CLEAN_DATA$name_df)
 # # Loop through the list and perform a summary analysis
 # lapply(names(df_list), function(CLEAN_DATA) {
@@ -873,38 +895,43 @@ warning("to fix, the selection deletes the ant status, and at a later stage the 
 CLEAN_DATA$rel_conc_imputed <- CLEAN_DATA$rel_conc
 # CLEAN_DATA$rel_conc_QC_replace_min <- CLEAN_DATA$rel_conc_QC
 
-# # ASSIGN HALF-MINIMUM
-# #assing value smaller than the minimum to the rel_conc_QC NAs
-print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
-for (GENE in unique(CLEAN_DATA$gene)) {
-  for (STATUS in unique(CLEAN_DATA$Ant_status)) {
-  #assign the min/2 value by gene to missing datapoints
-  CLEAN_DATA[is.na(CLEAN_DATA$rel_conc_imputed) & CLEAN_DATA$gene == GENE & CLEAN_DATA$Ant_status == STATUS, "rel_conc_imputed"] <- min(CLEAN_DATA[which(CLEAN_DATA$gene==GENE  & CLEAN_DATA$Ant_status == STATUS),"rel_conc"],na.rm = T)/2
+
+if (IMPUTATION=="HM") {
+  # # ASSIGN HALF-MINIMUM
+  # #assing value smaller than the minimum to the rel_conc_QC NAs
+  print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
+  for (GENE in unique(CLEAN_DATA$gene)) {
+    for (STATUS in unique(CLEAN_DATA$Ant_status)) {
+      #assign the min/2 value by gene to missing datapoints
+      CLEAN_DATA[is.na(CLEAN_DATA$rel_conc_imputed) & CLEAN_DATA$gene == GENE & CLEAN_DATA$Ant_status == STATUS, "rel_conc_imputed"] <- min(CLEAN_DATA[which(CLEAN_DATA$gene==GENE  & CLEAN_DATA$Ant_status == STATUS),"rel_conc"],na.rm = T)/2
+    }
   }
 }
-# 
-# print("replacing NA relative concentrations with QRILC Quantile Regression Imputation of Left Censored Data, proven the most reliable imputation method in Wei, R et al. 2018 ")
-#   
-#### ASSIGN IMPUTATED VALS, AT THE STAGE OF THE REL.CONCENTRATION, AS IT FOLLOWS THE PAPER
-#### Wei, R., Wang, J., Su, M. et al. Missing Value Imputation Approach for Mass Spectrometry-based Metabolomics Data. Sci Rep 8, 663 (2018). https://doi.org/10.1038/s41598-017-19120-0
-#### QRILC 
+
+
+if (IMPUTATION=="QRILC") {
+print("replacing NA relative concentrations with QRILC Quantile Regression Imputation of Left Censored Data, proven the most reliable imputation method in Wei, R et al. 2018 ")
+### ASSIGN IMPUTATED VALS, AT THE STAGE OF THE REL.CONCENTRATION, AS IT FOLLOWS THE PAPER
+### Wei, R., Wang, J., Su, M. et al. Missing Value Imputation Approach for Mass Spectrometry-based Metabolomics Data. Sci Rep 8, 663 (2018). https://doi.org/10.1038/s41598-017-19120-0
+### QRILC
 # A missing data imputation method that performs the imputation of
 # left-censored missing data using random draws from a truncated
 # distribution with parameters estimated using quantile
 # regression. Implemented in the `imputeLCMD::impute.QRILC`
 # result <- data %>% log %>% impute.QRILC(., ...) %>% extract2(1) %>% exp
 
-#   for (GENE in unique(CLEAN_DATA$gene)) {
-#     for (STATUS in unique(CLEAN_DATA$Ant_status)) {
-# rel_conc_matrix <- as.matrix(CLEAN_DATA[which(CLEAN_DATA$gene==GENE &  CLEAN_DATA$Ant_status == STATUS), "rel_conc"])
-# # note that tune.sigma = 1 as it is assumed that the complete data distribution is Gaussian (as shown by the complete gene DEF) .
-# imputed_rel_conc <- impute.QRILC(log(rel_conc_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
-# CLEAN_DATA[which(CLEAN_DATA$gene == GENE  &  CLEAN_DATA$Ant_status == STATUS), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
-# sum(is.na(CLEAN_DATA[is.na(CLEAN_DATA$rel_conc) & CLEAN_DATA$gene == GENE  &  CLEAN_DATA$Ant_status == STATUS, "rel_conc_imputed"])) # should be 0
-# 
-#     }
-#   }
-# 
+  for (GENE in unique(CLEAN_DATA$gene)) {
+    for (STATUS in unique(CLEAN_DATA$Ant_status)) {
+rel_conc_matrix <- as.matrix(CLEAN_DATA[which(CLEAN_DATA$gene==GENE &  CLEAN_DATA$Ant_status == STATUS), "rel_conc"])
+# note that tune.sigma = 1 as it is assumed that the complete data distribution is Gaussian (as shown by the complete gene DEF) .
+imputed_rel_conc <- impute.QRILC(log(rel_conc_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
+CLEAN_DATA[which(CLEAN_DATA$gene == GENE  &  CLEAN_DATA$Ant_status == STATUS), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
+sum(is.na(CLEAN_DATA[is.na(CLEAN_DATA$rel_conc) & CLEAN_DATA$gene == GENE  &  CLEAN_DATA$Ant_status == STATUS, "rel_conc_imputed"])) # should be 0
+
+    }
+  }
+}
+
 # # Create a list to store the plots
 # plot_list <- list()
 # # Loop through each gene
@@ -965,7 +992,7 @@ for (GENE in unique(CLEAN_DATA$gene)) {
 # 
 
 ####################################################################################
-
+if (EXPLORE_PLOT) {
 # CLEAN_DATA[is.na(CLEAN_DATA$rel_conc),"rel_conc"] <- 1e-06
 for (REL_CONC in c("rel_conc","rel_conc_imputed")) { # "rel_conc_replace_min"
 
@@ -980,7 +1007,7 @@ print(
     facet_grid(. ~ gene)
 )
 }
-
+}
 # proportion imputed by ant_status
 round(prop.table(table(CLEAN_DATA$Ant_status,CLEAN_DATA$Final_Cat)),2)
 # proportion imputed by gene
@@ -1120,29 +1147,29 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   # First, fit linear models to explain variation in density
   # descdist(GENE_data$rel_conc_imputed)
   
-  # Fit a GAMLSS model with lognormal distribution
-  gamlss_model <- gamlss(rel_conc_imputed ~ Treatment + random(as.factor(Colony)),
-                         data = GENE_data,
-                         family =  ZAGA())
-  # Plot residuals vs. fitted values
-  # plot(fitted(gamlss_model), residuals(gamlss_model), xlab = "Fitted values", ylab = "Pearson residuals")
-  # abline(h = 0, lty = 2, col = "red")
-  # QQ plot of residuals
-  Shap <- shapiro.test(residuals(gamlss_model))
-  qqnorm(residuals(gamlss_model),main = paste(GROUP,GENE,"qqnorm","\nshap.test p=", round(Shap$p.value,4),sep=" "))
-  qqline(residuals(gamlss_model))
-  #https://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf
-  wp(gamlss_model,xvar=~Treatment)
-  
-  #extract significance
-  gamlss_sig <- as.data.frame(summary(gamlss_model, coef.only = TRUE))
-  gamlss_sig$p <- round(gamlss_sig$"Pr(>|t|)",3)
-  gamlss_sig$"Pr(>|t|)" <- NULL
-  mod_T_list <- c(mod_T_list, list(gamlss_sig[!grepl("Intercept", rownames(gamlss_sig)), ]))
-  ID_model <- paste(GROUP,GENE,sep="-")
-  names(mod_T_list)[length(mod_T_list)] <- paste(ID_model, sep = "-")
-  mod_T_list[length(mod_T_list)]
-  
+  # # Fit a GAMLSS model with lognormal distribution
+  # gamlss_model <- gamlss(rel_conc_imputed ~ Treatment + random(as.factor(Colony)),
+  #                        data = GENE_data,
+  #                        family =  ZAGA())
+  # # Plot residuals vs. fitted values
+  # # plot(fitted(gamlss_model), residuals(gamlss_model), xlab = "Fitted values", ylab = "Pearson residuals")
+  # # abline(h = 0, lty = 2, col = "red")
+  # # QQ plot of residuals
+  # Shap <- shapiro.test(residuals(gamlss_model))
+  # qqnorm(residuals(gamlss_model),main = paste(GROUP,GENE,"qqnorm","\nshap.test p=", round(Shap$p.value,4),sep=" "))
+  # qqline(residuals(gamlss_model))
+  # #https://www.gamlss.com/wp-content/uploads/2013/01/gamlss-manual.pdf
+  # wp(gamlss_model,xvar=~Treatment)
+  # 
+  # #extract significance
+  # gamlss_sig <- as.data.frame(summary(gamlss_model, coef.only = TRUE))
+  # gamlss_sig$p <- round(gamlss_sig$"Pr(>|t|)",3)
+  # gamlss_sig$"Pr(>|t|)" <- NULL
+  # mod_T_list <- c(mod_T_list, list(gamlss_sig[!grepl("Intercept", rownames(gamlss_sig)), ]))
+  # ID_model <- paste(GROUP,GENE,sep="-")
+  # names(mod_T_list)[length(mod_T_list)] <- paste(ID_model, sep = "-")
+  # mod_T_list[length(mod_T_list)]
+  # 
 
   # # Fit the GAMM
   # gamm_model <- gamm4((log10(rel_conc_imputed + GENE_cost)) ~ Treatment, random = ~ (1 | Colony), data = GENE_data)
@@ -1215,6 +1242,7 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
       names(mod_Q_list)[length(mod_Q_list)] <- paste(ID_model, sep = "-")
       mod_Q_list[length(mod_Q_list)]
     
+    #mod1 <- lmer(rel_conc_imputed + GENE_cost ~ Treatment + (1 | Colony), data = GENE_data)
     # mod1 <- glm(log10(rel_conc_imputed + GENE_cost) ~ Treatment, data = GENE_data) # ,weights = weights
     # print(GENE)
     # output_lmer(mod1)
@@ -1256,6 +1284,17 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
   ID_model <- paste(GROUP,GENE,sep="-") # to assign name to posthoc's list element
   #posthoc_list <- compute_posthocs(sel_mod)
   
+ ## Reporting interaction effects in Untreated nurses tests
+  InteractionSig <- Anova(mod1)[grep(":", row.names(Anova(mod1))),"Pr(>Chisq)"]
+  # Add results to the data frame
+  PipelineTesting <- rbind(PipelineTesting, data.frame(gene = GENE,
+                                               P.StatusTreatInt  = InteractionSig,
+                                               T.E. = Technical_error,
+                                               D.T. = Detection_Threshold,
+                                               imputation  = IMPUTATION,
+                                               Invalids  = INVALIDS))
+
+  
   
   # Create the pairwise comparisons of treatments and ant status:
   contrasts <- emmeans(sel_mod, pairwise ~ Treatment * Ant_status, adjust = "tukey")
@@ -1268,6 +1307,7 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
     # for different combinations of the categorical predictor variables Treatment and Ant_status, in the GLM model mod1.
     posthocDF = data.frame(emmeans(mod1, ~ Treatment * Ant_status, type="response"))
     
+    if (PLOT) {
     print(
       ggplot(posthocDF, aes(x=Ant_status, y=response, fill=Treatment)) + 
         geom_bar(stat="identity",position ="dodge", width=0.5) +
@@ -1293,7 +1333,7 @@ if (unique(GENE_data$GROUP)=="TREATED_W") {
       theme(plot.title = element_text(size = 9)) +
       ylab("rel. concentration") +
       scale_x_discrete(expand = c(0, 0))
-    
+    }
   }
 }
   }
@@ -1325,7 +1365,7 @@ for (i in seq_along(mod_Q_list)) {
 }
 mod_Q <- do.call(rbind.data.frame, mod_Q_list)
 
-
+if (PLOT) {
 ### PLOTTING ###
 for (GROUP in unique(CLEAN_DATA$GROUP)) {
   
@@ -1443,7 +1483,7 @@ if (GROUP == "TREATED_W") {
   # grid.arrange(p1, p2, ncol = 2)
   
   }
-#}
+} #PLOT?
 
 print(mod_UN_list)
 
@@ -1451,9 +1491,10 @@ print(mod_UN_list)
 #}) ### LOOP BETWEEN THE TWO VARIANTS OF HOW TO TREAT THE INVALIDS (KEEP MEAN OR DISCARD VALUES)
 
 
-
-
-
+} # INVALIDS discard or keep mean loop
+} # IMPUTATION HM or QRILC
+} # Technical_error
+} # Detection_Threshold
 
 warning("CHECK ALL THE STEPS, REPORT % DATAPOINTS PRESENT, UPDATE SLIDES, PRODUCE PLOTS FOR BOTH CONDITIONS - MODIFY PLOT SUBTITLE TO SPECIFY DATASET USED-")
 
