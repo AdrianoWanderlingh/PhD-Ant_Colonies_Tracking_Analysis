@@ -4,6 +4,7 @@
 
 ##### CLEAN UP
 gc()
+Sys.sleep(2)
 mallinfo::malloc.trim(0L)
 
 # load the packages
@@ -18,6 +19,12 @@ library(rstatix) #provides pipe-friendly R functions for easy statistical analys
 library(gridExtra) #grid of plots
 library(cowplot) # 
 library(effects)
+library(report) # to report models outputs
+#library(flextable)   # for beautiful tables
+library(remotes) 
+#install_version("ggstatsplot", version = "0.10.0", repos = "http://cran.us.r-project.org")
+#library(ggstatsplot) # to visualize test results
+
 
 ## for qPCR missing values imputation
 # if (!require("BiocManager", quietly = TRUE)){
@@ -60,7 +67,6 @@ library(gamlss) #Generalized Additive Models for Location Scale and Shape
 ###source function scripts
 print("Loading functions and libraries...")
 source(paste("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/FUNCTIONS_Analysis_and_Styling.R",sep="/"))
-warning("FIX THE PLOTTING COLOURS")
 
 #### MAXIMUM ACCEPTED DIFF IN CT between duplicates WITH 15% PIPETTING ERROR# #Efficiency is between 1.95 and 2.05, differing CT values.
 # FUNCTION MODIFIED FROM  # https://rnajournal.cshlp.org/content/23/5/811.full.pdf, BASED ON THE ABOVE
@@ -84,6 +90,12 @@ assign_CTDiff_15PipErr <- function(mean_Ct) {
 EXPLORE_PLOT <- FALSE # exploratory plots
 PLOT          <- FALSE # stats plots
 
+### TURN stats report on/off
+REPORT <- TRUE
+Report_stats <- list()
+
+### TURN Defensine simulated trimming for pipeline testing on/off
+SIMULATION_TRIM <- FALSE
 
 # Initialize a data frame to store results
 PipelineTesting <- data.frame(gene = character(), P.Status = numeric(), P.Treatment = numeric(),Estim.Status = numeric(),
@@ -318,6 +330,7 @@ for (IMPUTATION in c("QRILC","HM")) {
     # Limit_of_Detection <- 37
     # Technical_error <- 3
     # IMPUTATION <- "HM"
+    # ALWAYS_DISCARD <- T
     
     ##### READ STARTING FILE
     # read the csv file
@@ -443,12 +456,14 @@ for (IMPUTATION in c("QRILC","HM")) {
     
     # Plot the distribution of NA by mean Ct per group
     ggplot(mean_data, aes(x = mean_Ct, y = propNA, label= gene)) +
+      geom_smooth(colour="grey") +
       geom_point() +
-      geom_smooth() +
-      geom_text(nudge_y = 0.1) +
-      xlab("Mean Ct per group") +
-      ylab("Proportion of missing values in Ct") +
-      ggtitle("Distribution of NA in Ct by mean Ct per group")
+      geom_text(nudge_y = 0.05,size=3) +
+      xlab("Mean Ct") +
+      ylab("% of missing values") +
+      ggtitle("NA by mean Ct per gene") +
+      xlim(27.2, 34) +
+      theme_bw()
     # it seems that genes with lower average expression are far more likely to be non-detects.
     # From this we can conclude that the non-detects do not occur completely at random.
     
@@ -780,8 +795,9 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
     
     ### it could be done more cleanly, but for the moment select the DF to use here:
     warning("select the DF to use here. Invalids should be discarded instead of using the means")
-    for (INVALIDS in c("Invalids_DISCARD")) { #,"Invalids_MEAN"
-      
+    #for (INVALIDS in c("Invalids_DISCARD")) { #,"Invalids_MEAN"
+    INVALIDS <- "Invalids_DISCARD" 
+    
       CLEAN_DATA <- df_list[[INVALIDS]]
       #CLEAN_DATA <- df_list$Invalids_DISCARD # df_list$Invalids_MEAN
       NAME_DF    <- unique(CLEAN_DATA$name_df)
@@ -1129,6 +1145,20 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
       ##################              STATS & PLOTS        ################################
       #####################################################################################
       
+      
+     report_tab <- CLEAN_DATA[,c("rel_conc_imputed","GROUP","gene")]
+      
+      ### Analysed data
+      report_sample(report_tab, group_by ="gene")
+      
+      
+      
+      CLEAN_DATA[,c("rel_conc_imputed","GROUP","gene")] %>%
+        group_by(gene,GROUP) %>%
+        report_table()
+      
+      
+      
       #####################################################################################
       ##### TEST DIFFERENCE OF RELATIVE CONCENTRATION OF IMMUNE GENES TRANSCRIPTS BETWEEN TREATMENTS (AND EVENTUALLY GROUPS FOR untreated workers)
       
@@ -1270,6 +1300,14 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
               #given the tiny group size, and the non-relevance of the random factor Colony, use a non-parametric test
               #Wilcoxon rank-sum test (also known as the Mann-Whitney U test)
               mod_Q <- rstatix::wilcox_test(rel_conc_imputed ~ Treatment, data = GENE_data, alternative = "two.sided")
+              if (REPORT) {
+                Report_stats <- c(Report_stats, list(paste(
+                  GROUP,
+                  GENE,
+                  wilcox.test(GENE_data$rel_conc_imputed ~ GENE_data$Treatment, alternative = "two.sided", exact=F) %>% report()
+                  , sep= " - ")))
+                }
+              
               #save test information
               mod_Q_list <- c(mod_Q_list, list(mod_Q))
               ID_model <- paste(GROUP,GENE,sep="-")
@@ -1304,6 +1342,16 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
           else{
             # First,fir candidate linear models to explain variation in density
             mod1 <- lmer(log10(rel_conc_imputed) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data)
+            if (REPORT) {
+              if (REPORT) {
+                Report_stats <- c(Report_stats, list(paste(
+                  GROUP,
+                  GENE,
+                  mod1 %>% report()
+                  , sep= " - ")))
+              }
+              
+            }
             #mod2 <- lmer(log10(rel_conc_imputed + GENE_cost) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data) # weights = weights,
             # We can now use the mod.sel to conduct model selection. The default model selection criteria is Akaike’s information criteria (AIC) with small sample bias adjustment, AICc
             # delta AICc, and the model weights
@@ -1428,6 +1476,8 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
         mod_Q_list[[i]][c("GROUP", "gene")] <- as.data.frame(str_split_fixed(names(mod_Q_list[i]), '-', 2))
       }
       mod_Q <- do.call(rbind.data.frame, mod_Q_list)
+      mod_Q$P.stars <- sapply(mod_Q$p, add_star)
+      
       
       if (PLOT) {
         ### PLOTTING ###
@@ -1485,13 +1535,13 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
                   #geom_violin(aes(fill= Treatment), trim = FALSE,width =1.1, alpha = 0.6) +
                   #geom_boxplot(aes(fill= Treatment),colour ="black", width = 0.1, alpha = 0.6, position = position_dodge(width = 1.1) )+
                   geom_boxplot(aes(fill = Treatment),colour ="black", alpha = 0) +
-                  geom_point(position=position_jitterdodge(),aes(fill = "black"), size = 1, alpha = 0.8, show.legend = FALSE) +
+                  geom_point(position=position_jitterdodge(),aes(fill = Treatment,color="black"), shape=21,size = 1, show.legend = FALSE) +
                   colFill_Treatment +
                   colScale_Treatment +
                   STYLE +
-                  ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+                  #ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
                   scale_y_continuous(labels = scales::percent, trans = "log10") +
-                  geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 1, label = p, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+                  geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 0.2, label = P.stars, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
               )
               
             }
@@ -1553,7 +1603,7 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
             # ## plot by Treatment (size)
             
             #base model params
-            base_model <- PipelineTesting[which(PipelineTesting$T.E.==3 & PipelineTesting$LOD==37 & PipelineTesting$imputation=="HM"& PipelineTesting$Invalids=="Invalids_DISCARD" &PipelineTesting$ALWAYS_DISCARD==T),]
+            base_model <- PipelineTesting[which(PipelineTesting$T.E.==3 & PipelineTesting$LOD==37 & PipelineTesting$imputation=="QRILC"& PipelineTesting$Invalids=="Invalids_DISCARD" &PipelineTesting$ALWAYS_DISCARD==T),]
             base_model$P.Status.stars <- sapply(base_model$P.Status, add_star)
             base_model$P.Treatment.stars <- sapply(base_model$P.Treatment, add_star)
             
@@ -1571,21 +1621,21 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
                 fun.data = mean_cl_normal, # The function used to calculate the confidence intervals
                 geom = "errorbar",
                 width = 0.4,
-                size = 1,
+                size = 0.8,
                 aes(color = Treatment), # Color the errorbar based on treatment
-                position = position_dodge(width = 0.4)
+                position = position_dodge(width = 0.8)
                 ) +
               stat_summary( # To add a point for the mean
                 fun = mean,
                 geom = "point",
-                size = 1.2, # Customize the size
+                size = 1, # Customize the size
                 aes(color = Treatment, group = Treatment), # Map group aesthetic to treatment
-                position = position_dodge(width = 0.4)  
+                position = position_dodge(width = 0.8)  
                 ) +
                   colFill_Treatment +
                   colScale_Treatment +
                   STYLE +
-                  ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
+                  #ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
                   scale_y_continuous(labels = scales::percent, trans = "log10") +
                 #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
             geom_text(data = base_model, aes(x = gene, y = 0.35, label = P.Treatment.stars, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
@@ -1603,17 +1653,17 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
                 fun.data = mean_cl_normal, # The function used to calculate the confidence intervals
                 geom = "errorbar",
                 width = 0.4,
-                size = 1
+                size = 0.8
               ) +
               stat_summary( # To add a point for the mean
                 fun = mean,
                 geom = "point",
-                size = 1.2 # Customize the size
+                size = 1 # Customize the size
               ) +
               colFill_Treatment +
               colScale_Treatment +
               STYLE +
-              ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) + #,subtitle = "95% C.I."
+              #ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) + #,subtitle = "95% C.I."
               scale_y_continuous(labels = scales::percent, trans = "log10") +
               facet_grid(. ~ gene)+
               geom_text(data = base_model, aes(x = 1.5, y = 0.35, label = P.Status.stars, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
@@ -1632,115 +1682,125 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
       #}) ### LOOP BETWEEN THE TWO VARIANTS OF HOW TO TREAT THE INVALIDS (KEEP MEAN OR DISCARD VALUES)
       
       
-    } # INVALIDS discard or keep mean loop
+    #} # INVALIDS discard or keep mean loop
     
   }
 } # IMPUTATION HM or QRILC
 } # Technical_error
 } # Limit_of_Detection
 
-warning("CHECK ALL THE STEPS, REPORT % DATAPOINTS PRESENT, UPDATE SLIDES, PRODUCE PLOTS FOR BOTH CONDITIONS - MODIFY PLOT SUBTITLE TO SPECIFY DATASET USED-")
-
 #base model params (WARNING: THIS IS REPEATED IN UNTREATED_w PLOT!)
 base_model <- PipelineTesting[which(PipelineTesting$T.E.==3 & PipelineTesting$LOD==37 & PipelineTesting$imputation=="HM"& PipelineTesting$Invalids=="Invalids_DISCARD" &PipelineTesting$ALWAYS_DISCARD==T),]
 
+#####   STATS   #####
+for (GENE in unique(PipelineTesting$gene)) {
+  # one-sample t-test to determine if base model is statistically different from permutations
+  print(GENE)
+  PipelineTesting[which(PipelineTesting$gene==GENE),] %>%
+    summarise(
+      Estim.Status_test    = report_statistics(wilcox.test(Estim.Status, y = base_model$Estim.Status, alternative = "two.sided")),
+      P.Status_test        = report_statistics(wilcox.test(P.Status, y = base_model$P.Status, alternative = "two.sided")),
+      Estim.Treatment_test = report_statistics(wilcox.test(Estim.Treatment, y = base_model$Estim.Treatment, alternative = "two.sided")),
+      P.Treatment_test     = report_statistics(wilcox.test(P.Treatment, y = base_model$P.Treatment, alternative = "two.sided"))
+    ) %>%
+    print()
+}
+ 
 
+#####   PLOTS   #####
 
-
-
-
-# Create scatterplot of model estimates VS p-values
-sp <- ggplot(data = PipelineTesting, aes_string(x = "Estim.Status", y = "P.Status")) +
-  geom_point(aes(color = gene, shape=imputation), alpha = 0.5,size =2,position = position_jitter(width = 0.05, height = 0))  + # CAREFUL: there is a tiny amount of jitter for readability
-  geom_point(data =  base_model, aes_string(x = "Estim.Status", y = "P.Status"), shape = 4, size = 3) +
-  #geom_rug(aes(color = gene))+
-  geom_text(data = base_model, aes_string(x = "Estim.Status", y = "P.Status", label = "gene"), vjust = -2) +
-  labs(x = "Model Estimates", y = "p-value") + #, title = "Model Estimates vs. P-values"
-  theme_classic()  +
-  scale_shape_manual(values = c(15, 17)) +
-  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red")+
-  scale_color_jco() +
-  theme(aspect.ratio=1) +
-  border()  +
-  theme(plot.margin = margin(t = -20, r = -20, b = 0, l = 0, unit = "pt"))
-
+### SCATTERPLOT of model estimates VS p-values 
+# Create a list of variable suffixes
+suffixes<- c("Status", "Treatment")
+eff_plot_list <- list()
+# Loop through the variables and create plots
+for (suffix in suffixes) {
+  ESTIMATE <- paste0("Estim.", suffix)
+  PVAL <- paste0("P.", suffix)
   
-#theme(legend.position = "bottom")
+  # Create scatterplot of model estimates VS p-values
+  sp <- ggplot(data = PipelineTesting, aes_string(x = ESTIMATE, y = PVAL)) +
+    geom_point(aes(color = gene, shape=imputation), alpha = 0.9,size =2,position = position_jitter(width = 0.05, height = 0))  + # CAREFUL: there is a tiny amount of jitter for readability
+    geom_point(data =  base_model, aes_string(x = ESTIMATE, y = PVAL), shape = 4, size = 3) +
+    #geom_rug(aes(color = gene))+
+    geom_text(data = base_model, aes_string(x = ESTIMATE, y = PVAL, label = "gene"), vjust = -2,hjust= +1 ) +
+    #labs(x = "Model Estimates", y = "p-value") + #, title = "Model Estimates vs. P-values"
+    theme_classic()  +
+    scale_shape_manual(values = c(21, 24)) +
+    geom_hline(yintercept = 0.05, linetype = "dashed", color = "red")+
+    scale_color_jco() +
+    #theme(aspect.ratio=1) +
+    border()  
+  # Marginal histograms
+  xplot <- gghistogram(PipelineTesting, ESTIMATE, fill = "gene",color = "transparent",
+                       palette = "jco",bins=20)  + clean_theme() + rremove("legend")
+  yplot <- gghistogram(PipelineTesting, PVAL, fill = "gene", color = "transparent",
+                       palette = "jco",bins=20)  + clean_theme() + rremove("legend") + rotate()
+  # Cleaning the plots
+  leg <- cowplot::get_legend(sp) # + theme(legend.position = "right"))
+  sp <- sp + rremove("legend")+ theme(plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))
+  xplot <- xplot + theme(plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))
+  yplot <- yplot + theme(plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))
+  #void <- ggplot() + theme_void() + xlim(0, 1) + ylim(0, 1) + theme(plot.margin = margin(0, 0, 0, 0))
+  # Arrange the plots with legend included
 
-
-## Scatter plot colored by groups ("Species")
-# sp <- ggscatter(iris, x = "Sepal.Length", y = "Sepal.Width",
-#                 color = "Species", palette = "jco",
-#                 size = 3, alpha = 0.6)+
-
-# Marginal density plot of x (top panel) and y (right panel)
-xplot <- gghistogram(PipelineTesting, "Estim.Status", fill = "gene",color = "transparent",
-                   palette = "jco")  +
-  theme(plot.margin = margin(t = 0, r = 0, b = -20, l = 0, unit = "pt")) + 
-  clean_theme() +
-  rremove("legend")
-yplot <- gghistogram(PipelineTesting, "P.Status", fill = "gene", color = "transparent",
-                   palette = "jco")  +
-  theme(plot.margin = margin(t = 0, r = 0, b = -20, l = 0, unit = "pt")) + 
-  rotate()+ 
-  clean_theme() +
-  rremove("legend")
-# Cleaning the plots
-sp <- sp + rremove("legend")
-# Arranging the plot using cowplot
-cowplot::plot_grid(xplot, NULL, sp, yplot, ncol = 2, align = "hv", 
-                   rel_widths = c(2, 1), rel_heights = c(1, 2)
-                   )
-
-### ADD: KEEP LEGEND ASIDE AND READD IT (AS DONE FOR THE QRILC PLOTS)
-
-
-
-
-
-
-
-
-plot_list <- list()
-
-#   plot_list[[VARIABLE]]
-
-for (VARIABLE in c("P.Status","Estim.Status","P.Treatment","Estim.Treatment")) { 
-  
-  # plot the relative concentration.
-  plot_list[[VARIABLE]] <-  ggplot(PipelineTesting, aes(x = !!sym(VARIABLE), fill = gene)) +
-      geom_histogram(alpha = 0.5, bins = 50, position = "identity") +
-      scale_fill_manual(values = c("red", "green", "blue")) +
-      ggtitle(paste("Values for'",VARIABLE,"' | Pipeline Testing (",nrow(PipelineTesting)/3,"combs)",sep=" "),
-              subtitle="arrow for base model") +
-      theme_minimal() 
-      # Add vertical line if VAR contains a word starting with "P"
-      if (length(grep("^P", VARIABLE)) > 0) {
-        plot_list[[VARIABLE]] <- plot_list[[VARIABLE]] + geom_vline(xintercept = 0.05, color = "red")
-      }
-  
-  # Add arrows for reference estimates
-  for (i in 1:length(base_model)) {
-    plot_list[[VARIABLE]] <- plot_list[[VARIABLE]] + annotate(geom = "segment", x = base_model[i,VARIABLE], y = 0, 
-                      xend = base_model[i,VARIABLE], yend = 10, 
-                      arrow = arrow(length = unit(0.5, "cm")))
-    
-    plot_list[[VARIABLE]] <- plot_list[[VARIABLE]] + geom_text(x =  base_model[i,VARIABLE], y = 10, 
-                       label = base_model[i,"gene"], hjust = -1, angle = 90)
+  if (suffix=="Status") {
+    eff_plot_list[[suffix]] <- 
+      cowplot::plot_grid(xplot, NULL, sp, yplot, ncol = 2, align = "hv", 
+                         rel_widths = c(2, 1), rel_heights = c(1, 2))
+  }else{
+    eff_plot_list[[suffix]] <- cowplot::plot_grid(
+      cowplot::plot_grid(xplot, NULL, sp, yplot, ncol = 2, align = "hv", 
+                         rel_widths = c(2, 1), rel_heights = c(1, 2)),
+      leg, ncol = 2, rel_widths = c(2, 1), rel_heights = c(1, 2))
   }
-  #print(p)
+  # Optionally, you can save the plot to a file
+  # ggsave(filename = paste0("plot_", suffix, ".png"), plot = my_plot)
 }
 
-grid.arrange(
-  plot_list[[1]], plot_list[[2]],
-  plot_list[[3]], plot_list[[4]],
-  ncol = 2, nrow = 2,
-  widths = c(1, 1),
-  heights = c(1, 1)
-  #bottom = paste("QRILC imputation, stacked histogram. Data=", NAME_DF)
-)
+cowplot::plot_grid(eff_plot_list[[1]],eff_plot_list[[2]], ncol = 2,rel_widths = c(1, 1.5))
+
+############
 
 
+
+
+
+
+# 
+# plot_list <- list()
+# # separated plots, old
+# for (VARIABLE in c("P.Status","Estim.Status","P.Treatment","Estim.Treatment")) { 
+#   # plot the relative concentration.
+#   plot_list[[VARIABLE]] <-  ggplot(PipelineTesting, aes(x = !!sym(VARIABLE), fill = gene)) +
+#       geom_histogram(alpha = 0.5, bins = 50, position = "identity") +
+#       scale_fill_manual(values = c("red", "green", "blue")) +
+#       ggtitle(paste("Values for'",VARIABLE,"' | Pipeline Testing (",nrow(PipelineTesting)/3,"combs)",sep=" "),
+#               subtitle="arrow for base model") +
+#       theme_minimal() 
+#       # Add vertical line if VAR contains a word starting with "P"
+#       if (length(grep("^P", VARIABLE)) > 0) {
+#         plot_list[[VARIABLE]] <- plot_list[[VARIABLE]] + geom_vline(xintercept = 0.05, color = "red")
+#       }
+#   # Add arrows for reference estimates
+#   for (i in 1:length(base_model)) {
+#     plot_list[[VARIABLE]] <- plot_list[[VARIABLE]] + annotate(geom = "segment", x = base_model[i,VARIABLE], y = 0, 
+#                       xend = base_model[i,VARIABLE], yend = 10, 
+#                       arrow = arrow(length = unit(0.5, "cm")))
+#     
+#     plot_list[[VARIABLE]] <- plot_list[[VARIABLE]] + geom_text(x =  base_model[i,VARIABLE], y = 10, 
+#                        label = base_model[i,"gene"], hjust = -1, angle = 90)
+#   }
+#   #print(p)
+# }
+# grid.arrange(
+#   plot_list[[1]], plot_list[[2]],
+#   plot_list[[3]], plot_list[[4]],
+#   ncol = 2, nrow = 2,
+#   widths = c(1, 1),
+#   heights = c(1, 1)
+#   #bottom = paste("QRILC imputation, stacked histogram. Data=", NAME_DF)
+# )
 
 as.data.frame(
 PipelineTesting %>%
@@ -1750,122 +1810,408 @@ PipelineTesting %>%
 )
 
 
-# add the same for the other treatments! and do separate plots
-# add column "what"
+###########################################################
+#######     TESTING PIPELINE WITH SUBSETTED DATA    #######
+###########################################################
+
+########## SOMEHOW HERE SHOULD BE SPECIFIED THAT this should be done when on the top part of the script only the base model is computed, without the looping
+
+if (SIMULATION_TRIM) {
+  #select base model results, without trimming
+  base_model <- PipelineTesting[which(PipelineTesting$T.E.==3 & PipelineTesting$LOD==37 & PipelineTesting$imputation=="HM"& PipelineTesting$Invalids=="Invalids_DISCARD" &PipelineTesting$ALWAYS_DISCARD==T &
+                                        PipelineTesting$gene=="DEF"),]
+  base_model <- base_model[,c("gene","imputation", "Estim.Status" ,"Estim.Treatment" , "P.Status", "P.Treatment")]
+  
+  
+  # - USE genes_data dataframe, only the UNTREATED WORKERS ONE to compare results with untrimmed dataset
+  GENE_data <- CLEAN_DATA[which(CLEAN_DATA$gene=="DEF" & CLEAN_DATA$GROUP=="UNTREATED_W"),
+                          c("Colony","GROUP","Ant_status","gene","Treatment","rel_conc")]
+  # - introduce missingness on the left hand of the distribution with a probabilistic function (check how other papers do)
+
+#visualise data
+ggplot(GENE_data, aes(x = rel_conc, fill = Ant_status)) + #, fill = factor(Final_Cat, levels = c("to-impute", "valid"))
+    geom_histogram(alpha = 0.5, position = "identity") +
+    labs(x = "Value", y = "Frequency", fill = "Ant_status") +
+    scale_x_continuous(trans='log10')
+
+  # Define the logistic function for the probability of being below the LOD:
+  ##Where x is the input value, x0 is the midpoint of the logistic function (i.e., the quantile under which points are lost), k is the steepness of the curve, and L is the maximum probability.
+  logistic_function <- function(x, x0, k, L) { L / (1 + exp(k * (x - x0)))}
+
+  
+  # Create an empty data frame to store the results
+  results_trim <- data.frame()
+  # Initialize a data frame to store data from all iterations
+  iterations_data <- data.frame()
+  imputed_iterations_data <- data.frame()
+  # Create a list to store the plots
+  plot_list <- list()
+  plot_list_HM <- list()
+  plot_list_QRILC <- list()
+  
+  i <- 0
+  # Loop through 
+  for (PROBS_MISSING in c(0.4,0.5,0.6,0.7,0.8)) {
+    for (k in c(25,35,45)) {
+    i <- i+1
+  
+    # clean
+    GENE_data$rel_conc_imputed <- NULL
+    
+    
+  #Set the parameters for the logistic function:
+  x0 <- quantile(GENE_data$rel_conc, probs = PROBS_MISSING) # Calculate the quantile of the gene expression data
+  L <- 1 # Maximum probability
+  #k <- 35 # Steepness of the curve
+  
+  # Calculate the probability of being below the LOD for each gene expression value:
+  prob_below_lod <- logistic_function(GENE_data$rel_conc, x0, k, L)
+  # Create a binary vector indicating if a value is below the LOD based on the calculated probabilities:
+  set.seed(42) # For reproducibility
+  below_lod <- runif(length(GENE_data$rel_conc)) < prob_below_lod
+  #Replace the gene expression values below the LOD with NA to simulate left-censored data:
+  GENE_data$rel_conc_trim <- GENE_data$rel_conc
+  GENE_data$rel_conc_trim[below_lod] <- NA
+  #check proportion of NAs (should be between 30 and 40% to simulate PO and HYM)
+  propNA <- round(prop.table(table(is.na(  GENE_data$rel_conc_trim )))[[2]],2)
+  GENE_data$LogFun_Category <- as.factor(ifelse(is.na(GENE_data$rel_conc_trim),"trimmed","preserved"))
+  
+  
+  #### STORE DATA   ####
+  # Combine the data from all iterations
+  IMPUTATION <- "none"
+  iterations_data <- rbind(iterations_data, cbind(i,GENE_data,propNA,x0,k,L,IMPUTATION))
+  
+for (IMPUTATION in c("HM","QRILC","zero")) {
+
+  #### PERFORM DATA IMPUTATION on artificially trimmed data
+  GENE_data$rel_conc_imputed <- GENE_data$rel_conc_trim
+  
+  if (IMPUTATION=="HM") {
+    # # ASSIGN HALF-MINIMUM
+    # #assing value smaller than the minimum to the NAs
+    #print("replacing NA relative concentrations with min/2 (equivalent to mean_Ct/sqrt(2) as each Ct step is a factor 2 doubling of product)")
+    for (GENE in unique(GENE_data$gene)) {
+      for (STATUS in unique(GENE_data$Ant_status)) {
+        #assign the min/2 value by gene to missing datapoints
+        GENE_data[is.na(GENE_data$rel_conc_imputed) & GENE_data$gene == GENE & GENE_data$Ant_status == STATUS, "rel_conc_imputed"] <- min(GENE_data[which(GENE_data$gene==GENE  & GENE_data$Ant_status == STATUS),"rel_conc_trim"],na.rm = T)/2
+      }
+    }
+  }
+  
+  
+  if (IMPUTATION=="QRILC") {
+    #print("replacing NA relative concentrations with QRILC Quantile Regression Imputation of Left Censored Data, proven the most reliable imputation method in Wei, R et al. 2018 ")
+    for (GENE in unique(GENE_data$gene)) {
+      for (STATUS in unique(GENE_data$Ant_status)) {
+        rel_conc_matrix <- as.matrix(GENE_data[which(GENE_data$gene==GENE &  GENE_data$Ant_status == STATUS), "rel_conc_trim"])
+        # note that tune.sigma = 1 as it is assumed that the complete data distribution is Gaussian (as shown by the complete gene DEF) .
+        imputed_rel_conc <- impute.QRILC(log(rel_conc_matrix),tune.sigma = 1) # log transform data.. see explanation in paper
+        GENE_data[which(GENE_data$gene == GENE  &  GENE_data$Ant_status == STATUS), "rel_conc_imputed"] <- exp(unlist(imputed_rel_conc[1])) # back-transform with exp
+        sum(is.na(GENE_data[is.na(GENE_data$rel_conc_trim) & GENE_data$gene == GENE  &  GENE_data$Ant_status == STATUS, "rel_conc_imputed"])) # should be 0
+        
+      }
+    }
+  }
+  
+  if (IMPUTATION=="zero") {
+    # # ASSIGN ZERO
+    for (GENE in unique(GENE_data$gene)) {
+      for (STATUS in unique(GENE_data$Ant_status)) {
+        #assign the min/2 value by gene to missing datapoints
+        GENE_data[is.na(GENE_data$rel_conc_imputed) & GENE_data$gene == GENE & GENE_data$Ant_status == STATUS, "rel_conc_imputed"] <- 0
+      }
+    }
+  }
+  
+  #### STORE DATA   ####
+  # Combine the data from all imputed iterations
+  imputed_iterations_data <- rbind(imputed_iterations_data, cbind(i,GENE_data,propNA,x0,k,L,IMPUTATION))
+  
+  if (IMPUTATION != "zero") {
+    # Run the model
+    mod1 <- lmer(log10(rel_conc_imputed) ~ Treatment + Ant_status + (1 | Colony), data = GENE_data)
+
+  # Extract p values and model estimates
+  estimates <- summary(mod1)$coefficients
+  fixed_effects <- estimates[grep("Treatment|Ant_status", rownames(estimates)), 1]
+  intercept <- estimates[1, 1]
+  final_estimates <- intercept + fixed_effects
+  Estim.Status <- final_estimates[grep("Ant_status",names(final_estimates))]
+  Estim.Treatment <- final_estimates[grep("Treatment",names(final_estimates))]
+  
+  P.Status <- Anova(mod1)[grep("Ant_status", row.names(Anova(mod1))),"Pr(>Chisq)"]
+  P.Treatment <- Anova(mod1)[grep("Treatment", row.names(Anova(mod1))),"Pr(>Chisq)"]
+  
+  # Store the results in a data frame
+  results_trim <- rbind(results_trim, data.frame(k = k, 
+                                       prob_missing = PROBS_MISSING, 
+                                       imputation = IMPUTATION, 
+                                       Estim.Status = Estim.Status, 
+                                       Estim.Treatment = Estim.Treatment, 
+                                       P.Status = P.Status, 
+                                       P.Treatment = P.Treatment))
+  
+  
+  #get the imputation list
+  current_list <- get(paste("plot_list", IMPUTATION, sep = "_"))
+
+  # Generate plots for rel_conc_imputed
+  current_list[[i]] <- ggplot(GENE_data, aes(x = rel_conc_imputed, fill =  factor(LogFun_Category, levels = c("trimmed", "preserved"))  )) + #, fill = factor(Final_Cat, levels = c("to-impute", "valid"))
+    geom_histogram(position = "stack", alpha = 1, bins = 30) +
+    labs(x = "",
+         y = "",
+         fill = "Variable",
+         caption = paste0((propNA*100),"% missing","; x0=", names(x0),"; k=",k,"; L=",L)) +
+    theme_minimal()+
+    scale_fill_manual(values=c(preserved="grey30", trimmed="grey75")) +
+    scale_x_continuous(trans='log10')+
+    theme(legend.position = "none")
+  
+  # Assign the updated list back to the original object
+  assign(paste("plot_list", IMPUTATION, sep = "_"), current_list)
+  
+  } # skip if imputation= "zero"
+  
+} #  imputation
+ 
+  # Generate plots for rel_conc
+  plot_list[[i]] <- ggplot(GENE_data, aes(x = rel_conc, fill =  factor(LogFun_Category, levels = c("trimmed", "preserved"))  )) + #, fill = factor(Final_Cat, levels = c("to-impute", "valid"))
+    geom_histogram(position = "stack", alpha = 1, bins = 30) +
+    labs(x = "",
+         y = "",
+         fill = "Variable",
+         caption = paste0((propNA*100),"% missing","; x0=", names(x0),"; k=",k,"; L=",L)) +
+    theme_minimal()+
+    scale_fill_manual(values=c(preserved="grey30", trimmed="grey75")) +
+    scale_x_continuous(trans='log10')+
+    theme(legend.position = "none")
+  
+  
+  
+
+
+    }
+  }
+  
+  rownames(results_trim) <- NULL
+
+  #####   STATS   ##### 
+  # one-sample t-test to determine if base model is statistically different from permutations
+  test_result <- list()
+  for (VARIABLE in c("Estim.Status","Estim.Treatment","P.Status","P.Treatment")) {
+    test_result[VARIABLE] <- list(wilcox.test(results_trim[,VARIABLE], y =  base_model[,VARIABLE], alternative = "two.sided"))#list(t.test(results_trim[,VARIABLE], mu = base_model[,VARIABLE]))
+    #test_result[[VARIABLE]] %>% report_statistics()
+    #names(test_result[[length(test_result)]]) <- VARIABLE
+    #test_result
+  }
+  
+  results_trim %>%
+    summarise(
+      Estim.Status_test    = report_statistics(wilcox.test(Estim.Status, y = base_model$Estim.Status, alternative = "two.sided")),
+      P.Status_test        = report_statistics(wilcox.test(P.Status, y = base_model$P.Status, alternative = "two.sided")),
+      Estim.Treatment_test = report_statistics(wilcox.test(Estim.Treatment, y = base_model$Estim.Treatment, alternative = "two.sided")),
+      P.Treatment_test     = report_statistics(wilcox.test(P.Treatment, y = base_model$P.Treatment, alternative = "two.sided"))
+    ) %>%
+    print()
+  
+  
+  #####   PLOTS   ##### 
+
+  # # Create a boxplot for all iterations
+  # combined_boxplot <- ggplot(all_iterations_data, aes(x = factor(iteration), y = rel_conc, fill = factor(LogFun_Category, levels = c("trimmed", "preserved")))) +
+  #   geom_boxplot(alpha = 1) +
+  #   labs(x = "",
+  #        y = "",
+  #        fill = "Variable",
+  #        caption = paste0((propNA*100),"% missing","; x0=", names(x0),"; k=",k,"; L=",L)) +
+  #   theme_minimal() +
+  #   scale_fill_manual(values = c(preserved = "grey30", trimmed = "grey75")) +
+  #   scale_y_continuous(trans = 'log10') +
+  #   theme(legend.position = "none")
+  # 
+  # # Print the combined boxplot
+  # print(combined_boxplot)
+
+  
+  grid.arrange(grobs = plot_list, ncol = 3,
+               bottom = paste("simulated left-censoring with varying parameters of the logistic function")) ## display plot
+  
+  grid.arrange(grobs = plot_list_QRILC, ncol = 3,
+               bottom = paste("QRILC imputed simulated left-censored data")) ## display plot
+  
+  grid.arrange(grobs = plot_list_HM, ncol = 3,
+               bottom = paste("HM imputed simulated left-censored data")) ## display plot
+  
+
+### SCATTERPLOT of model estimates VS p-values 
+# Create a list of variable suffixes
+suffixes<- c("Status", "Treatment")
+eff_plot_list <- list()
+# Loop through the variables and create plots
+for (suffix in suffixes) {
+  ESTIMATE <- paste0("Estim.", suffix)
+  PVAL <- paste0("P.", suffix)
+  
+  # Create scatterplot of model estimates VS p-values
+  sp <- ggplot(data = results_trim, aes_string(x = ESTIMATE, y = PVAL)) +
+    geom_point(aes(shape=imputation), alpha = 0.9,size =2)  + 
+    geom_point(data =  base_model, aes_string(x = ESTIMATE, y = PVAL), shape = 4, size = 3, color = "#0073C2FF") +
+    #geom_rug(aes(color = gene))+
+    geom_text(data = base_model, aes_string(x = ESTIMATE, y = PVAL, label = "gene"), vjust = -1,hjust= +1 ) +
+    #labs(x = "Model Estimates", y = "p-value") + #, title = "Model Estimates vs. P-values"
+    theme_classic()  +
+    scale_shape_manual(values = c(21, 24)) +
+    geom_hline(yintercept = 0.05, linetype = "dashed", color = "red")+
+    scale_color_jco() +
+    #theme(aspect.ratio=1) +
+    border()  
+  # Marginal histograms
+  xplot <- gghistogram(results_trim, ESTIMATE, fill = "black",color = "transparent",
+                       palette = "jco",bins=20)  + clean_theme() + rremove("legend")
+  yplot <- gghistogram(results_trim, PVAL, fill = "black", color = "transparent",
+                       palette = "jco",bins=20)  + clean_theme() + rremove("legend") + rotate()
+  # Cleaning the plots
+  leg <- cowplot::get_legend(sp) # + theme(legend.position = "right"))
+  sp <- sp + rremove("legend")+ theme(plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))
+  xplot <- xplot + theme(plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))
+  yplot <- yplot + theme(plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"))
+  #void <- ggplot() + theme_void() + xlim(0, 1) + ylim(0, 1) + theme(plot.margin = margin(0, 0, 0, 0))
+  # Arrange the plots with legend included
+  
+  if (suffix=="Status") {
+    eff_plot_list[[suffix]] <- 
+      cowplot::plot_grid(xplot, NULL, sp, yplot, ncol = 2, align = "hv", 
+                         rel_widths = c(2, 1), rel_heights = c(1, 2))
+  }else{
+    eff_plot_list[[suffix]] <- cowplot::plot_grid(
+      cowplot::plot_grid(xplot, NULL, sp, yplot, ncol = 2, align = "hv", 
+                         rel_widths = c(2, 1), rel_heights = c(1, 2)),
+      leg, ncol = 2, rel_widths = c(2, 1), rel_heights = c(1, 2))
+  }
+  # Optionally, you can save the plot to a file
+  # ggsave(filename = paste0("plot_", suffix, ".png"), plot = my_plot)
+}
+
+cowplot::plot_grid(eff_plot_list[[1]],eff_plot_list[[2]], ncol = 2,rel_widths = c(1, 1.5))
+
+
+
+
+
+
+#### REORDER THE OVERALL DATASET ####
+imputed_iterations_data$rel_conc_trim <- NULL
+# rename variable before merging
+names(iterations_data)[which(names(iterations_data)=="rel_conc_trim")] <- "rel_conc_imputed"
+#merge dataset to have in long format imputation = none, HM, QRILC
+iterations_data <- rbind(iterations_data,imputed_iterations_data)
+
+# # To evaluate the imputation methods "HM" and "QRILC" using the NRMSE and SOR metrics (Wei, 2018),
+# # first calculate the NRMSE for each imputed dataset and then compute the SOR
+# # Calculate NRMSE
+# nrmse <- function(Xtrue, Ximp) { #where Xtrue is the true data, Ximp is the imputed data.
+#   sqrt(mean((Xtrue - Ximp)^2) / var(Xtrue)) 
+# }
+# # Calculate NRMSE for each imputed dataset
+# nrmse_results <- iterations_data %>%
+#   #filter(IMPUTATION != "none") %>%
+#   group_by(IMPUTATION, i) %>%
+#   summarise(NRMSE = nrmse(rel_conc, rel_conc_imputed))
+# 
+# # Calculate rank of NRMSE for each imputed dataset
+# nrmse_ranks <- nrmse_results %>%
+#   mutate(Rank = rank(NRMSE))
+# 
+# # Calculate SOR for each imputation method
+# sor_results <- nrmse_ranks %>%
+#   group_by(IMPUTATION) %>%
+#   summarise(SOR = sum(Rank)) #%>%
+#   #filter(IMPUTATION != "none")
+# 
+# sor_results
+
+
+# Calculate the errors for each imputation method
+error_summary <- iterations_data %>%
+  filter(IMPUTATION != "none") %>%
+  group_by(IMPUTATION, i) %>%
+  summarize(
+    squared_error = (rel_conc - rel_conc_imputed)^2,
+    #absolute_error = abs(rel_conc - rel_conc_imputed),
+    k = unique(k),
+    x0= unique(x0),
+    propNA= unique(propNA)
+  ) %>%
+  group_by(IMPUTATION,i) %>%
+  summarize(
+    RMSE = sqrt(mean(squared_error)),
+    #MAE = mean(absolute_error),
+    k = unique(k),
+    x0= unique(x0),
+    propNA= unique(propNA)
+  )
+
+error_summary$i <- as.factor(error_summary$i)
+error_summary$propNA <- factor(round(error_summary$propNA,1))
+
+# Combine MSE and MAE into a single long-format data frame
+error_summary_long <- error_summary %>%
+  pivot_longer(cols = c(RMSE), names_to = "error_type", values_to = "error_value")
+
+# Calculate the mean and standard deviation of error_value (per all 3 k values) by propNA for each IMPUTATION
+error_summary_stats <- error_summary_long %>%
+  group_by(IMPUTATION, propNA, error_type) %>%
+  summarize(
+    mean_error = mean(error_value),
+    sd_error = sd(error_value),
+    .groups = 'drop'
+  )
+
+# Define a color palette
+color_palette <- RColorBrewer::brewer.pal(3, "Set1")
+# Create a plot with geom_line and geom_ribbon
+ggplot(error_summary_stats, aes(x = propNA, y = mean_error, color = IMPUTATION, group = IMPUTATION)) +
+  geom_line(alpha= 0.6) +
+  geom_ribbon(aes(ymin = mean_error - sd_error, ymax = mean_error + sd_error, fill = IMPUTATION), alpha = 0.2) +
+  labs(x = "Proportion of missing data",
+       y = "RMSD",
+       color = "imputation",
+       fill = "imputation" ) +
+  theme_minimal() +
+  scale_color_manual(values = color_palette) + 
+  scale_fill_manual(values = color_palette) # +
+  #facet_wrap(~error_type, scales = "free_y", ncol = 2)
+
+
+
+# Create a plot with geom_line and geom_ribbon using the new color palette
+plot_with_stats_new_colors <- ggplot(error_summary_stats, aes(x = propNA, y = mean_error, color = IMPUTATION, group = IMPUTATION)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = mean_error - sd_error, ymax = mean_error + sd_error, fill = IMPUTATION), alpha = 0.2) +
+  labs(title = "Comparison of QRILC and HM Imputation Methods",
+       x = "Proportion of NAs",
+       y = "Error Value",
+       shape = "steepness (k)") +
+  theme_minimal() +
+  facet_wrap(~error_type, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = color_palette) + # Apply the new color palette for lines
+  scale_fill_manual(values = color_palette)    # Apply the new color palette for ribbon
+
+# Print the plot with the new color palette
+print(plot_with_stats_new_colors)
+
+
+
+}
+
+
+
+
 
 
 
 ##### SCRAPS #################################
-
-
-# # outliers <- genes_data %>%
-# #   inner_join(genes_data_byGroup, by = "gene") %>%
-# #   filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
-# #   filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
-# 
-# 
-# # # CHECK EF1 with mean_Ct value greater than 2*st.dev mean_Ct value for each group
-# # #exclude Queens from outliers (on the lowerbound, they are expected to have a lot of datapoints -low Ct-, but the upperbound should be cleaned)
-# # # outliers are not removed or filtered at this stage
-# # outliers <- genes_data %>%
-# #   inner_join(genes_data_byGroup, by = "gene") %>%
-# #   filter(mean_Ct < grand_mean_Ct - 2 * st.dev_mean_Ct | mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
-# #   filter(!(AntTask == "queen" & mean_Ct < grand_mean_Ct))
-# # 
-# # # plot a scatterplot with lines connecting Ct values between groups
-# # ggplot(outliers, aes(x = gene, y = mean_Ct, group = Code)) +
-# #   geom_point(aes(color = gene)) +
-# #   geom_line(alpha = 0.1) +
-# #   ggtitle("Scatterplot of mean_Ct values by group gene with lines connecting values") +
-# #   xlab("Group") +
-# #   ylab("mean_Ct value") #+
-# # # scale_color_discrete(name = "Group", labels = unique(outliers$gene))
-# 
-# 
-# 
-# # # check outliers min upper threshold
-# outliers_limit <- min(outliers %>%
-#                         filter(gene == "EF1") %>%
-#                         filter(mean_Ct > grand_mean_Ct + 2 * st.dev_mean_Ct) %>%
-#                         pull(mean_Ct))
-# #outliers_limit <-  mean(genes_data$mean_Ct,na.rm=T)+2*sd(genes_data$mean_Ct,na.rm=T)
-# 
-# 
-# ## we then discard samples with EF1 mean_ct > 32 as they are probably low quality samples (bad extraction, bad crushing, etc)
-# ## filter rows with mean_Ct value greater than 32 for group EF1
-# #genes_data <- genes_data[!(genes_data$gene == "EF1") | !(genes_data$mean_Ct >= outliers_limit),]
-# genes_data[which(genes_data$gene == "EF1" & genes_data$mean_Ct >= outliers_limit),"mean_Ct"] <- NA
-# 
-# #####################################
-# 
-# 
-# 
-# #base vals
-# sum(is.na(genes_data$mean_Ct))
-# genes_data$NA_Ct <- ifelse(is.na(genes_data$mean_Ct),NA,"values")
-# table(genes_data$NA_Ct,genes_data$gene, useNA = "ifany")
-# #Accepted Ct diff (0= non-acceptable, 1= acceptable)
-# table(genes_data$CTDiffAcc_15PipErr,genes_data$gene, useNA = "ifany")
-# # assign accepted to missing mean_Ct
-# genes_data[which(genes_data$abs_diff_Ct==0),"CTDiffAcc_15PipErr"] <- 1
-# 
-# 
-# ##### HOW TO DEAL WITH ABS DIFF = NA? SHOULD THESE BE IMPUTED TOO? OR WE KEEP THEM AS POSITIVE EVEN IF WE DON'T HAVE THEIR COUNTERPART? THESE COULD BE A LOT OF POINTS
-# # % of saved datapoints (1) with threshold at 0.5 # see plot too
-# genes_data$CTDiffAcc_0.5 <- 0
-# genes_data$CTDiffAcc_0.5 <- ifelse((genes_data$abs_diff_Ct<=0.5),1,genes_data$CTDiffAcc_0.5)
-# table(genes_data$CTDiffAcc_0.5,useNA = "ifany")/nrow(genes_data)
-# 
-# # N of saved datapoints (1) with poisson adjusted threshold
-# table(genes_data$CTDiffAcc_15PipErr,useNA = "ifany")/nrow(genes_data) ## MORE POINTS RETAINED
-# 
-# #########Step 3: If mean Ct>critical value (35), recode as nondetect##########
-# ##############################################################################
-# #If Ct>=35 THEN recode as nondetect (0)
-# #If Ct=0 in both duplo's, also recode as nondetect (0).
-# genes_data$CtBigger35 <- 1
-# genes_data$CtBigger35 <- ifelse((genes_data$mean_Ct>=35 ),0,1) #| genes_data$mean_Ct <1
-# table(genes_data$CtBigger35, genes_data$gene, useNA="ifany")
-# #if the mean is missing, reassing default value
-# genes_data[is.na(genes_data$CtBigger35),"CtBigger35"] <- 1
-# #########Step 4: Make final variable##########
-# ##############################################
-# 
-# ###########Ronde et al. 2017 pipeline################
-# ## THEY SUGGEST TO USE MULTIPLE IMPUTATION
-# # QUALITY CONTROL
-# #0=impute (invalid) - to be imputed
-# #1=valid
-# #2=undetectable - set to minimum
-# genes_data$QC <- 0
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==1),1,genes_data$QC) # if the diff between reps is acceptable & lower than 35, it is valid
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==1),0,genes_data$QC) # if the diff between reps is unacceptable and lower than 35, invalid impute
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is acceptable and higher than 35, undetectable, set to min
-# # OR: genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==1 & genes_data$CtBigger35==0),1,genes_data$QC)
-# genes_data$QC <- ifelse((genes_data$CTDiffAcc_15PipErr==0 & genes_data$CtBigger35==0),2,genes_data$QC) # if the diff between reps is unacceptable and higher than 35, undetectable, set to min
-# #genes_data$QC <- ifelse((is.na(genes_data$mean_Ct)),0,genes_data$QC) # if mean_ct is missing, impute value (not in Ronde et al. 2017, added by me)
-# 
-# table(genes_data$QC,useNA = "ifany")
-# 
-# table(genes_data$QC,genes_data$gene, useNA="ifany")
-# 
-
-
-
-
-
-
-# 
-# #### assign min to undetectables
-# #0=impute (invalid) - to be imputed
-# #1=valid
-# #2=undetectable - set to minimum
-# for (GENE in unique(genes_data$gene)) {
-#   #assign the min/2 value by gene to missing datapoints
-#   genes_data[which(genes_data$QC == "2" & genes_data$gene == GENE), "rel_conc_imputed"] <- min(genes_data[which(genes_data$gene==GENE),"rel_conc_replace_min"],na.rm = T)/2
-# }
-# 
-
 
 
 # Create a minimal reproducible sample
@@ -1875,3 +2221,18 @@ min_sample <- GENE_data %>%
   slice_sample(n = 1) %>%
   ungroup()
 dput(as.data.frame(min_sample[,c("Ant_status", "Treatment", "rel_conc_imputed","Colony")]))
+
+
+
+
+
+min_sample <- iterations_data %>%
+  group_by(i,x0,k,L,IMPUTATION) %>% #"x0","k","L","IMPUTATION"
+  slice_sample(n = 1) %>%
+  ungroup()
+min_sample$rel_conc <- round(min_sample$rel_conc,1)
+min_sample$rel_conc_imputed <- round(min_sample$rel_conc_imputed,1)
+min_sample$x0 <- round(min_sample$x0,1)
+
+
+dput(as.data.frame(min_sample[,c("i","Ant_status", "Treatment","rel_conc","rel_conc_imputed","LogFun_Category","propNA","x0","k","L","IMPUTATION")]))
