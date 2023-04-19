@@ -16,6 +16,7 @@ Testing Social Immunity role in disease hindering dynamics in societies, using a
 - Interactions detection
 - Machine Learning Behavioural Classification
 - Personal immunity investment and pathogen load quantification
+- RTqPCR data pre-processing pipeline with MNAR data simulations
 - extra related material
 
 <em>Code written by Adriano Wanderlingh, Nathalie Stroeymeyt and Tom Richardson with contributions by Enrico Gavagnign</em>
