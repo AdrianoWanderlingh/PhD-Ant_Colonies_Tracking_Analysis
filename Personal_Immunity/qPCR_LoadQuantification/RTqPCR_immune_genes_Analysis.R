@@ -747,10 +747,12 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Treatment, ncol = 1)
       
       #keep only treated nurses / impute(>LOD-T.E.)
-      df_subset <- subset(genes_data, Ant_status == "treated nurse" & Category=="impute(>LOD-T.E.)")
+      df_subset <- subset(genes_data, Ant_status == "queen" & Category!="valid")
       #visualise overlaps of invalidity by gene for the same samples
-      ggplot(data = df_subset, aes(x = Code, fill = gene)) +
-        geom_bar() + labs(title = "Code vs impute(>LOD-T.E.) (only displaying treated nurses)", x = "Code", y = "Count") +
+      ggplot(data = df_subset, aes(x = paste0(Sample_Plate,"-",Sample_Well," (",Colony,")"), fill = gene)) +
+        geom_bar() + labs(title = "RT plates vs non-valid (only displaying queens)",
+                          subtitle = "plate 101 is the extra queen plate were duplicates where on the same plate", x = "RT plate code", y = "Count",
+                          caption = "+ 1-A7 (R1BS) discarded for EF1 ct_diff >0.5") +
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +  facet_wrap(~Treatment, ncol = 1)
       
     }
@@ -1872,7 +1874,7 @@ ggplot(GENE_data, aes(x = rel_conc, fill = Ant_status)) + #, fill = factor(Final
   #Replace the gene expression values below the LOD with NA to simulate left-censored data:
   GENE_data$rel_conc_trim <- GENE_data$rel_conc
   GENE_data$rel_conc_trim[below_lod] <- NA
-  #check proportion of NAs (should be between 30 and 40% to simulate PO and HYM)
+  #check proportion of NAs (should be between 30 and 70% to simulate PO and HYM)
   propNA <- round(prop.table(table(is.na(  GENE_data$rel_conc_trim )))[[2]],2)
   GENE_data$LogFun_Category <- as.factor(ifelse(is.na(GENE_data$rel_conc_trim),"trimmed","preserved"))
   
