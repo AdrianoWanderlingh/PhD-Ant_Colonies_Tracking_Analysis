@@ -1,5 +1,6 @@
 rm(list = ls())
 gc()
+Sys.sleep(3)
 mallinfo::malloc.trim(0L)
 
 # NOTE ON DIFFERENCES FROM SCIENCE 2018 PAPER:
@@ -157,7 +158,12 @@ Time_dictionary <- Time_dictionary[which(Time_dictionary$time_hours <= 21 & Time
 Time_dictionary$period <- ifelse(Time_dictionary$time_hours<0, "pre", "post")
 
 #OUTPUT_FOLDER <-  "Exp1_Results_2023" # paste0("Exp1_Results_", Sys.Date()) #OUT OF DATE?
+#SAVE FILES IN THE LOCATION WHERE THESE ARE SAVED FOR THE SCIENCE 2018 PIPELINE
 SPACE_USE     <-  file.path(BEHDIR,"pre_vs_post_treatment","individual_behavioural_data.txt")
+SPACE_USE_PRE <-  file.path(BEHDIR,"pre_treatment","network_position_vs_time_outside.dat")
+
+
+
 
 #### FLAGS
 RUN_INTERACT     <- TRUE
@@ -211,7 +217,7 @@ to_keep <- c(ls(), c("to_keep"))
 #### OPEN REPLICATE
 # replicate folder
 for (REP.n in 1:length(files_list)) {
-  # REP.n <- 1    #temp
+  # REP.n <- 13    #temp
   REP.folder <- files_list[REP.n]
   REP.files <- list.files(REP.folder, pattern = "CapsuleDef2018_q") #AntsCreated_AutoOriented_withMetaData_NS_NS_q_
   ##
@@ -222,7 +228,7 @@ for (REP.n in 1:length(files_list)) {
 
   # replicate file
   for (REP.FILES in REP.filefolder) {
-    # REP.FILES <-  REP.filefolder[2]   #temp
+    # REP.FILES <-  REP.filefolder[1]   #temp
 
     ## some initialization
     Period_dataframe <- NULL # checking time correspondances
@@ -386,18 +392,18 @@ for (REP.n in 1:length(files_list)) {
                                  paste(colony,treatment_code,period_code,"interactions.txt",sep="_"))
 
     ############ GET INTERACTIONS ##########################
-    if(file.exists(INTERACTIONS_FULL)){
-      warning(paste(REP_TREAT,"|",colony,treatment_code,period_code,"| already present, SKIP >>", sep=" "))
-    }
-      
-    if(!file.exists(INTERACTIONS_FULL)){
+    # if(file.exists(INTERACTIONS_FULL)){  #TEMP
+    #   warning(paste(REP_TREAT,"|",colony,treatment_code,period_code,"| already present, SKIP >>", sep=" "))
+    # }  #TEMP
+    #   
+    # if(!file.exists(INTERACTIONS_FULL)){  #TEMP
     
       # INTERACTIONS IN THIS FUNCTION ARE CALCULATED ACCORDING TO STROEYMEYT ET AL, SCIENCE 2018
       Interactions <- compute_Interactions(e = e, start = time_start, end = time_stop, max_time_gap = MAX_INTERACTION_GAP)
       
       # Remove interactions involving dead ants
       dead_by_REP <- metadata[which(metadata$IsAlive==FALSE & metadata$REP_treat==REP_TREAT),"antID"]
-      Interactions <- Interactions[!(Interactions$ant1 %in% dead_by_REP | Interactions$ant2 %in% dead_by_REP), ]
+      Interactions <- Interactions[!(Interactions$Tag1 %in% dead_by_REP | Interactions$Tag2 %in% dead_by_REP), ]
       
       # create time vars
       Interactions$time_hours   <- NA
@@ -449,14 +455,14 @@ for (REP.n in 1:length(files_list)) {
                     #save object by TH and TD
           write.table(Interactions[which(Interactions$time_hours==TIME_HOURS),], file = INTERACTIONS_BINNED, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
           }
-    }
+     # } #TEMP
       INTERACT_loop_end_time <- Sys.time()
       print(paste("Interactions 3h chunk took ", round(as.numeric(difftime(INTERACT_loop_end_time, INTERACT_loop_start_time, units = "secs")),1), " sec to complete"))
       }# RUN_INTERACT
       
       if (file.exists(SPACE_USE)) {
         print("file exists")
-        spaceUse_done <- read.table(SPACE_USE, header = T, stringsAsFactors = F, sep = "\t")
+        spaceUse_done <- read.table(SPACE_USE, header = T, stringsAsFactors = F, sep = "")
         spaceUse_done <- spaceUse_done[which(spaceUse_done$colony==colony),"time_hours"]
       }else{
         spaceUse_done <- c() # placeholder
@@ -517,9 +523,16 @@ for (REP.n in 1:length(files_list)) {
 
             ## Space Use save (saved INSIDE the Network_analysis folder)
             if (file.exists(SPACE_USE)) {
+              # pre_vs_post_treatment/individual_behavioural_data.txt
               write.table(SpaceUsage, file = SPACE_USE, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
+              # pre_treatment/network_position_vs_time_outside.dat
+              write.table(SpaceUsage[which(SpaceUsage$period=="pre"),], file = SPACE_USE_PRE, append = T, col.names = F, row.names = F, quote = F, sep = "\t")
             } else {
+              # pre_vs_post_treatment/individual_behavioural_data.txt
               write.table(SpaceUsage, file = SPACE_USE, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+              # pre_treatment/network_position_vs_time_outside.dat
+              write.table(SpaceUsage[which(SpaceUsage$period=="pre"),], file = SPACE_USE_PRE, append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+              
             }
           } # if present already
         } # hour loop
