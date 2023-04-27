@@ -1,23 +1,13 @@
 
 # # To Do
-
 ### FIND A WAY TO COPY RELEVANT DATA INFO (E.G. TREATMENT, ETC,) WHEN EXPAND GRIDDING! 
 # SHOULD JOIN BE USED INSTEAD OF MERGE? ANY THER ALTERNATIVE?
-
-
-
-## How to run a Two-Part Mixed Effects Model for Semi-Continuous Data  (data with stack of zeros and the rest as continuos data points) 
-# - show Tom the case of inferred_bin_h4_ByAnt_trim
-
 
 ### FIX delta calcs  TO BE OPERATED DIRECTLY ON "inferred_ByAnt"!!!!!!!!!!!
 
 ### GIVE CLEARER NAMES TO THINGS:
 # - MEANS OF EACH ANT IN REP: USED FOR DATA ANALYSIS AND PLOTTING
 # - MEANS OF EACH REP: USED FOR PLOTTING (NOW CALLED "FOR PLOTS", SHOULD BE xANTxREP AND xREP ?)
-
-
-
 
 
 ####################################################################################
@@ -29,7 +19,7 @@
 #### LIBRARIES
 gc()
 mallinfo::malloc.trim(0L)
-
+#plot aesthetics
 library(showtext)
 font_add_google("Montserrat")
 showtext_auto() #must be called to indicate that showtext is going to be automatically invoked to draw text whenever a plot is created.
@@ -46,6 +36,7 @@ library("viridis")
 library(stringr)
 library(dplyr)
 library(tidyr)
+library(data.table)
 
 #stats
 library(lme4)
@@ -59,9 +50,17 @@ library(GLMMadaptive)
 library(censReg) # random effect in tobit models in R using the censReg package?
 library(tidyverse)
 library(plm) #  pdata.frame()
-
+library(mgcv) #fit Generalised additive mixed models 
+library(ggeffects)
+library(itsadug)
 
 #### FUNCTIONS
+###source function scripts
+print("Loading functions and libraries...")
+source(paste("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/FUNCTIONS_Analysis_and_Styling.R",sep="/"))
+
+warning("USE THE PLOT STYLE FUNCTION FROM SOURCE! MAKE SURE PLOTS SHOW UP NORMALLY!")
+
 #list files recursive up to a certain level (level defined by "n" parameter)
 list.dirs.depth.n <- function(p, n) {
   res <- list.dirs(p, recursive = FALSE)
@@ -73,25 +72,7 @@ list.dirs.depth.n <- function(p, n) {
   }
 }
 
-#function to test normality of residuals
-test_norm <- function(resids){
-  print("Testing normality")
-  if (length(resids)<=300){
-    print("Fewer than 300 data points so performing Shapiro-Wilk's test")
-    print(shapiro.test(resids))
-  }else{
-    print("More than 300 data points so using the skewness and kurtosis
-approach")
-    print("Skewness should be between -3 and +3 (best around zero")
-    print(skewness(resids))
-    print("")
-    print("Excess kurtosis (i.e. absolute kurtosis -3) should be less than 4; ideally around zero")
-    print(kurtosis(resids))
-  }
-}
-
 ############# PLOTS STYLE ################
-
 STYLE <- list(scale_colour_viridis_d(), scale_fill_viridis_d(),theme_bw(),
               theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), text=element_text(family="Montserrat") ),
               scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
@@ -108,66 +89,56 @@ STYLE_NOVIR <- list(theme(panel.grid.major = element_blank(), panel.grid.minor =
                     scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
 )
 
-
-
-
 ### DIRECTORIES
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis"
-DATADIR <-  "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Data"
-METADATADIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data"
+DATADIR <-  paste(WORKDIR,"Data/Adriano_extracted_groomings_final",sep="/")
+METADATADIR <- paste(WORKDIR,"EXP_summary_data",sep="/")
+
+# Base files
+metadata <- read.table(paste(METADATADIR, "/Metadata_Exp1_2021_2023-02-27.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
 
 ### EXTRAS
 Presentation_plots             <- FALSE #script for single interactions heatmaps
+
+tokeep  <- ls()
 
 ###########################################################################################################
 ###### THIS PART OF THE SCRIPT COLLECTS INFO FROM THE MYRMIDON FILES AND IT IS TURNED OFF AS THE
 ###### PRELIMINARY OUTPUT HAS BEEN SAVED ON A SPECIFIC THIRD FILE inferred_groomings_ALL_withCommonStart
 ###########################################################################################################
 
-
-
-
-
-
-
-
-
-
-
-###########################################################################################################
-###### REWORK THIS TO GET METADATAINFO FROM BASE CENTRALISED FILE
-###### 
-###### 
-###### 
-###### 
-###########################################################################################################
-
-
-if (!file.exists(paste0(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt"))) {
-
+if (!file.exists(paste0(WORKDIR,"/Data/inferred_groomings_ALL_FINAL.txt"))) {
 ## TIME WINDOW SHIFT. WARNING: THIS IS AN APPROXIMATION. IN THE FUTURE, THE TIME OF EXP ANTS RETURN PER TRACKING SYSTEM SHOULD BE USED!
-window_shift <- 60*20 #approx N of minutes that where given at the end as leeway, minutes can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
+#window_shift <- 60*20 #approx N of minutes that where given at the end as leeway, minutes can be skipped because of the "end of exp disruption" and because this causes an offset in the PERIOD transition
 #window_shift_UNIX <- as.POSIXct(window_shift,origin = "1970-01-01",tz = "GMT")
 
-# HAND-COLLECTED RETURN TIMES (MIN) - MORE PRECISE THAN THE SHIFT
-ReturnTime_mins <- read.table(paste(WORKDIR,"/Data/ReturnTime_mins.csv",sep=""),header=T,stringsAsFactors = F, sep=",")
-ReturnTime_mins$Return.hour <- paste0(ReturnTime_mins$Return.hour,":00")
-ReturnTime_mins$REP_treat <- paste0("R",ReturnTime_mins$REP_treat )
-ReturnTime_mins <- ReturnTime_mins[,c("REP_treat","Return.hour")]
+###read return times
+returnTimes_Vasudha  <- read.csv(paste(WORKDIR,"Data","Exposed_nurses_R3SP_R9SP_RETURN_EXP_TIME_ZULU.csv",sep = "/"), sep = ",")
+returnTimes_Adriano    <- read.csv(paste(WORKDIR,"Data","Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU.csv",sep = "/"), sep = ",")
+returnTimes <- rbind(returnTimes_Vasudha[,c("REP_treat","ReturnExposed_time")],
+                     returnTimes_Adriano[,c("REP_treat","ReturnExposed_time")],
+                     structure(list(REP_treat = c("R9SS", "R9BS"), ReturnExposed_time = c("2021-04-26T11:22:20.913120342Z", 
+                                                                                          "2021-04-26T11:17:05.260434183Z")), row.names = 1:2, class = "data.frame"))
+#write a summed up file with return times and upload it on the EXP_summary_folder
+write.table(returnTimes,file=paste(WORKDIR,"/Data/ALL_COLONIES_RETURN_EXP_TIME_ZULU.txt",sep=""),append=F,col.names=T,row.names=F,quote=T,sep=",")
+
+# Convert Zulu time to POSIXct
+returnTimes$ReturnExposed_time_sec  <- as.POSIXct(returnTimes$ReturnExposed_time , format = "%Y-%m-%dT%H:%M:%OSZ", tz = "GMT")
+# Convert POSIXct to seconds since epoch start
+returnTimes$ReturnExposed_time_sec <- as.numeric(returnTimes$ReturnExposed_time_sec)
+# #calc start and end time
+returnTimes$start_time_sec <- returnTimes$ReturnExposed_time_sec - 60*60*27
+returnTimes$end_time_sec <- returnTimes$ReturnExposed_time_sec + 60*60*24
+returnTimes$preReturn_gap_time_sec <- returnTimes$ReturnExposed_time_sec - 60*60*3
 
 ### DIRECTORIES
-REP1to7_SmallOnly <- read.table(paste(WORKDIR,"/Data/inferred_groomings_REP1to7_SmallOnly.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-REP8to14_SmallOnly <- read.table(paste(WORKDIR,"/Data/inferred_groomings_REP8to14_SmallOnly.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-
 #List all text files in the working directory
 filenames <- list.files(DATADIR,pattern = '\\whole_experiment.txt$')
+filenames <- filenames[grep("nongroom", filenames, invert = TRUE)]
 filesdir <- paste(DATADIR,filenames, sep="/")
 #Read every text file with header, skipping the 1st row.
-#Keep only the 5th column after reading the data.
 result <- lapply(filesdir, function(x) read.table(x,header=T,stringsAsFactors = F, sep=","))
-inferred_LargeCols <- do.call(rbind, result)
-
-inferred <- rbind(REP1to7_SmallOnly,REP8to14_SmallOnly,inferred_LargeCols)
+inferred <- do.call(rbind, result)
 
 inferred$T_start_UNIX <- as.POSIXct(inferred$T_start_UNIX,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
 inferred$T_stop_UNIX <- as.POSIXct(inferred$T_stop_UNIX,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
@@ -178,120 +149,160 @@ inferred$TREATMENT <- substr(inferred$REPLICATE,(nchar(inferred$REPLICATE)+1)-2,
 #get rep-treat to match with exp filenames
 inferred$REP_treat <- sub(".*\\/", "", inferred$REPLICATE)
 
-#inferred$return_time <- NA
-inferred$end_time <- NA
-inferred$exposed <- "no"
-inferred$dead <- "no"
-#inferred$time_since_start <- NA
+# #inferred$return_time <- NA
+# inferred$end_time <- NA
+# inferred$exposed <- "no"
+# inferred$dead <- "no"
+# #inferred$time_since_start <- NA
 
-### GET EXP END TIME FOR EACH REP AND ASSIGN PRE-POST TIME!
-#list subdirectories in parent folder EXPERIMENT_DATA
-files_list <- list.dirs.depth.n("/media/cf19810/DISK3/ADRIANO/EXPERIMENT_DATA", n = 1)
-#select REP folders
-files_list <- files_list[grep("REP",files_list)]
+# ### GET EXP END TIME FOR EACH REP AND ASSIGN PRE-POST TIME!
+# #list subdirectories in parent folder EXPERIMENT_DATA
+# files_list <- list.dirs.depth.n("/media/cf19810/DISK3/ADRIANO/EXPERIMENT_DATA", n = 1)
+# #select REP folders
+# files_list <- files_list[grep("REP",files_list)]
+# 
+# Reps_N_exposed <- data.frame(REP_treat= unique(inferred$REP_treat), N_ants = NA)
 
-Reps_N_exposed <- data.frame(REP_treat= unique(inferred$REP_treat), N_ants = NA)
+# Add returnTimes to inferred
+# Convert data.frames to data.tables for faster processing
+returnTimes_dt <- as.data.table(returnTimes)
+inferred_dt <- as.data.table(inferred)
+# Find common column names
+common_col_names <- intersect(names(returnTimes_dt), names(inferred_dt))
+# Perform fast merge using data.table
+setkeyv(returnTimes_dt, common_col_names) # Set keys for returnTimes_dt
+setkeyv(inferred_dt, common_col_names) # Set keys for inferred_dt
+# Merge data.tables
+inferred_dt <- inferred_dt[returnTimes_dt, nomatch = 0]
 
-# replicate folder
-for (REP.n in 1:length(files_list)) {
-  # REP.n <- 1    #temp
-  REP.folder      <- files_list[REP.n]
-  REP.files       <- list.files(REP.folder, pattern = "CapDef3.myr")
-  REP.filefolder  <- paste(REP.folder,REP.files,sep="/")
+# # Add metadata to inferred
+# metadata_dt <- as.data.table(metadata)
+# # Find common column names
+#DIFFERENT STRUCTURE, WON'T WORK AS IN INFERRED THRE ARE TWO ANTS
+# common_col_names <- intersect(names(metadata_dt), names(inferred_dt))
+# # Perform fast merge using data.table
+# setkeyv(metadata_dt, common_col_names) # Set keys for metadata_dt
+# setkeyv(inferred_dt, common_col_names) # Set keys for inferred_dt
+# # Merge data.tables
+# inferred_dt <- inferred_dt[metadata_dt, nomatch = 0]
 
-  #replicate file
-  for (REP.FILES in REP.filefolder) {
-    #get substring in variable until R9BS_
-    # REP.FILES <- REP.filefolder[1]
-    REP_treat <- sub("\\_.*", "", basename(REP.FILES))
-    #treat_name = substr(REP_treat_name,(nchar(REP_treat_name)+1)-2,nchar(REP_treat_name))
+# Optionally, convert the result back to data.frame
+inferred <- as.data.frame(inferred_dt)
 
-    # REP.FILES <-  REP.filefolder[1]   #temp
-    print(REP.FILES) ##}}
-    #open experiment
-    exp <- fmExperimentOpen(REP.FILES)
-    # exp.Ants <- exp$ants
-    exp_end <- fmQueryGetDataInformations(exp)$end
+# # replicate folder
+# for (REP.n in 1:length(files_list)) {
+#   # REP.n <- 1    #temp
+#   REP.folder      <- files_list[REP.n]
+#   REP.files       <- list.files(REP.folder, pattern = "CapDef3.myr")
+#   REP.filefolder  <- paste(REP.folder,REP.files,sep="/")
+# 
+#   #replicate file
+#   for (REP.FILES in REP.filefolder) {
+#     #get substring in variable until R9BS_
+#     # REP.FILES <- REP.filefolder[1]
+#     REP_treat <- sub("\\_.*", "", basename(REP.FILES))
+#     #treat_name = substr(REP_treat_name,(nchar(REP_treat_name)+1)-2,nchar(REP_treat_name))
+# 
+#     # REP.FILES <-  REP.filefolder[1]   #temp
+#     print(REP.FILES) ##}}
+#     #open experiment
+#     exp <- fmExperimentOpen(REP.FILES)
+#     # exp.Ants <- exp$ants
+#     exp_end <- fmQueryGetDataInformations(exp)$end
+# 
+#     ########## GET EXPOSED ANTS # AW 17June2022
+#     e.Ants <- exp$ants
+#     Exposed_list <- vector()
+#     if (REP_treat %in% Reps_N_exposed$REP_treat) {
+#     for (ant in e.Ants){
+#       #exclude dead ants
+#       if (FALSE %in% ant$getValues("IsAlive")[,"values"] ) { #if FALSE doesn't appear
+#         # assign DEAD flag in inferred
+#         inferred[which(inferred$REP_treat==REP_treat & inferred$Rec_Name==paste0("ant_",ant$ID)),"dead"] <- "dead"
+#       }#exclude dead
+#         
+#       if (TRUE %in% ant$getValues("Exposed")[,"values"]) {
+#         exposed <-ant$ID
+#         Exposed_list <- c(Exposed_list, exposed) 
+#         # assign EXPOSED flag in inferred
+#         inferred[which(inferred$REP_treat==REP_treat & inferred$Rec_Name==paste0("ant_",ant$ID)),"exposed"] <- "exposed"
+#       } # list exposed
+#     }
+#     explist<- data.frame(Exposed_list,stringsAsFactors = F)
+#     #Collapse
+#     explist2 <- data.frame(val=paste0(explist$Exposed_list,collapse = ', '),stringsAsFactors = F)
+# 
+#       Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP_treat) ,"N_ants"] <- explist2
+#     }
+# 
+#     for (ROW in 1:nrow(inferred)) {
+#       if (inferred[ROW,"REP_treat"]==REP_treat) {
+#         #add end time minus
+#         inferred[ROW,"end_time"] <-  as.POSIXct(exp_end ,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
+#         # inferred[ROW,"return_time"] <-  as.POSIXct( exp_end  ,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
+#         #assign a new common time for analyses
+#         #inferred[ROW,"time_since_start"] <-
+#       }
+#     }
+#     rm(list=(c("exp"))) #remove experiment
+#   }}
+# 
+# #subtract end window
+# inferred$end_time <- inferred$end_time - window_shift
+# ## force unix_time
+# inferred$end_time <- as.POSIXct(inferred$end_time,  origin="1970-01-01", tz="GMT" )
+# inferred$return_time <- inferred$end_time - 24*3600
+# 
+# ## WINDOW SHIFT GETS US THE APPROX TIME, ASSIGN THE FINAL RETURN TIME
+# ##substitute time with hand-collected return time for increased precision
+# #paste the day of inferred$return_time with the time of ReturnTime_mins
+# inferred$Date_only <- as.character(as.Date(inferred$return_time, format = "%Y-%m-%d"))
+# inferred <- left_join(inferred, ReturnTime_mins, by = "REP_treat")
+# 
+# 
+# 
+# inferred$return_time  <- paste(inferred$Date_only,inferred$Return.hour,"GMT")
+# inferred$return_time  <- as.POSIXct(inferred$return_time,  origin="1970-01-01", tz="GMT" )
+# #the hand-collected return time is the time at which the return operation is complete. As sometimes it could have taken a few minutes, subtract 5 mins to avoid loosing grooming events
+# inferred$return_time  <- inferred$return_time - (60*10) #mins
+# 
+# ## add a common time to all rows
+# # Negative before exposure, positive after
+# inferred$time_stop_since_treat <- as.numeric(difftime(inferred$T_stop_UNIX,inferred$return_time, units = "secs"))
+#
+# inferred$PERIOD <- NA
+# # Assign Pre and Post labels
+# # The time between the nurses sampling from the nest and the return time is labeled as EXPOSURE_GAP (3h window) 
+# for (ROW in 1:nrow(inferred)) {
+#   #since these are times in seconds, it is ok to  have strict ">" instead of ">="
+# if(inferred[ROW,"time_stop_since_treat"] > 0){ inferred[ROW,"PERIOD"] <- "post"
+# }else if ( inferred[ROW,"time_stop_since_treat"] < (-3*3600) & inferred[ROW,"time_stop_since_treat"] > (-27*3600)) {  inferred[ROW,"PERIOD"] <- "pre"  } else{  inferred[ROW,"PERIOD"] <- "EXPOSURE_GAP"}
+# }
 
-    ########## GET EXPOSED ANTS # AW 17June2022
-    e.Ants <- exp$ants
-    Exposed_list <- vector()
-    if (REP_treat %in% Reps_N_exposed$REP_treat) {
-    for (ant in e.Ants){
-      #exclude dead ants
-      if (FALSE %in% ant$getValues("IsAlive")[,"values"] ) { #if FALSE doesn't appear
-        # assign DEAD flag in inferred
-        inferred[which(inferred$REP_treat==REP_treat & inferred$Rec_Name==paste0("ant_",ant$ID)),"dead"] <- "dead"
-      }#exclude dead
-        
-      if (TRUE %in% ant$getValues("Exposed")[,"values"]) {
-        exposed <-ant$ID
-        Exposed_list <- c(Exposed_list, exposed) 
-        # assign EXPOSED flag in inferred
-        inferred[which(inferred$REP_treat==REP_treat & inferred$Rec_Name==paste0("ant_",ant$ID)),"exposed"] <- "exposed"
-      } # list exposed
-    }
-    explist<- data.frame(Exposed_list,stringsAsFactors = F)
-    #Collapse
-    explist2 <- data.frame(val=paste0(explist$Exposed_list,collapse = ', '),stringsAsFactors = F)
+# Create the new column "period" using ifelse()
+inferred$PERIOD <- with(inferred, ifelse(
+  T_start_sec >= ReturnExposed_time_sec, "post",
+  ifelse(T_start_sec >= preReturn_gap_time_sec & T_start_sec < ReturnExposed_time_sec, "GAP", "pre")
+))
 
-      Reps_N_exposed[which(Reps_N_exposed$REP_treat==REP_treat) ,"N_ants"] <- explist2
-    }
+#quick visual check
+ggplot(inferred[which(inferred$REP_treat=="R9BS"),], aes(x = T_start_sec, fill = PERIOD)) +
+  geom_histogram(position = "identity", alpha = 0.5,bins=1000) +
+  geom_vline(aes(xintercept = preReturn_gap_time_sec), linetype = "dashed", color = "blue") +
+  geom_vline(aes(xintercept = ReturnExposed_time_sec), linetype = "dashed", color = "red") +
+  labs(title = "Simplified Visualization of Period Assignment",
+       x = "T_start_sec",
+       y = "Count",
+       fill = "PERIOD") +
+  theme_minimal()
 
-    for (ROW in 1:nrow(inferred)) {
-      if (inferred[ROW,"REP_treat"]==REP_treat) {
-        #add end time minus
-        inferred[ROW,"end_time"] <-  as.POSIXct(exp_end ,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
-        # inferred[ROW,"return_time"] <-  as.POSIXct( exp_end  ,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
-        #assign a new common time for analyses
-        #inferred[ROW,"time_since_start"] <-
-      }
-    }
-    rm(list=(c("exp"))) #remove experiment
-  }}
-
-#subtract end window
-inferred$end_time <- inferred$end_time - window_shift
-## force unix_time
-inferred$end_time <- as.POSIXct(inferred$end_time,  origin="1970-01-01", tz="GMT" )
-inferred$return_time <- inferred$end_time - 24*3600
-
-## WINDOW SHIFT GETS US THE APPROX TIME, ASSIGN THE FINAL RETURN TIME
-##substitute time with hand-collected return time for increased precision
-#paste the day of inferred$return_time with the time of ReturnTime_mins
-inferred$Date_only <- as.character(as.Date(inferred$return_time, format = "%Y-%m-%d"))
-inferred <- left_join(inferred, ReturnTime_mins, by = "REP_treat")
-
-
-
-inferred$return_time  <- paste(inferred$Date_only,inferred$Return.hour,"GMT")
-inferred$return_time  <- as.POSIXct(inferred$return_time,  origin="1970-01-01", tz="GMT" )
-#the hand-collected return time is the time at which the return operation is complete. As sometimes it could have taken a few minutes, subtract 5 mins to avoid loosing grooming events
-inferred$return_time  <- inferred$return_time - (60*10) #mins
-
-## add a common time to all rows
-# Negative before exposure, positive after
-inferred$time_stop_since_treat <- as.numeric(difftime(inferred$T_stop_UNIX,inferred$return_time, units = "secs"))
-
-inferred$PERIOD <- NA
-# Assign Pre and Post labels
-# The time between the nurses sampling from the nest and the return time is labeled as EXPOSURE_GAP (3h window) 
-for (ROW in 1:nrow(inferred)) {
-  #since these are times in seconds, it is ok to  have strict ">" instead of ">="
-if(inferred[ROW,"time_stop_since_treat"] > 0){ inferred[ROW,"PERIOD"] <- "post"
-}else if ( inferred[ROW,"time_stop_since_treat"] < (-3*3600) & inferred[ROW,"time_stop_since_treat"] > (-27*3600)) {  inferred[ROW,"PERIOD"] <- "pre"  } else{  inferred[ROW,"PERIOD"] <- "EXPOSURE_GAP"}
-}
-
-### Given that this operation requires the HD to be plugged in, save the output
-write.table(inferred,file=paste(WORKDIR,"/Data/inferred_groomings_ALL_withCommonStart.txt",sep=""),append=F,col.names=T,row.names=F,quote=T,sep=",")
-write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",sep=""),append=F,col.names=T,row.names=F,quote=T,sep=",")
+### save the output
+write.table(inferred,file=paste(WORKDIR,"/Data/inferred_groomings_ALL_FINAL.txt",sep=""),append=F,col.names=T,row.names=F,quote=T,sep=",")
+#write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",sep=""),append=F,col.names=T,row.names=F,quote=T,sep=",")
 }  
   
 #######################################################
 #start from here
-
-
-
 
 ##############
 ###
@@ -304,30 +315,56 @@ write.table(Reps_N_exposed,file=paste(WORKDIR,"/Data/N_ants_exposed_xREP.txt",se
 
 ###### AGGREGATE ALL VALUES FOR PRE.POST  #####
 # LOAD
-inferred <- read.table(paste(DATADIR,"/inferred_groomings_ALL_withCommonStart.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-Reps_N_exposed <- read.table(paste(METADATADIR,"/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-metadata <- read.table(paste(METADATADIR,"/Metadata_Exp1_2021.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
-
+inferred <- read.table(paste(WORKDIR,"/Data/inferred_groomings_ALL_FINAL.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+#Reps_N_exposed <- read.table(paste(METADATADIR,"/N_ants_exposed_xREP.txt",sep=""),header=T,stringsAsFactors = F, sep=",")
+metadata <- metadata[,c("REP_treat", "antID","Exposed", "IsAlive", "AntTask")]
+metadata <- metadata[which(metadata$AntTask!="queen"),]
+  
 # remove EXP_GAP data
-inferred <- inferred[which(inferred$PERIOD!="EXPOSURE_GAP"),]
+inferred <- inferred[which(inferred$PERIOD!="GAP"),]
+#remove data without zone
+inferred <- inferred[which(inferred$ant1.zones!=0),]
+inferred <- inferred[which(inferred$ant2.zones!=0),]
+# ## add a common time to all rows
+# # Negative before exposure, positive after
+inferred$time_stop_since_treat <- (inferred$T_stop_sec - inferred$ReturnExposed_time_sec)
 #add count column
 inferred$Count_byAnt <- 1
 
-#N of reps (some missing!)
+#N of reps
 table(str_sub( unique(inferred$REP_treat),-2,-1))
 
 ## expand grid on list of exposed nurses per REP that have received no grooming in the specific timespan (HAVE 1 LINE PER TREATED WORKER) 
 #add non groomed but exposed ants
+#select exposed only
+warning("in the future, modify script to have two options: file with all receivers and exposed receivers only. \nSepare the data as the expand grid will affect the groups differently")
+metadata <- metadata[which(metadata$Exposed==TRUE),]
+#rename columns for merging
 colnames(metadata)[which(names(metadata)=="antID")] <- "Rec_Name"
 metadata$Rec_Name <- paste0("ant_",metadata$Rec_Name)
+colnames(metadata)[which(names(metadata)=="Exposed")] <- "Rec_Exposed"
+colnames(metadata)[which(names(metadata)=="IsAlive")] <- "Rec_IsAlive"
+colnames(metadata)[which(names(metadata)=="AntTask")] <- "Rec_AntTask"
+
 ### Get info from metadata
 Meta <- list(inferred,metadata)
 Meta <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta)
-#Remove non-exposed receivers and dead ants
-Meta <- Meta[which(Meta$Exposed==TRUE),]
-Meta <- Meta[which(Meta$IsAlive==TRUE),]
-# Remove ants with zero observations both pre and post (is only one, as it lacks REP, PERIOD, etc it is easier to remove it)
-Meta <- Meta[which(!is.na(Meta$PERIOD)),] 
+# # Add metadata to inferred
+# # Convert data.frames to data.tables for faster processing
+# metadata_dt <- as.data.table(metadata)
+# inferred_dt <- as.data.table(inferred)
+# # Find common column names
+# common_col_names <- intersect(names(metadata_dt), names(inferred_dt))
+# # Perform fast merge using data.table
+# setkeyv(metadata_dt, common_col_names) # Set keys for metadata_dt
+# setkeyv(inferred_dt, common_col_names) # Set keys for inferred_dt
+# # Perform a faster merge using the data.table package with all.x=TRUE equivalent
+# merged_dt <- metadata_dt[inferred_dt, on = common_col_names, nomatch = 0L]
+
+#Remove dead Receivers
+warning("here only the interactions where the receiver is an exposed ant")
+Meta <- Meta[which(Meta$Rec_Exposed==TRUE),]
+Meta <- Meta[which(Meta$Rec_IsAlive==TRUE),]
 #expand grid of all possible combs of Rec_Name and period (pre-post) within group
 Meta_all_RecPer <- Meta %>%
                   group_by(REP_treat) %>%
@@ -348,24 +385,15 @@ Meta_all_combs <- Reduce(function(x, y) merge(x, y, all=TRUE), Meta_all_combs) #
 Meta_all_combs[is.na(Meta_all_combs$Act_Name),"Count_byAnt"] <- 0
 Meta_all_combs[is.na(Meta_all_combs$Act_Name),"duration"]    <- 0 #DOES THIS MAKE SENSE?
 
-#-----
-### TO FIX!!!
-#Re-add missing treatments (should be unecessary if merging works well?)
-Meta_all_combs$TREATMENT <- substr(Meta_all_combs$REP_treat,(nchar(Meta_all_combs$REP_treat)+1)-2,nchar(Meta_all_combs$REP_treat))
-#-----
-
-#drop the repeated treatment col
-Meta_all_combs <- subset(Meta_all_combs, select = -c(treatment,exposed,dead) )
-
 # OVERWRITE
 inferred <- Meta_all_combs
 
 # Rename by name
 inferred$TREATMENT <- as.factor(inferred$TREATMENT)
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BS"] <- "Large - Sham"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BP"] <- "Large - Pathogen"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SS"] <- "Small - Sham"
-levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SP"] <- "Small - Pathogen"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BS"] <- "Big Sham"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="BP"] <- "Big Pathogen"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SS"] <- "Small Sham"
+levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SP"] <- "Small Pathogen"
 
 ###### AGGREGATE VALUES FOR PRE.POST: FULL DATASET | FOR STATISTICS #####
 ### AGGREGATE TO THE LEVEL OF ANT
@@ -374,7 +402,7 @@ levels(inferred$TREATMENT)[levels(inferred$TREATMENT)=="SP"] <- "Small - Pathoge
 inferred_count_summary    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT  + REP_treat + Rec_Name, FUN=sum, na.action=na.pass, inferred)
 ## calculate mean durations for REP
 inferred_dur_summary      <- aggregate(duration ~ PERIOD + TREATMENT  + REP_treat + Rec_Name, FUN=mean, na.rm=T, na.action=na.pass, inferred)
-#sum by ant (SUM DUR MAY BE MORE INFORMATIVE AS THE GROOMING DETECTION MAY RESULT FAGMENTED)
+#sum by ant (SUM DUR MAY BE MORE INFORMATIVE AS THE GROOMING DETECTION MAY RESULT FRAGMENTED)
 inferred_SUM              <- aggregate(duration ~ PERIOD + TREATMENT  + REP_treat + Rec_Name, FUN=sum, na.rm=T, na.action=na.pass, inferred); names(inferred_SUM)[names(inferred_SUM) == 'duration'] <- 'SUM_duration'
 
 #MERGE - REP_treatments 
@@ -410,15 +438,15 @@ SE.diff <- function(var.pool, n1,n2){
 # #use the functions above to calculate the pooled SD and the N samples!
 # Counts_by_Behaviour_AllCombos1_DELTA <- Counts_by_Behaviour_AllCombos1 %>%
 #   group_by(REP_treat) %>%
-#   dplyr::summarise(Count_PostPre = Count_byAnt[match("post", PERIOD)] - Count_byAnt[match("pre", PERIOD)],
-#                    dur_PostPre = duration[match("post", PERIOD)] - duration[match("pre", PERIOD)],
-#                    SUM_dur_PostPre = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
+#   dplyr::summarise(Count_byAnt = Count_byAnt[match("post", PERIOD)] - Count_byAnt[match("pre", PERIOD)],
+#                    duration = duration[match("post", PERIOD)] - duration[match("pre", PERIOD)],
+#                    SUM_duration = SUM_duration[match("post", PERIOD)] - SUM_duration[match("pre", PERIOD)],
 #                    TREATMENT = TREATMENT
-#                    # SE_Count_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
-#                    # SE_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
-#                    # SE_SUM_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
+#                    # SE_Count_byAnt = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+#                    # SE_duration = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+#                    # SE_SUM_duration = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
 #                    # SD_Count_byAnt[match("post", PERIOD)] - SD_Count_byAnt[match("pre", PERIOD)],
-#                    # SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
+#                    # SE_duration = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
 #   )
 # 
 # Counts_by_Behaviour_AllCombos1_DELTA <- dplyr::distinct(Counts_by_Behaviour_AllCombos1_DELTA)
@@ -433,7 +461,7 @@ SE.diff <- function(var.pool, n1,n2){
 inferred_count_summ1    <- aggregate(cbind(Count_byAnt,duration,SUM_duration) ~ PERIOD + TREATMENT  + REP_treat, FUN=mean, na.action=na.pass, inferred_ByAnt)
 
 # alternative expand grid for paired columns (REP_treat and TREATMENT)
-combos1 <- unique(inferred[,c("REP_treat","TREATMENT")])
+combos1 <- unique(inferred[,c("REP_treat","TREATMENT")]); combos1 <- combos1[!is.na(combos1$TREATMENT),]
 combos2 <- unique(inferred[,"PERIOD",drop=FALSE])
 combos3 <- merge(combos1,combos2)
 Counts_by_Behaviour_AllCombos1 <- merge(inferred_count_summ1,combos3,all=TRUE)
@@ -458,6 +486,7 @@ infer_full <- Reduce(function(x, y) merge(x, y, all=TRUE), infer_full)
 infer_full[is.na(infer_full)] <- 0
 #reorder levels to fix strange behaviour in plotting
 infer_full$TREATMENT <- factor(infer_full$TREATMENT, levels = c("Big Pathogen","Big Sham","Small Pathogen","Small Sham"))
+#infer_full$TREATMENT <- factor(infer_full$TREATMENT, levels = c("Big Pathogen","Big Sham","Small Pathogen","Small Sham"))
 #reorder levels of period
 infer_full$PERIOD <- factor(infer_full$PERIOD, levels = c("pre","post"))
 
@@ -466,14 +495,14 @@ infer_full$PERIOD <- factor(infer_full$PERIOD, levels = c("pre","post"))
 #use the functions above to calculate the pooled SD and the N samples!
 infer_full_DELTA <- infer_full %>%
   group_by(TREATMENT) %>%
-  dplyr::summarise(Mean_Count_PostPre = Mean_Count_byAnt[match("post", PERIOD)] - Mean_Count_byAnt[match("pre", PERIOD)],
-                   Mean_dur_PostPre = Mean_duration[match("post", PERIOD)] - Mean_duration[match("pre", PERIOD)],
-                   Mean_SUM_dur_PostPre = Mean_SUM_duration[match("post", PERIOD)] - Mean_SUM_duration[match("pre", PERIOD)],
-                   SE_Count_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
-                   SE_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
-                   SE_SUM_dur_PostPre = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
+  dplyr::summarise(Mean_Count_byAnt = Mean_Count_byAnt[match("post", PERIOD)] - Mean_Count_byAnt[match("pre", PERIOD)],
+                   Mean_duration = Mean_duration[match("post", PERIOD)] - Mean_duration[match("pre", PERIOD)],
+                   Mean_SUM_duration = Mean_SUM_duration[match("post", PERIOD)] - Mean_SUM_duration[match("pre", PERIOD)],
+                   SE_Count_byAnt = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_Count_byAnt[match("post", PERIOD)], SD_Count_byAnt[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+                   SE_duration = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_duration[match("post", PERIOD)], SD_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)])),
+                   SE_SUM_duration = sqrt(var.pooled(N_Count_REP[match("post", PERIOD)], N_Count_REP[match("pre", PERIOD)], SD_SUM_duration[match("post", PERIOD)], SD_SUM_duration[match("pre", PERIOD)])*(1/N_Count_REP[match("post", PERIOD)] + 1/N_Count_REP[match("pre", PERIOD)]))
                    # SD_Count_byAnt[match("post", PERIOD)] - SD_Count_byAnt[match("pre", PERIOD)],
-                   # SE_dur_PostPre = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
+                   # SE_duration = SE_duration[match("post", PERIOD)] - SE_duration[match("pre", PERIOD)],
   )
 
 
@@ -481,26 +510,21 @@ infer_full_DELTA <- infer_full %>%
 ### AGGREGATE TO THE LEVEL OF ANT
 
 #time bins for plotting
-time.break <- c("h4","hour") # ,"10min"     "h24",
-tokeep <- NA
+time.break <- c("h4","hour","10min") # ,"10min"     "h24",
 
 for (TIME in time.break) {
   #clean all
-  rm(list=setdiff(ls(),c("inferred","infer_full_DELTA","Counts_by_Behaviour_AllCombos1_DELTA","Reps_N_exposed","infer_full","WORKDIR","DATADIR","TIME","time.break","tokeep",tokeep)))
+  rm(list=setdiff(ls(),c("inferred","infer_full_DELTA","Counts_by_Behaviour_AllCombos1_DELTA","Reps_N_exposed","infer_full","WORKDIR","DATADIR","TIME","time.break","tokeep","inferred_ByAnt","time_of_day",tokeep)))
   #create local copy
   inferred_bin <- inferred
   
   #add time.breaks to dataframe
-  if (TIME=="hour") {
-    inferred_bin$timespan <- inferred_bin$time_stop_since_treat/3600
-  }else if(TIME=="10min"){ inferred_bin$timespan <- inferred_bin$time_stop_since_treat/600
-  } else if (TIME=="h4") { 
-    #create interval of 4h
-    inferred_bin$timespan <- inferred_bin$time_stop_since_treat/14400
+  if (TIME=="hour")       { inferred_bin$timespan <- inferred_bin$time_stop_since_treat/3600
+  }else if(TIME=="10min") { inferred_bin$timespan <- inferred_bin$time_stop_since_treat/600
+  }else if(TIME=="h4")    { inferred_bin$timespan <- inferred_bin$time_stop_since_treat/14400 #create interval of 4h
     }
   
-  inferred_bin$timespan <- round(inferred_bin$timespan,0)
-  
+  inferred_bin$timespan <- floor(inferred_bin$timespan)
   
   #######################################
   #expand grid of all possible combs of Rec_Name and period (pre-post) within group
@@ -521,16 +545,20 @@ for (TIME in time.break) {
   #Re-add missing treatments
   Meta_all_combsH$TREATMENT <- substr(Meta_all_combsH$REP_treat,(nchar(Meta_all_combsH$REP_treat)+1)-2,nchar(Meta_all_combsH$REP_treat))
   #Re-add missing PERIODs
-  for (ROW in 1:nrow(Meta_all_combsH)) {
-    #since these are times in seconds, it is ok to  have strict ">" instead of ">="
-    if(Meta_all_combsH[ROW,"timespan"] >= 0){ Meta_all_combsH[ROW,"PERIOD"] <- "post"
-    }else if ( Meta_all_combsH[ROW,"timespan"] < 0) {  Meta_all_combsH[ROW,"PERIOD"] <- "pre" }}
+  #since these are times in seconds, it is ok to  have strict ">" instead of ">="
+  Meta_all_combsH$PERIOD <- ifelse(Meta_all_combsH$timespan >= 0, "post", "pre")
   
   if (TIME=="hour") {
     ## TEMP: assign a time of the day!
     Time_dictionary <- data.frame(timespan= -36:35, time_of_day= rep(0:23,3))
     Meta_all_combsH <- left_join(Meta_all_combsH, Time_dictionary, by = "timespan")
-  } else   if (TIME=="h4") {
+  } else if(TIME=="10min"){ 
+    timespan_10 <- -216:215; time_of_day_10 <- rep(seq(0, 24, by = 0.1666667), times = ceiling(length(timespan_10) / 144))
+    Time_dictionary <- data.frame(timespan= timespan_10, time_of_day = time_of_day_10[1:length(timespan_10)])
+    Meta_all_combsH <- left_join(Meta_all_combsH, Time_dictionary, by = "timespan")
+    #convert notation from 10mins blocks to hours
+    Meta_all_combsH$timespan <- Meta_all_combsH$timespan/6
+  } else if(TIME=="h4")   {
     Time_dictionary1 <- data.frame(timespan= c(-7:6), time_of_day= c(8, 12, 16, 20, 0, 4, 8,  12,  16,  20,  0,  4,  8, 12))
     Meta_all_combsH <- left_join(Meta_all_combsH, Time_dictionary1, by = "timespan")
   }
@@ -540,10 +568,10 @@ for (TIME in time.break) {
   
   # Rename by name
   inferred_bin$TREATMENT <- as.factor(inferred_bin$TREATMENT)
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BS"] <- "Large - Sham"
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BP"] <- "Large - Pathogen"
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SS"] <- "Small - Sham"
-  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SP"] <- "Small - Pathogen"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BS"] <- "Big Sham"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="BP"] <- "Big Pathogen"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SS"] <- "Small Sham"
+  levels(inferred_bin$TREATMENT)[levels(inferred_bin$TREATMENT)=="SP"] <- "Small Pathogen"
   ################################################
   
   ## count the number of observations by ant and get mean
@@ -611,7 +639,7 @@ for (TIME in time.break) {
   if (TIME=="h4") {
     infer_bin_h4 <- infer_bin_full
     inferred_bin_h4_ByAnt <- inferred_bin_ByAnt
-    tokeep <- c("tokeep","infer_bin_h4","inferred_bin_h4_ByAnt")
+    tokeep <- c("tokeep","infer_bin_h4","inferred_bin_h4_ByAnt",tokeep)
     
   } else if(TIME=="hour") { 
     #add break for line plots
@@ -619,17 +647,19 @@ for (TIME in time.break) {
                        N_Count_REP = NA, SD_Count_byAnt = NA, SD_duration = NA, Mean_Count_byAnt=NA, Mean_duration=NA, Mean_SUM_duration = NA, SE_Count_byAnt=NA, SE_duration=NA, SE_SUM_duration=NA )
     infer_bin_1h <- rbind(infer_bin_full,GAP)
     inferred_bin_1h_ByAnt <- inferred_bin_ByAnt # this is lacking the GAP
-    tokeep <- c("tokeep","infer_bin_1h","inferred_bin_1h_ByAnt")
+    tokeep <- c("tokeep","infer_bin_1h","inferred_bin_1h_ByAnt",tokeep)
     
   }else if(TIME=="10min") {
     #add break  for line plots
-    #redo proper breaks, it should be a repeat between -12 and -6 I guess
+    #redo proper breaks, it should be a repeat between -17 (first interval after -18 (18/6 = 3h)) and last before 0 
     #likely not needed anyway as it will be a barplot
-    GAP <- expand.grid(PERIOD= "pre", timespan=c(-2*6,-1*6),time_of_day=NA, TREATMENT=c("Small Pathogen","Small Sham","Big Pathogen","Big Sham"), 
+    GAP <- expand.grid(PERIOD= "pre", timespan=c(-18:0),time_of_day=Time_dictionary[Time_dictionary$timespan %in% c(-17:-1),"time_of_day"], TREATMENT=c("Small Pathogen","Small Sham","Big Pathogen","Big Sham"), 
                        N_Count_REP = NA, SD_Count_byAnt = NA, SD_duration = NA, Mean_Count_byAnt=NA, Mean_duration=NA, Mean_SUM_duration = NA, SE_Count_byAnt=NA, SE_duration=NA, SE_SUM_duration=NA )
+    #transforming GAP in new notation
+    GAP$timespan <- (GAP$timespan/6) + 0.1666667; GAP <- GAP[which(GAP$timespan<0),]
     infer_bin_10min<- rbind(infer_bin_full,GAP)
     inferred_bin_10min_ByAnt <- inferred_bin_ByAnt
-    tokeep <- c("tokeep","infer_bin_10min","inferred_bin_10min_ByAnt")
+    tokeep <- c("tokeep","infer_bin_10min","inferred_bin_10min_ByAnt",tokeep)
   }
   
   
@@ -638,9 +668,11 @@ for (TIME in time.break) {
 #reorder levels
 infer_bin_1h$PERIOD <- factor(infer_bin_1h$PERIOD, levels = c("pre","post"))
 infer_bin_h4$PERIOD <- factor(infer_bin_h4$PERIOD, levels = c("pre","post"))
+infer_bin_10min$PERIOD <- factor(infer_bin_10min$PERIOD, levels = c("pre","post"))
+
 inferred_bin_1h_ByAnt$PERIOD <- factor(inferred_bin_1h_ByAnt$PERIOD, levels = c("pre","post"))
 inferred_bin_h4_ByAnt$PERIOD <- factor(inferred_bin_h4_ByAnt$PERIOD, levels = c("pre","post"))
-
+inferred_bin_10min_ByAnt$PERIOD <- factor(inferred_bin_10min_ByAnt$PERIOD, levels = c("pre","post"))
 
 #TRIMMED DATA- 4h by ANT
 inferred_bin_h4_ByAnt_trim <- inferred_bin_h4_ByAnt[which(inferred_bin_h4_ByAnt$time_of_day==12),]
@@ -650,10 +682,20 @@ infer_bin_1h_trim <- infer_bin_1h[which(infer_bin_1h$time_of_day>=12 & infer_bin
 #remove anything after timespan = 4 to exclude next day!
 infer_bin_1h_trim <- infer_bin_1h_trim[which(infer_bin_1h_trim$timespan <=4),]
 
+#make clear that those are hours
+text.add <-":00"
+infer_bin_1h_trim$time_of_day <- paste0(infer_bin_1h_trim$time_of_day,text.add)
+
 #TRIMMED DATA- 4h by REP
 infer_bin_h4_trim <- infer_bin_h4[which(infer_bin_h4$time_of_day==12),]
 #remove anything after timespan = 4 to exclude next day!
 infer_bin_h4_trim <- infer_bin_h4_trim[which(infer_bin_h4_trim$timespan <=1),]
+
+
+
+###### DATA BY REP (mean on ants)
+inferred_bin_1h_ByRep <- aggregate(cbind(Count_byAnt,duration,SUM_duration)  ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat,    FUN=mean,      na.rm=T, na.action=na.pass, inferred_bin_1h_ByAnt) 
+inferred_bin_10min_ByRep <- aggregate(cbind(Count_byAnt,duration,SUM_duration)  ~ PERIOD + TREATMENT + time_of_day + timespan + REP_treat,    FUN=mean,      na.rm=T, na.action=na.pass, inferred_bin_10min_ByAnt) 
 
 
 #####################################################################################
@@ -668,21 +710,320 @@ inferred_ByAnt$Rec_Name<- as.factor(inferred_ByAnt$Rec_Name)
 # Select variables for analysis
 numeric_variable_list  <- names(inferred_ByAnt) [ which (!names(inferred_ByAnt) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
 
+################################################
+########STATS INHERITED FROM RACHAEL ###########
+###############################################
+
+#   m1 <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
+
+#move up
+library(performance)
+library(remotes)
+library(remotes)
+#install_version("MuMIn", "1.46.0")
+library(MuMIn)
+library(multcomp)
+library(multcompView)
+
+
+
+
+
+inferred_bin_1h_ByRep$REP_treat <- as.factor(inferred_bin_1h_ByRep$REP_treat)
+inferred_bin_10min_ByRep$REP_treat <- as.factor(inferred_bin_10min_ByRep$REP_treat)
+
+
+#### FIT GAMMM ########
+#GAM can capture complex relationships by fitting a non-linear smooth function through the data, while controlling how wiggly the smooth can get
+
+## should I use discrete time windows?                        currently: 1h bins
+## should I do it on means by ant or with individual ants?    currently: means by ant
+## given that the pre-post effect is given, I did subset for post only
+
+## some guidance:
+## https://stats.stackexchange.com/questions/403772/different-ways-of-modelling-interactions-between-continuous-and-categorical-pred
+## http://r.qcbs.ca/Workshops/workshop08/workshop08-en/workshop08-en.html#41
+
+############################# 1h blocks
+## test duration / post exposure
+inferred_bin_1h_ByRep_post <- inferred_bin_1h_ByRep[which(inferred_bin_1h_ByRep$PERIOD=="post"),]
+hist(sqrt(inferred_bin_1h_ByRep_post$duration), breaks =100)
+
+VAR <- "duration"
+
+#transform the var before to avoid issues with model terms extraction
+# m1 models the observations as coming from either a smooth timespan effect depending on which TREATMENT the observation comes from (the TREATMENT parametric term just sets the mean density for each species and is needed as discussed above), plus a random intercept. 
+# Taken together, the curves for individual colonies REP arise from shifted versions of the TREATMENT specific curves, with the amount of shift given by the random intercept. This model assumes that all colonies REP have the same shape of smooth as given by the smooth for the particular TREATMENT that colonies REP comes from.
+# k is the number of basis functions, aka the maximum possible degrees of freedom allowed for a smooth term in the model (set as high as possible)
+#  s(x1, by = x2) is the interaction term for smoothed var * categorical var
+m1 <- mgcv::gam(Box_Cox(inferred_bin_1h_ByRep_post[,VAR]) ~ TREATMENT + s(timespan,m = 1, by = TREATMENT, k = 25) + s(REP_treat, bs = 're'),
+                data =  inferred_bin_1h_ByRep_post, method = 'REML')
+# version without interaction | can't be trusted, the plot fitted values shows altered relationships
+m2 <- mgcv::gam(sqrt(duration) ~ TREATMENT +  s(timespan) + s(REP_treat, bs = 're'),
+                data =  inferred_bin_1h_ByRep_post, method = 'REML')
+#version with an added random effect | can't be trusted, the plot fitted values shows altered relationships
+#global or average smooth effect of x on y (the s(x) term) plus a smooth difference term (the second s(x, by = f, m = 1) term). As the penalty here is on the first derivative (m = 1) for this difference smoother, it is penalising departure from a flat line, which when added to the global or average smooth term (s(x)) reflects a deviation from the global or average effect.
+m3 <- gam(sqrt(duration) ~ TREATMENT + s(timespan) + s(timespan, by = TREATMENT, m = 1, k = 25) + s(REP_treat, bs = 're'),
+          data = inferred_bin_1h_ByRep_post, method = 'REML')
+
+
+
+# Plot the smooth terms: understand the effect of the timespan variable on the response.
+plot(m1, pages = 1, shade = TRUE, shade.col = "lightblue")
+# Plot residuals vs. fitted values: the residuals should be randomly scattered around zero
+plot(fitted(m1),  residuals(m1), xlab = "Fitted values", ylab = "Residuals")
+abline(h = 0, col = "red")
+#QQ-plot:normality of the residuals.
+qqnorm(resid(m1))
+qqline(resid(m1))
+# Skewness-kurtosis plot
+descdist(resid(m1))
+# estimated density
+# Plot the estimated density
+plot(density(inferred_bin_1h_ByRep_post$duration), main = "Estimated Density", xlab = "Duration", ylab = "Density")
+
+#plot fitted values and their confidence intervals
+plotme<-ggemmeans(m1,terms=c("timespan","TREATMENT"),rg.limit=26000)
+plot(plotme,colors= myColors_Treatment) + labs(title="predicted values, period POST, 1h aggregation", x="timespan (hours)",y=paste("transformed",VAR)) 
+summary(m1)
+
+
+
+#########################################################
+################# 10min blocks ##########################
+
+## test duration / post exposure
+inferred_bin_10min_ByRep_post <- inferred_bin_10min_ByRep[which(inferred_bin_10min_ByRep$PERIOD=="post"),]
+hist(Box_Cox(inferred_bin_10min_ByRep_post$duration), breaks =100)
+
+#mod_VAR_list <- list()
+
+for (VAR in colnames(inferred_bin_10min_ByRep_post)){
+  if (VAR %in% numeric_variable_list) {
+    
+    print( ggplot(inferred_bin_10min_ByRep_post, aes(x = (inferred_bin_10min_ByRep_post[,VAR]))) +
+             geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT)  +
+             xlab(VAR) ) 
+    
+    #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
+    print(paste(VAR,"######################"),sep=" ")
+
+  
+    
+    
+    # m1 models the observations as coming from either a smooth timespan effect depending on which TREATMENT the observation comes from (the TREATMENT parametric term just sets the mean density for each species and is needed as discussed above), plus a random intercept. 
+    # Taken together, the curves for individual colonies REP arise from shifted versions of the TREATMENT specific curves, with the amount of shift given by the random intercept. This model assumes that all colonies REP have the same shape of smooth as given by the smooth for the particular TREATMENT that colonies REP comes from.
+    # k is the number of basis functions, aka the maximum possible degrees of freedom allowed for a smooth term in the model (set as high as possible)
+    #  s(x1, by = x2) is the interaction term for smoothed var * categorical var
+    # m = 1 penalising departure from straight line
+    m1 <- mgcv::gam(Box_Cox(inferred_bin_10min_ByRep_post[,VAR]) ~ TREATMENT + s(timespan,m = 1, by = TREATMENT, k = 30) + s(REP_treat, bs = 're'),
+                    data =  inferred_bin_10min_ByRep_post, method = 'REML')
+    # # m = 2 penalising departure from a straight line with constant slope
+    # m2 <- mgcv::gam(Box_Cox(VAR) ~ TREATMENT + s(timespan, m = 2, by = TREATMENT, k = 30) + s(REP_treat, bs = 're'),
+    #                 data =  inferred_bin_10min_ByRep_post, method = 'REML')
+    # #version with an added random effect | can it be trusted?
+    # #global or average smooth effect of x on y (the s(x) term) plus a smooth difference term (the second s(x, by = f, m = 1) term). As the penalty here is on the first derivative (m = 1) for this difference smoother, it is penalising departure from a flat line, which when added to the global or average smooth term (s(x)) reflects a deviation from the global or average effect.
+    # m3 <- gam(Box_Cox(VAR) ~ TREATMENT + s(timespan) + s(timespan, by = TREATMENT, k = 30) + s(REP_treat, bs = 're'),
+    #           data = inferred_bin_10min_ByRep_post, method = 'REML')
+    # 
+    # AIC(m1,m2,m3)
+    
+    # Plot the smooth terms: understand the effect of the timespan variable on the response.
+    plot(m1, pages = 1, shade = TRUE, shade.col = "lightblue")
+    # Plot residuals vs. fitted values: the residuals should be randomly scattered around zero
+    plot(fitted(m1),  residuals(m1), xlab = "Fitted values", ylab = "Residuals")
+    abline(h = 0, col = "red")
+    #QQ-plot:normality of the residuals.
+    qqnorm(resid(m1))
+    qqline(resid(m1))
+    # Skewness-kurtosis plot
+    descdist(resid(m1))
+    # estimated density
+    # Plot the estimated density
+    plot(density(inferred_bin_10min_ByRep_post[,VAR]), main = "Estimated Density", xlab = VAR, ylab = "Density")
+    
+    #plot fitted values and their confidence intervals
+    plotme<-ggemmeans(m1,terms=c("timespan","TREATMENT"),rg.limit=26000)
+    plot(plotme,colors= myColors_Treatment) + labs(title="predicted values, period POST, 10min aggregation", x="timespan (hours)",y=paste("transformed",VAR)) 
+    summary(m1)
+    
+    #  Chi-square test to compare lm.1 and lm.2 (i.e. it tests whether reduction in the residual sum of squares are statistically significant or not). Note that this makes sense only if lm.1 and lm.2 are nested models. 
+    anova(m1,m2, m3, test = "Chisq")
+    # the more complex model is not significantly better at encapsulating data variation
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    # Give the rows meaningful names:
+    mod_VAR_list <- c(mod_VAR_list,list(lt))
+    names(mod_VAR_list)[length(mod_VAR_list)] <- paste(summary(m1)$call$data,VAR,sep = "-")
+    
+  }}
+
+
+
+# emmeans_res <- emmeans(m1, ~ timespan + TREATMENT,type="response")
+# # Plot the results
+# ggplot(as.data.frame(emmeans_res), aes(x = TREATMENT, y = response, color = timespan)) +
+#   geom_point() +
+#   geom_errorbar(aes(ymin = response - SE, ymax = response + SE), width = 0.2) +
+#   labs(title = "Emmeans plot on the original response scale") +
+#   theme_bw()
+
+
+
+
+
+# Calculate the estimated marginal means
+emm <- emmeans(m1, specs = ~ TREATMENT | cut(timespan, breaks = c(0, 5, max(timespan))), at = list(timespan = c(2.5, 7.5)))
+
+# Perform pairwise comparisons
+pairwise_comparisons <- pairs(emm)
+summary(pairwise_comparisons, adjust = "tukey")
+
+
+# Plot the pairwise comparisons
+plot(pairwise_comparisons, by = "timespan", intervals = TRUE, adjust = "tukey")
+
+
+
+
+# # Fit the GAMM
+# gamm_model <- gamm4((log10(rel_conc_imputed + GENE_cost)) ~ Treatment, random = ~ (1 | Colony), data = GENE_data)
+# # Extract residuals
+# gamm_residuals <- resid(gamm_model$gam, type = "pearson")
+# # Plot residuals vs. fitted values
+# plot(fitted(gamm_model$gam), gamm_residuals, xlab = "Fitted values", ylab = "Pearson residuals")
+# abline(h = 0, lty = 2, col = "red")
+# # QQ plot of residuals
+# qqnorm(gamm_residuals)
+# qqline(gamm_residuals)
+# # Summary of the model
+# summary(gamm_model$gam)
+# # Summary of the random effects
+# summary(gamm_model$lme)
+# # Check residuals for the GAMM model
+# plot(gamm_model$lme, resid(., type = "pearson"), xlab = "Fitted values", ylab = "Pearson residuals")
+# abline(h = 0, lty = 2, col = "red")
+# qqnorm(resid(gamm_model$lme, type = "pearson"))
+# qqline(resid(gamm_model$lme, type = "pearson"))
+
+
+
+# ########################## count data
+# model_focal <- glmer(Count_byAnt ~ PERIOD*TREATMENT  + (1|REP_treat/Rec_Name),
+#                      family="poisson", data=inferred_ByAnt)
+# check_zeroinflation(model_focal)
+# #check_overdispersion(model_focal)
+# Anova(model_focal)
+# report(model_focal)
+# hist(residuals(model_focal))
+# r.squaredGLMM(model_focal)
+# 
+# 
+# # POST-HOCs for TREATMENT pre-post
+# print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
+# posthoc_Treatment <- emmeans(model_focal, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+# posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
+# print(posthoc_Treatment_summary)
+# 
+# 
+# # POST-HOCs for PERIOD by treatment
+# print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
+# posthoc_Period <- emmeans(model_focal, specs = pairwise ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+# posthoc_Period_summary<-summary(posthoc_Period$contrasts)
+# print(posthoc_Period_summary)
+# 
+# par(mfrow=c(1,2))
+# plot(model_focal)
+# qqnorm(residuals(model_focal))
+# qqline(residuals(model_focal))
+# hist(residuals(model_focal))
+# 
+# 
+# # add letters to each mean
+# model_means_cld <- cld(object = posthoc_Period,
+#                        adjust = "Tukey",
+#                        Letters = letters,
+#                        alpha = 0.05)
+# 
+# # show output
+# model_means_cld
+
+# #interaction significant
+# model_focal_interac <- glmer(Count_byAnt ~ interac_size_treat  + (1|REP_treat/Rec_Name), family="poisson",
+#                              data=inferred_ByAnt)
+# post_hoc_focal_interac_tukey<- summary(glht(model_focal_interac, linfct=mcp(interac_size_treat="Tukey")), test=adjusted("BH"))
+# post_hoc_focal_interac <- summary(glht(model_focal_interac, linfct=matrix_contrasts), test=adjusted("BH"))
+# 
+# print(cld(post_hoc_focal_interac_tukey))
+##not matching graphs
+# 
+# ###nestmate poisson
+# model_nestmate <- glmer(Count_byAnt ~ PERIOD*TREATMENT  + (1|REP_treat/Rec_Name) + (1|rep_set) + (1|Petri_dish),
+#                         family="poisson", data=inferred_ByAnt[which(inferred_ByAnt$ant_status=="NESTMATE"),])
+# check_zeroinflation(model_nestmate)
+# check_overdispersion(model_nestmate)
+# Anova(model_nestmate)
+# # hist(residuals(model_nestmate))
+# # r.squaredGLMM(model_nestmate)
+# 
+# #interaction non significant
+# model_nestmate_ni <- glmer(Count_byAnt ~ PERIOD + TREATMENT  + (1|REP_treat/Rec_Name) + (1|rep_set) + (1|Petri_dish),
+#                            family="poisson", data=inferred_ByAnt[which(inferred_ByAnt$ant_status=="NESTMATE") ,])
+# Anova(model_nestmate_ni)
+# 
+# post_hoc_nestmate_treat<- summary(glht(model_nestmate_ni, linfct=mcp(TREATMENT="Tukey")), test=adjusted("BH"))
+# print(cld(post_hoc_nestmate_treat))
+# 
+# post_hoc_nestmate_group<- summary(glht(model_nestmate_ni, linfct=mcp(PERIOD="Tukey")), test=adjusted("BH"))
+# print(cld(post_hoc_nestmate_group))
+
+
+###############################################
+###############################################
+###############################################
+
+
+
+
 
 ###### VALUES FOR PRE.POST: FULL DATASET #####
 ### TO THE LEVEL OF ANT
+
+mod_VAR_list <- list()
 
 for (VAR in colnames(inferred_ByAnt)){
   if (VAR %in% numeric_variable_list) {
     
     print( ggplot(inferred_ByAnt, aes(x = sqrt(inferred_ByAnt[,VAR]))) +
       geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT)  +
-     xlab(VAR) )
+     xlab(VAR) ) 
    
    #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
    print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
    #  + (1|time_of_day) is non relevant for both trimmed 4h blocks and full time
    m1 <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
+   output_lmer(m1)
+   
+   
+   # Create the pairwise comparisons of treatments and ant status:
+   contrasts <- emmeans(m1, pairwise ~ PERIOD * TREATMENT, adjust = "tukey")
+   lt <- as.data.frame(cld(contrasts, Letters = letters, decreasing = TRUE))
+   # Give the rows meaningful names:
+   mod_VAR_list <- c(mod_VAR_list,list(lt))
+   names(mod_VAR_list)[length(mod_VAR_list)] <- paste(summary(m1)$call$data,VAR,sep = "-")
+
+   warning("RESIDS ARE ALL GOOD BUT POSTHOCS ARE ALWAYS NON SIG FOR THE INTERACTION. ASSIGN LETTERS AS IN IMMUNE GENES STUFF EVENTUALLY
+")
+   
+   
+   
    
    # random effect tobit model
    # #https://stats.stackexchange.com/questions/544652/how-to-write-a-random-effect-in-tobit-models-in-r-using-the-censreg-package
@@ -697,28 +1038,24 @@ for (VAR in colnames(inferred_ByAnt)){
    #            zi_fixed = ~ PERIOD) #, zi_random = ~ 1|REP_treat)
    # 
    #summary(m <- VGAM::vglm(inferred_ByAnt[,VAR] ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), tobit(Lower = 0), data = inferred_ByAnt))
+
+   # # POST-HOCs for TREATMENT pre-post
+   # print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
+   # posthoc_Treatment <- emmeans(m1, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+   # posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
+   # print(posthoc_Treatment_summary)
+   # 
+   # # POST-HOCs for PERIOD by treatment
+   # print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
+   # posthoc_Period <- emmeans(m1, specs = pairwise ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+   # posthoc_Period_summary<-summary(posthoc_Period$contrasts)
+   # print(posthoc_Period_summary)
    
-   print(paste("###################### TEST NORMALITY OF",VAR," RESIDUALS ######################"),sep=" ")
-   print(summary(m1))
-   test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
-   
-   # POST-HOCs for TREATMENT pre-post
-   print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
-   posthoc_Treatment <- emmeans(m1, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-   posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
-   print(posthoc_Treatment_summary)
-   
-   # POST-HOCs for PERIOD by treatment
-   print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
-   posthoc_Period <- emmeans(m1, specs = pairwise ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-   posthoc_Period_summary<-summary(posthoc_Period$contrasts)
-   print(posthoc_Period_summary)
-   
-   par(mfrow=c(1,2))
-   plot(m1)
-   qqnorm(residuals(m1))
-   qqline(residuals(m1))
-   hist(residuals(m1))
+   # par(mfrow=c(1,2))
+   # plot(m1)
+   # qqnorm(residuals(m1))
+   # qqline(residuals(m1))
+   # hist(residuals(m1))
    #anova(m1)
 }}
 
@@ -779,46 +1116,7 @@ for (VAR in colnames(inferred_bin_h4_ByAnt_trim)){
 
 
 
-# - [ ]  on full data (and then on deltas)
-# - [ ]  add missing reps!
-
-
-
-
-
-
-############################################################################################
-
-# FULL PERIOD DELTA (POST-PRE)
-# STATISTICS ON COUNTS 
-
-
-
-
-
-#premutation test (SET ASIDE, DONE ON SUMMED UP DATA AND NOT PER ANT DATA!) #########################
-
-#the easy way
-#all contrasts
-summary(lmp(Count_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
-summary(lmp(dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
-summary(lmp(SUM_dur_PostPre~TREATMENT,data=Counts_by_Behaviour_AllCombos1_DELTA))
-
-#pairs of same size
-
-DELTA_small <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Small", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
-DELTA_big   <- Counts_by_Behaviour_AllCombos1_DELTA[grep("Big", Counts_by_Behaviour_AllCombos1_DELTA$TREATMENT), ]
-
-#small
-summary(lmp(Count_PostPre~TREATMENT,data=DELTA_small))
-summary(lmp(dur_PostPre~TREATMENT,data=DELTA_small))
-summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_small))
-
-#big
-summary(lmp(Count_PostPre~TREATMENT,data=DELTA_big))
-summary(lmp(dur_PostPre~TREATMENT,data=DELTA_big))
-summary(lmp(SUM_dur_PostPre~TREATMENT,data=DELTA_big))
-
+# - [ ]  on full data
 
 
 #####################################################################################
@@ -836,163 +1134,134 @@ Groom_location_MEAN    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + ant1.zone
 Groom_location_SE    <- aggregate(Count_byAnt ~ PERIOD + TREATMENT + ant1.zones , FUN=std.error, na.rm=T, na.action=na.pass, Groom_location) ; colnames(Groom_location_SE) [match("Count_byAnt",colnames(Groom_location_SE))] <- "SD_Count"
 ##JOIN
 Groom_location    <-  plyr::join(x=Groom_location_MEAN, y=Groom_location_SE, type = "full", match = "all")
+Groom_location[is.na(Groom_location$SD_Count),"SD_Count"] <- 0
 ### Grooming Location
-ggplot(Groom_location, aes(x=TREATMENT, y=Count_byAnt, fill= PERIOD))+
+Groom_location_plot <- ggplot(Groom_location, aes(x=TREATMENT, y=Count_byAnt, fill= PERIOD))+
   #geom_bar(stat='identity',position = position_dodge())+
   geom_errorbar( aes(x=TREATMENT,ymin=Count_byAnt-SD_Count, ymax=Count_byAnt+SD_Count),position=position_dodge2(width=0.9, preserve = "single"))+
   geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
   facet_wrap(~ant1.zones) +
   labs(title= "Grooming Location",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate")), y = "Mean Freq by ant")+
   STYLE_NOVIR
-
-
-
-
-############################################################
-############################################################
-############################################################
-#####  BARPLOTS FOR PRE-POST ## FULL PERIOD
-
-## MEAN FREQUENCY
-ggplot(infer_full, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.8, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
-  #facet_wrap(~ PERIOD) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate (full period) ")), y = "Mean Freq by ant")
-
-## MEAN FREQUENCY -VERSION FOR POSTER
-ggplot(infer_full, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.8, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
-  #facet_wrap(~ PERIOD) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  scale_x_discrete(labels = c("pre-exposure", "post-exposure")) +
-  guides(fill=guide_legend(title="Colony - treatment")) +
-  labs( y = "Mean freq. of care-giving\nevents received by ant", x="") +
-  coord_cartesian(ylim = c(0, max(infer_full$Mean_Count_byAnt)+5)) 
-
-
-
-
-## MEAN DURATION
-ggplot(infer_full, aes(x=PERIOD, y=Mean_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_duration-SE_duration, ymax=Mean_duration+SE_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate (full period)")), y = "Mean duration (s) by ant")
-
-## TOTAL DURATION
-ggplot(infer_full, aes(x=PERIOD, y=Mean_SUM_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_SUM_duration-SE_SUM_duration, ymax=Mean_SUM_duration+SE_SUM_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "SE by replicate (full period)")), y = "Total duration (s) by ant")
+#save plot
+SavePrint_plot(Groom_location_plot,DATADIR)
 
 ############################################################
 ############################################################
 ############################################################
+#####  BARPLOTS FOR PRE-POST #####
 
-############################################################
-#####  BARPLOTS FOR 4H BINS ##
-
-## MEAN FREQUENCY
-
-ggplot(infer_bin_h4_trim, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE +
-  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate in 4h BLOCK (since 12:00)")), y = "Mean Freq by ant")
-
-
-## MEAN DURATION
-ggplot(infer_bin_h4_trim, aes(x=PERIOD, y=Mean_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_duration-SE_duration, ymax=Mean_duration+SE_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate in 4h BLOCK (since 12:00)")), y = "Mean duration (s) by ant")
-
-
-## TOTAL DURATION
-ggplot(infer_bin_h4_trim, aes(x=PERIOD, y=Mean_SUM_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_SUM_duration-SE_SUM_duration, ymax=Mean_SUM_duration+SE_SUM_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  STYLE +
-  #geom_text("",line= 5) +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "SD by replicate in 4h BLOCK (since 12:00)")), y = "Total duration (s) by ant")
-
-
-
-############################################################
-#####  BARPLOTS FOR 1H BINS ##
-
-## MEAN FREQUENCY
-#make clear that those are hours
-text.add <-":00"
-infer_bin_1h_trim$time_of_day <- paste0(infer_bin_1h_trim$time_of_day,text.add)
-
-ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  labs(title= "Frequency of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate per HOUR")), y = "Mean Freq by ant")
-
-
-## MEAN DURATION
-ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=Mean_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_duration-SE_duration, ymax=Mean_duration+SE_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "SE by replicate per HOUR")), y = "Mean duration (s) by ant")
-
-
-## TOTAL DURATION
-ggplot(infer_bin_1h_trim, aes(x=PERIOD, y=Mean_SUM_duration, fill= TREATMENT))+
-  geom_errorbar( aes(x=PERIOD,ymin=Mean_SUM_duration-SE_SUM_duration, ymax=Mean_SUM_duration+SE_SUM_duration),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  #geom_text("",line= 5) +
-  labs(title= "Duration of Grooming in Sham and Pathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "SD by individual per HOUR")), y = "Total duration (s) by ant")
-
-
-
-############################################################
-#####  BARPLOTS FOR DELTA POST-PRE ##
-
-ggplot(infer_full_DELTA, aes(x=TREATMENT, y=Mean_Count_PostPre, fill= TREATMENT))+
-  geom_errorbar( aes(x=TREATMENT,ymin=Mean_Count_PostPre-SE_Count_PostPre, ymax=Mean_Count_PostPre+SE_Count_PostPre),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank())+
-  labs(title= "Frequency of Grooming in Sham and \nPathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "pooled SE by replicate (full period)")), y = (paste("\u0394", "mean POST treatment relative to PRE")))
+# Create a list of variable suffixes
+suffixes <- c("Count_byAnt", "duration", "SUM_duration")
+# Loop through the variables and create plots
+for (suffix in suffixes) {
+  MEAN <- paste0("Mean_", suffix)
+  SE <- paste0("SE_", suffix)
+  print(paste0("plotting and saving ",suffix))
+  #### FULL PERIOD
+  ## MEAN FREQUENCY,  MEAN DURATION & TOTAL DURATION
+  plot_N <- paste0(MEAN, "_plot")
   
+  assign(plot_N,
+         ggplot(infer_full, aes_string(x = "PERIOD", y = MEAN, fill = "TREATMENT")) +
+    geom_errorbar(aes_string(ymin = paste0(MEAN,"-",SE), ymax = paste0(MEAN,"+",SE)),
+                  position = position_dodge2(width = 0.8, preserve = "single")) +
+    geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
+    STYLE +
+    labs(title = "Grooming in Sham and Pathogen\ntreated colonies",
+         subtitle = paste("Mean",  "\u00b1", "SE by replicate (full period) "),
+         y = paste("Mean", suffix,"(sec) by ant",sep = " ")))
+  
+  #save plot
+  SavePrint_plot(plot_obj = get(plot_N), 
+                 plot_name= plot_N, 
+                 dataset_name=deparse(substitute(infer_full)), 
+                 save_dir = DATADIR)
+  
+  #### 4H BINS
+  ## MEAN FREQUENCY,  MEAN DURATION & TOTAL DURATION
+  if (exists(deparse(substitute(infer_bin_h4_trim)))) {
+  plot_N_4H <- paste0(MEAN, "_plot")
+  
+  assign(plot_N_4H,
+         ggplot(infer_bin_h4_trim, aes_string(x = "PERIOD", y = MEAN, fill = "TREATMENT")) +
+           geom_errorbar(aes_string(ymin = paste0(MEAN,"-",SE), ymax = paste0(MEAN,"+",SE)),
+                         position = position_dodge2(width = 0.8, preserve = "single")) +
+           geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
+           STYLE +
+           labs(title = "Grooming in Sham and Pathogen\ntreated colonies",
+                subtitle = paste("Mean",  "\u00b1", "SE by replicate in 4h BLOCK (since 12:00)"),
+                y = paste("Mean", suffix,"(sec) by ant",sep = " ")))
+  #save plot
+  SavePrint_plot(plot_obj = get(plot_N_4H), 
+                 plot_name= plot_N_4H, 
+                 dataset_name=deparse(substitute(infer_bin_h4_trim)), 
+                 save_dir = DATADIR)
+  }
+
+  #### 1H BINS
+  ## MEAN FREQUENCY,  MEAN DURATION & TOTAL DURATION
+  if (exists(deparse(substitute(infer_bin_h4_trim)))) {
+    plot_N_1H <- paste0(MEAN, "_plot")
+    
+    assign(plot_N_1H,
+           ggplot(infer_bin_1h_trim, aes_string(x = "PERIOD", y = MEAN, fill = "TREATMENT")) +
+             geom_errorbar(aes_string(ymin = paste0(MEAN,"-",SE), ymax = paste0(MEAN,"+",SE)),
+                           position = position_dodge2(width = 0.8, preserve = "single")) +
+             geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
+             facet_wrap(~ time_of_day) +
+             STYLE +
+             labs(title = "Grooming in Sham and Pathogen\ntreated colonies",
+                  subtitle = paste("Mean",  "\u00b1", "SE by replicate per HOUR"),
+                  y = paste("Mean", suffix,"(sec) by ant",sep = " ")))
+    #save plot
+    SavePrint_plot(plot_obj = get(plot_N_1H), 
+                   plot_name= plot_N_1H, 
+                   dataset_name=deparse(substitute(infer_bin_1h_trim)), 
+                   save_dir = DATADIR)
+  }
+
+  
+  #### DELTA POST PRE
+  ## MEAN FREQUENCY,  MEAN DURATION & TOTAL DURATION
+  if (exists(deparse(substitute(infer_full_DELTA)))) {
+    plot_N_DELTA <- paste0(MEAN, "_plot")
+    
+    assign(plot_N_DELTA,
+           ggplot(infer_full_DELTA, aes_string(x = "TREATMENT", y = MEAN, fill = "TREATMENT")) +
+             geom_errorbar(aes_string(ymin = paste0(MEAN,"-",SE), ymax = paste0(MEAN,"+",SE)),
+                           position = position_dodge2(width = 0.8, preserve = "single")) +
+             geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
+             STYLE +
+             labs(title = "Grooming in Sham and Pathogen\ntreated colonies",
+                  subtitle = paste("Mean",  "\u00b1", "pooled SE by replicate (full period)"),
+                  y = paste("\u0394", "mean", suffix ,"\nPOST treatment relative to PRE") ))
+    
+    #save plot
+    SavePrint_plot(plot_obj = get(plot_N_DELTA), 
+                   plot_name= plot_N_DELTA, 
+                   dataset_name=deparse(substitute(infer_full_DELTA)), 
+                   save_dir = DATADIR)
+    
+  }
+  }
+
+#SavePrint_plot(plot_obj = Mean_dur_plot, plot_name= deparse(substitute(Mean_dur_plot)),save_dir = DATADIR)
 
 
-ggplot(infer_full_DELTA, aes(x=TREATMENT, y=Mean_dur_PostPre, fill= TREATMENT))+
-  geom_errorbar( aes(x=TREATMENT,ymin=Mean_dur_PostPre-SE_dur_PostPre, ymax=Mean_dur_PostPre+SE_dur_PostPre),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank())+
-  labs(title= "Duration of Grooming in Sham and \nPathogen treated colonies",subtitle= expression(paste("Mean", phantom(.)%+-%phantom(.), "pooled SE by replicate (full period)")), y = (paste("\u0394", "mean POST treatment relative to PRE")))
-
-
-
-ggplot(infer_full_DELTA, aes(x=TREATMENT, y=Mean_SUM_dur_PostPre, fill= TREATMENT))+
-  geom_errorbar( aes(x=TREATMENT,ymin=Mean_SUM_dur_PostPre-SE_SUM_dur_PostPre, ymax=Mean_SUM_dur_PostPre+SE_SUM_dur_PostPre),position=position_dodge2(width=0.9, preserve = "single"))+
-  geom_col(position = position_dodge2(width = 0.9, preserve = "single")) +
-  #facet_wrap(~ time_of_day) + #, labeller = as_labeller(time_of_day,text.add)
-  STYLE +
-  theme(axis.text.x=element_blank(),axis.ticks.x=element_blank())+
-  labs(title= "Duration of Grooming in Sham and \nPathogen treated colonies",subtitle= expression(paste("Total", phantom(.)%+-%phantom(.), "pooled SE by replicate (full period)")), y = (paste("\u0394", "mean POST treatment relative to PRE")))
-
-
+# pdf("Groom_plot_OldData.pdf", width=5.1, height=2.5)
+# ## MEAN FREQUENCY -VERSION FOR POSTER
+# ggplot(infer_full, aes(x=PERIOD, y=Mean_Count_byAnt, fill= TREATMENT))+
+#   geom_errorbar( aes(x=PERIOD,ymin=Mean_Count_byAnt-SE_Count_byAnt, ymax=Mean_Count_byAnt+SE_Count_byAnt),position=position_dodge2(width=0.8, preserve = "single"))+
+#   geom_col(position = position_dodge2(width = 0.8, preserve = "single")) +
+#   #facet_wrap(~ PERIOD) + #, labeller = as_labeller(time_of_day,text.add)
+#   STYLE +
+#   #theme(legend.position="bottom")+
+#   scale_x_discrete(labels = c("pre-exposure", "post-exposure")) +
+#   guides(fill=guide_legend(title="Colony - treatment")) +
+#   labs( y = "Mean freq. of care-giving\nevents received by ant", x="") +
+#   coord_cartesian(ylim = c(0, max(infer_full$Mean_Count_byAnt)+5)) 
+# dev.off()
 
 
 ############################################################
