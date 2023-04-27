@@ -1,7 +1,7 @@
 ########################################################################
 ##########  ADRIANO EXP1: ANALYSIS AND STYLING FUNCTIONS ###############
 
-
+require(report)
 
 ########## STATS FUNCTIONS ###############
 
@@ -33,12 +33,15 @@ output_lmer <- function(model) {
   print(Anova(model))
   print("------------RSQUARED------------")
   print(r.squaredGLMM(model))
-  tab_model(model)
+  print("------------REPORT------------")
+  print(report(model))
+  #tab_model(model)
 }
 
 
 # function to perform posthocs
 posthoc_list <- list()
+interactions_to_explore <- list()
 compute_posthocs <- function(model) {
   warning("this function has only been tested with lmer()")
   # check taht there are significant outputs
@@ -48,7 +51,8 @@ compute_posthocs <- function(model) {
     for (SIG.VAR in row.names(Anova(model)[Anova(model)$"Pr(>Chisq)" < 0.05, ])) {
       if (grepl(":", SIG.VAR)) {
         warning(paste0(SIG.VAR, "is an interaction, currently this situation is not handled by the function."))
-      } else {
+        interactions_to_explore <- c(interactions_to_explore, list(paste(GENE,GROUP,SIG.VAR,deparse(substitute(model)), sep = "-") ))
+        } else {
         # check if the variable is not numeric . to do so, we need to access the dataframe from the model
         if (!is.numeric(get(gsub("\\[.*", "", as.character(model@call)[3]))[, SIG.VAR])) {
           print(paste0("Performing posthocs for the significant var: ", SIG.VAR))
@@ -117,9 +121,61 @@ nice_print_model_sel <- function(model_output) {
 }
 
 
+# convert significance levels to stars
+add_star <- function(p) {
+  if (p<0.001) {
+    return('***')
+  } else if (p<0.01) {
+    return('**')
+  } else if (p<0.05) {
+    return('*')
+  } else {
+    return('ns')
+  }
+}
+
+#Box-cox transformation
+Box_Cox <- function(x) {
+  library(MASS)
+  bc <- boxcox(x ~ 1, plotit = FALSE)
+  #computes the log-likelihood for a range of lambda values and returns the lambda that maximizes the log-likelihood
+  lambda <- bc$x[which.max(bc$y)]
+  (x^lambda - 1) / lambda
+}
+
 ####################################################
 ####################################################
 ####################################################
+
+###########    PLOT SAVING    ###############
+
+library(ggplot2)
+
+  SavePrint_plot <- function(plot_obj, plot_name, dataset_name, save_dir, plot_size = c(4.63, 2.59), dpi = 100, print_plot=F) {
+    save_dir_plots <- paste0(save_dir,"/Grooming_plots/")
+    
+    # Create the directory if it doesn't exist
+    if (!dir.exists(save_dir_plots)) {
+      dir.create(save_dir_plots, recursive = TRUE)
+    }
+    
+    # Check if the directory is writable
+    if (!file.access(save_dir_plots, 2)) {
+      # Save plot as png
+      ggsave(paste0(save_dir_plots,dataset_name, "_", plot_name,"_", Sys.Date(), ".png"), plot = plot_obj, width = plot_size[1], height = plot_size[2], dpi = dpi)
+      # Save plot as pdf
+      ggsave(paste0(save_dir_plots,dataset_name, "_", plot_name,"_", Sys.Date(),".pdf"), plot = plot_obj, width = plot_size[1], height = plot_size[2])
+      # Add plot to cumulative pdf file
+      pdf(paste0(save_dir_plots,"all_plots.pdf"), onefile = TRUE, paper = "a4") #  width = plot_size[1], height = plot_size[2])
+      dev.off()
+      if (print_plot) {
+        print(plot_obj)
+      }
+      
+    } else {
+      cat("Error: The directory is not writable.")
+    }
+  }
 
 
 ########## STYLING FUNCTIONS ###############
@@ -202,13 +258,13 @@ Shades[[i]] <- colors_lightGrad
 # }
 
 ### ADD THE METADATA
-meta.data <- read.table(paste("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data/Metadata_Exp1_2021_2022-10-12.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
+meta.data <- read.table(paste("/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data/Metadata_Exp1_2021_2023-02-27.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
 
 # create groups to assign the colours
 Cols <- list()
-# divide each treatment into a list element with its colonies inside
-for (i in 1:length(unique(meta.data$treatment))) {
-  treatment <- unique(meta.data$treatment)[i]
+# divide each size_treat into a list element with its colonies inside
+for (i in 1:length(unique(meta.data$size_treat))) {
+  treatment <- unique(meta.data$size_treat)[i]
   treatment_vector <- unique(meta.data$REP_treat[grepl(treatment, meta.data$REP_treat)])
   Cols[[i]] <- treatment_vector
   names(Cols)[i] <- treatment
@@ -290,7 +346,7 @@ remove <- c("color_ramp", "color_shades", "color_subsets", "colors_full",
             "colors_lightGrad", "colour_palette", "Cols",
             "group", "group_colour_palette", 
             "group_cols", "group_shades", "hsl_colors", "i", "j", "lightness_decrease", 
-            "lightness_increase", "meta.data", "myColors_Colony", "myColors_Treatment", 
+            "lightness_increase", "meta.data", "myColors_Colony", 
             "rand_shades", 
             "Shades")
 # cleaning
