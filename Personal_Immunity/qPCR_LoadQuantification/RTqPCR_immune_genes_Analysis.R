@@ -1386,9 +1386,10 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
             ## Reporting  model estimates for fixed effects in Untreated nurses tests
             estimates <- summary(mod1)$coefficients
             fixed_effects <- estimates[grep("Treatment|Ant_status", rownames(estimates)), 1]
-            intercept <- estimates[1, 1]
+            #intercept <- estimates[1, 1]
             # Add fixed effects to intercept
-            final_estimates <- intercept + fixed_effects
+            #final_estimates <- intercept + fixed_effects
+            final_estimates <- fixed_effects
             Estim.Status <- final_estimates[grep("Ant_status",names(final_estimates))]
             Estim.Treatment <-final_estimates[grep("Treatment",names(final_estimates))]
             
@@ -1726,6 +1727,7 @@ for (suffix in suffixes) {
     geom_point(data =  base_model, aes_string(x = ESTIMATE, y = PVAL), shape = 4, size = 3) +
     #geom_rug(aes(color = gene))+
     geom_text(data = base_model, aes_string(x = ESTIMATE, y = PVAL, label = "gene"), vjust = -2,hjust= +1 ) +
+    geom_vline(xintercept = 0) +
     #labs(x = "Model Estimates", y = "p-value") + #, title = "Model Estimates vs. P-values"
     theme_classic()  +
     scale_shape_manual(values = c(21, 24)) +
@@ -1937,8 +1939,10 @@ for (IMPUTATION in c("HM","QRILC","zero")) {
   # Extract p values and model estimates
   estimates <- summary(mod1)$coefficients
   fixed_effects <- estimates[grep("Treatment|Ant_status", rownames(estimates)), 1]
-  intercept <- estimates[1, 1]
-  final_estimates <- intercept + fixed_effects
+  #intercept <- estimates[1, 1]
+  # Add fixed effects to intercept
+  #final_estimates <- intercept + fixed_effects
+  final_estimates <- fixed_effects
   Estim.Status <- final_estimates[grep("Ant_status",names(final_estimates))]
   Estim.Treatment <- final_estimates[grep("Treatment",names(final_estimates))]
   
@@ -2060,6 +2064,7 @@ for (suffix in suffixes) {
     geom_point(aes(shape=imputation), alpha = 0.9,size =2)  + 
     geom_point(data =  base_model, aes_string(x = ESTIMATE, y = PVAL), shape = 4, size = 3, color = "#0073C2FF") +
     #geom_rug(aes(color = gene))+
+    geom_vline(xintercept = 0) +
     geom_text(data = base_model, aes_string(x = ESTIMATE, y = PVAL, label = "gene"), vjust = -1,hjust= +1 ) +
     #labs(x = "Model Estimates", y = "p-value") + #, title = "Model Estimates vs. P-values"
     theme_classic()  +
@@ -2138,7 +2143,7 @@ iterations_data <- rbind(iterations_data,imputed_iterations_data)
 error_summary <- iterations_data %>%
   filter(IMPUTATION != "none") %>%
   group_by(IMPUTATION, i) %>%
-  summarize(
+  summarise(
     squared_error = (rel_conc - rel_conc_imputed)^2,
     #absolute_error = abs(rel_conc - rel_conc_imputed),
     k = unique(k),
@@ -2146,7 +2151,7 @@ error_summary <- iterations_data %>%
     propNA= unique(propNA)
   ) %>%
   group_by(IMPUTATION,i) %>%
-  summarize(
+  summarise(
     RMSE = sqrt(mean(squared_error)),
     #MAE = mean(absolute_error),
     k = unique(k),
@@ -2164,7 +2169,7 @@ error_summary_long <- error_summary %>%
 # Calculate the mean and standard deviation of error_value (per all 3 k values) by propNA for each IMPUTATION
 error_summary_stats <- error_summary_long %>%
   group_by(IMPUTATION, propNA, error_type) %>%
-  summarize(
+  summarise(
     mean_error = mean(error_value),
     sd_error = sd(error_value),
     .groups = 'drop'
@@ -2186,9 +2191,25 @@ ggplot(error_summary_stats, aes(x = propNA, y = mean_error, color = IMPUTATION, 
   #facet_wrap(~error_type, scales = "free_y", ncol = 2)
 
 
+#get position for prop missing data of relevant vars
+missing_data <- CLEAN_DATA[which(CLEAN_DATA$gene!="DEF" & CLEAN_DATA$GROUP=="UNTREATED_W"),
+                        c("Colony","GROUP","Ant_status","gene","Treatment","rel_conc_imputed","Final_Cat")]
 
+missing_data$Final_Cat <- ifelse(missing_data$Final_Cat=="to-impute",NA, 1)
+
+missing_data <- missing_data %>%
+  group_by(gene,GROUP) %>%
+  summarise(
+    propNA = sum(is.na(Final_Cat)/length(Final_Cat)),
+    sum_NA = sum(is.na(Final_Cat))
+  )
+missing_data <- missing_data %>% distinct()
+
+error_summary_stats$propNA <- as.numeric(as.character(error_summary_stats$propNA))
 # Create a plot with geom_line and geom_ribbon using the new color palette
 plot_with_stats_new_colors <- ggplot(error_summary_stats, aes(x = propNA, y = mean_error, color = IMPUTATION, group = IMPUTATION)) +
+  geom_vline(xintercept = missing_data$propNA, colour="grey60",linetype="dashed") +
+  geom_text(data = missing_data, aes(x = propNA, y = Inf, label = gene), hjust = -0.5, vjust = 1.4, size = 4,colour="grey30") +
   geom_line() +
   geom_ribbon(aes(ymin = mean_error - sd_error, ymax = mean_error + sd_error, fill = IMPUTATION), alpha = 0.2) +
   labs(title = "Comparison of QRILC and HM Imputation Methods",
@@ -2196,7 +2217,7 @@ plot_with_stats_new_colors <- ggplot(error_summary_stats, aes(x = propNA, y = me
        y = "Error Value",
        shape = "steepness (k)") +
   theme_minimal() +
-  facet_wrap(~error_type, scales = "free_y", ncol = 2) +
+  #facet_wrap(~error_type, ncol = 2) +
   scale_color_manual(values = color_palette) + # Apply the new color palette for lines
   scale_fill_manual(values = color_palette)    # Apply the new color palette for ribbon
 
