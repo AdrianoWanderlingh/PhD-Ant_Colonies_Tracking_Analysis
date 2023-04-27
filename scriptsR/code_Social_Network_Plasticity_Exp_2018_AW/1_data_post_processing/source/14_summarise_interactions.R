@@ -5,6 +5,10 @@
 ###                     - the overall distribution of interactions according to task groups and ages
 
 ###Created by Nathalie Stroeymeyt
+###Modified by Adriano Wanderlingh to work with FORT formicidae Tracking data. Mods tagged with the comment "AW". script wide mods cited here below.
+
+#Script wide mods AW
+# - replaced before/after with pre/post
 
 ####################################
 to_keep_ori <- to_keep
@@ -34,8 +38,8 @@ for (input_folder in input_folders){
   summary_pairs        <- NULL
   all_interactions     <- NULL
   for (network_file in network_files){
-    # network_file <- network_files[361]
-    print(network_file)
+    # network_file <- network_files[1]
+    cat("\r",network_file)
     ####get file metadata
     root_name          <- gsub("_interactions.txt","",unlist(strsplit(network_file,split="/"))[grepl("colony",unlist(strsplit(network_file,split="/")))])
     components         <- unlist(strsplit(root_name,split="_"))
@@ -43,7 +47,7 @@ for (input_folder in input_folders){
     treatment          <- info[which(info$colony==colony),"treatment"] #AW: no need for as.numeric() 
     colony_size        <- info[which(info$colony==colony),"colony_size"]
     
-    if (!all(!grepl("PreTreatment",components))){period <- "before"}else{period <- "after"}
+    if (!all(!grepl("PreTreatment",components))){period <- "pre"}else{period <- "post"}
     time_hours         <- as.numeric(gsub("TH","",components[which(grepl("TH",components))]))
     time_of_day        <- as.numeric(gsub("TD","",components[which(grepl("TD",components))]))
     if (grepl("age",data_path)){
@@ -51,9 +55,9 @@ for (input_folder in input_folders){
     }
     
     ####get appropriate task_group list, treated list and tag
-    colony_treated     <- treated[which(treated$colony==colony_number),"tag"]
+    colony_treated     <- treated[which(treated$colony==colony),"tag"] #AW
     colony_task_group  <- task_groups[which(task_groups$colony==colony),]
-    queenid            <- colony_task_group[which(colony_task_group$task_group=="queen"),"tag"] #AW: call specific queen tag instead of fixed 665
+    queenid            <- as.character(colony_task_group[which(colony_task_group$task_group=="queen"),"tag"]) #AW: call specific queen tag instead of fixed 665. it has to be a character to work with igraph
     #tagfile            <- tag_list[which(grepl(colony,tag_list))]
     tag <- read.tag(tag_list) #AW
     # if (length(tagfile)>1){
@@ -77,7 +81,7 @@ for (input_folder in input_folders){
     foragers <- colony_task_group[which(colony_task_group$task_group=="forager"),"tag"]
     nurses   <- colony_task_group[which(colony_task_group$task_group=="nurse"),"tag"]
     
-    #####1. calculate within/between caste interactions for before period
+    #####1. calculate within/between caste interactions for pre period
     interactions[c("status_Tag1","status_Tag2")] <- NA
     
     interactions[which(interactions$Tag1%in%foragers),"status_Tag1"] <- "forager"
@@ -89,7 +93,7 @@ for (input_folder in input_folders){
     interactions[which(interactions$Tag1==queenid),"status_Tag1"] <- "queen"
     interactions[which(interactions$Tag2==queenid),"status_Tag2"] <- "queen"
     
-    if (period=="before"){
+    if (period=="pre"){
       inter <- interactions
       inter <- inter[,sort(names(inter))]
       all_interactions <- rbind(all_interactions,data.frame(randy=input_folder,colony_size=colony_size,period=period,inter))
@@ -170,9 +174,9 @@ for (input_folder in input_folders){
     write.table(behav,file=paste(data_path,"/processed_data/individual_behaviour/pre_vs_post_treatment/individual_behavioural_data.txt",sep=""), row.names=F, col.names=T,append=F,quote=F)
   }
   
-  ###Use all_interactions to obtain information about age-based DoL before treatment
+  ###Use all_interactions to obtain information about age-based DoL pre treatment
   ###first check that all_interactions only has Pre-treatment
-  all_interactions <- all_interactions[which(all_interactions$period=="before"),]
+  all_interactions <- all_interactions[which(all_interactions$period=="pre"),]
   ###summ all interactions for each pair of ants
   all_interactions <- aggregate(na.rm=T,na.action="na.pass",duration_min~randy+colony+colony_size+period+Tag1+Tag2+status_Tag1+status_Tag2+treatment,FUN=sum,data=all_interactions)
   ###calculate intra_caste_over_inter_caste_WW_contact_duration

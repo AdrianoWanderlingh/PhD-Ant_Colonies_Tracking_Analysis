@@ -5,6 +5,10 @@
 ####                                          and the degree of spatial overlap between the ant's space use and the brood pile
 
 ###Created by Nathalie Stroeymeyt###
+###Modified by Adriano Wanderlingh to work with FORT formicidae Tracking data. Mods tagged with the comment "AW". script wide mods cited here below.
+
+#Script wide mods AW
+# - replaced before/after with pre/post
 
 #################################
 to_keep_ori <- to_keep
@@ -76,7 +80,7 @@ for (input_folder in folder_list){
       colony_size   <- info[which(info$colony==colony_number),"colony_size"]
       source(paste(code_path,"/heatmap_to_homerange_parameters.R",sep=""))
       time_point  <- unlist(strsplit(colony_metadata,split="_"))[grepl("Treatment",unlist(strsplit(colony_metadata,split="_")))]
-      if (time_point=="PreTreatment"){period <- "before"}else{period <- "after"}
+      if (time_point=="PreTreatment"){period <- "pre"}else{period <- "post"}
       
       ant_metadata    <- unlist(strsplit(heatmap,split="/"))[grepl("txt", unlist(strsplit(heatmap,split="/")))]
       ant_metadata    <- unlist(strsplit(ant_metadata,split="_"))

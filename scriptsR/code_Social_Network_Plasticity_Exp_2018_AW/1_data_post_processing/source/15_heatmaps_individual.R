@@ -4,6 +4,10 @@
 ### Takes a datfile, a tagfile, an ant, and a time period as inputs, and returns a file containing the number of visits made by the specified ant to each coordinate
 
 ###Created by Nathalie Stroeymeyt###
+###Modified by Adriano Wanderlingh to work with FORT formicidae Tracking data. Mods tagged with the comment "AW". script wide mods cited here below.
+
+#Script wide mods AW
+# - replaced before/after with pre/post
 
 #################################
 options(digits=16) ; options(digits.secs=6) ; options("scipen" = 10)
@@ -38,9 +42,9 @@ for (datfile in dat_list){
   colony_size <- info[which(info$colony==as.numeric(gsub("colony","",colony))),"colony_size"]
   final_time <- info_datfile[which(info_datfile$dat_file==paste(root_name,".dat",sep="")),"end_time"]
   if (grepl("PreTreatment",root_name)){
-    period <- "before"
+    period <- "pre"
   }else {
-    period <- "after"
+    period <- "post"
   }
   
   for (i in 1:nrow(split_info)){

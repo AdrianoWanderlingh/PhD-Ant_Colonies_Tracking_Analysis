@@ -3,6 +3,10 @@
 ####Calculates the distance between the center of gravity of the brood pile and the nest entrance based on the brood coordinates
 
 ###Created by Nathalie Stroeymeyt
+###Modified by Adriano Wanderlingh to work with FORT formicidae Tracking data. Mods tagged with the comment "AW". script wide mods cited here below.
+
+#Script wide mods AW
+# - replaced before/after with pre/post
 
 ###################################
 ### get input folder list
@@ -24,9 +28,9 @@ for (folder in input_list){
   source(paste(code_path,"/heatmap_to_homerange_parameters.R",sep=""))
   
   if (grepl("PreTreatment",folder)){
-    period <- "before"
+    period <- "pre"
   }else{
-    period <- "after"
+    period <- "post"
   }
   
   setwd(folder)

@@ -3,6 +3,10 @@
 #### Takes an interaction list as an input, builds a network, and analyse its properties
 
 ###Created by Nathalie Stroeymeyt
+###Modified by Adriano Wanderlingh to work with FORT formicidae Tracking data. Mods tagged with the comment "AW". script wide mods cited here below.
+
+#Script wide mods AW
+# - replaced before/after with pre/post
 
 ####################################
 to_keep_ori <- to_keep
@@ -29,7 +33,7 @@ if (!grepl("survival",data_path)){
 }
 
 queen_community_summary <- NULL
-to_keep <- c(ls(),"to_keep","input_folder","network_files","options","option","summary_collective","summary_individual","outputfolder","network_file")
+to_keep <- c(ls(),"to_keep","input_folder","network_files","options","option","summary_collective","summary_individual","outputfolder","network_file","queenid")
 for (input_folder in input_folders){
   print(input_folder)
   setwd(input_path)
@@ -51,20 +55,20 @@ for (input_folder in input_folders){
     summary_collective <- NULL
     summary_individual <- NULL
     for (network_file in network_files){
-      # network_file <- network_files[41]
+      # network_file <- "PreTreatment/observed/colony08BP_pathogen.big_PreTreatment_TH-12_TD0_interactions.txt"   #network_files[41]
 
-      #### TEMPORARY EXCLUSION OF "PreTreatment/observed/colony08BP_pathogen.big_PreTreatment_TH-12_TD0_interactions.txt" as:
-      ## Error in aggregate.data.frame(lhs, mf[-1L], FUN = FUN, ...) : no rows to aggregate
-        if (any(grepl("colony08BP|colony06SP|colony02SP", network_file))) {
-        warning(paste(input_folder, "has too few interactions to aggregate the cumulated duration of interaction with treated workers
-                      \nor the queen does not belong to any community"))
-      }else{
+      # #### TEMPORARY EXCLUSION OF "PreTreatment/observed/colony08BP_pathogen.big_PreTreatment_TH-12_TD0_interactions.txt" as:
+      # ## Error in aggregate.data.frame(lhs, mf[-1L], FUN = FUN, ...) : no rows to aggregate
+      #   if (any(grepl("colony08BP|colony06SP|colony02SP", network_file))) {
+      #   warning(paste(input_folder, "has too few interactions to aggregate the cumulated duration of interaction with treated workers
+      #                 \nor the queen does not belong to any community"))
+      # }else{
         
       
       #  has too few interactions to aggregate the cumulated duration of interaction with treated workers: "PreTreatment/observed/colony08BP","PreTreatment/observed/colony06SP"
       #  the queen does not belong to any community: "PreTreatment/observed/colony08BP" , PostTreatment/observed/colony08BS
       
-      print(network_file)
+      cat("\r",network_file)
       ####get file metadata
       root_name          <- gsub("_interactions.txt","",unlist(strsplit(network_file,split="/"))[grepl("colony",unlist(strsplit(network_file,split="/")))])
       components         <- unlist(strsplit(root_name,split="_"))
@@ -72,12 +76,12 @@ for (input_folder in input_folders){
       treatment          <- info[which(info$colony==colony),"treatment"] #AW: no need for as.numeric() 
       colony_size        <- info[which(info$colony==colony),"colony_size"]
       
-      if (!all(!grepl("PreTreatment",components))){period <- "before"}else{period <- "after"}
+      if (!all(!grepl("PreTreatment",components))){period <- "pre"}else{period <- "post"}
       if(!grepl("survival",data_path)){
         time_hours         <- as.numeric(gsub("TH","",components[which(grepl("TH",components))]))
         time_of_day        <- as.numeric(gsub("TD","",components[which(grepl("TD",components))]))
       }else{
-        if (period=="after"){
+        if (period=="post"){
           time_hours   <- 0
           time_of_day <- 12
         }else{
@@ -87,9 +91,9 @@ for (input_folder in input_folders){
       }
       
       ####get appropriate task_group list, treated list and tag
-      colony_treated     <- treated[which(treated$colony==colony),"tag"]
+      colony_treated     <- treated[which(treated$colony==colony),"tag"] #AW
       colony_task_group  <- task_groups[which(task_groups$colony==colony),]
-      queenid            <- colony_task_group[which(colony_task_group$task_group=="queen"),"tag"] #AW: call specific queen tag instead of fixed 665
+      queenid            <- as.character(colony_task_group[which(colony_task_group$task_group=="queen"),"tag"]) #AW: call specific queen tag instead of fixed 665. it has to be a character to work with igraph
       #tagfile            <- tag_list[which(grepl(colony,tag_list))]
       # if (length(tagfile)>1){
       #   tagfile <- tagfile[grepl(unlist(strsplit(gsub("\\.txt","",root_name),"_"))[grepl("Treatment",unlist(strsplit(gsub("\\.txt","",root_name),"_")))],tagfile)]
@@ -168,7 +172,7 @@ for (input_folder in input_folders){
           options(digits=16)
         }
         ###interactions with treated: post-treatment
-        if (period=="after"){
+        if (period=="post"){
           outputfoldy <- paste(data_path,"/processed_data/individual_behaviour/post_treatment",sep="")
           if(!file.exists(outputfoldy)){dir.create(outputfoldy,recursive=T)}
           int_with_treated <- data.frame(colony_size=colony_size,treatment=treatment,period=period,time_of_day=time_of_day,
@@ -274,8 +278,12 @@ for (input_folder in input_folders){
         summary_individual <- rbind(summary_individual,individual)
       }
       clean()
-    }# TEMPORARY EXCLUSION 
+    #}# TEMPORARY EXCLUSION 
     }
+    
+    #print progress AW
+    print(" End of network_files processing >> writing")
+    
     #####write #####
     if (!grepl("survival",data_path)){
       if (input_folder=="observed"){
@@ -290,53 +298,56 @@ for (input_folder in input_folders){
         if (option=="all_workers"){
           outputfolder3 <- paste(outputfolder,"random_vs_observed",sep="/")
           if(!file.exists(outputfolder3)){dir.create(outputfolder3,recursive=T)}
-          write.table(summary_collective[which(summary_collective$period=="before"),],file=paste(outputfolder3,"/network_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
-          write.table(summary_individual[which(summary_individual$period=="before"),],file=paste(outputfolder3,"/node_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
+          write.table(summary_collective[which(summary_collective$period=="pre"),],file=paste(outputfolder3,"/network_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
+          write.table(summary_individual[which(summary_individual$period=="pre"),],file=paste(outputfolder3,"/node_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
           
           outputfolder4 <- paste(outputfolder,"post_treatment",sep="/")
           if(!file.exists(outputfolder4)){dir.create(outputfolder4,recursive=T)}
-          write.table(summary_collective[which(summary_collective$period=="after"),],file=paste(outputfolder4,"/network_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
-          write.table(summary_individual[which(summary_individual$period=="after"),],file=paste(outputfolder4,"/node_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
+          write.table(summary_collective[which(summary_collective$period=="post"),],file=paste(outputfolder4,"/network_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
+          write.table(summary_individual[which(summary_individual$period=="post"),],file=paste(outputfolder4,"/node_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
         }
         ######Main experiment, All workers: add pre_treatment node_properties information to pre_treatment behaviour file
         if (!grepl("age",data_path)&option=="all_workers"){
           pre_treatment_behav_file <- paste(data_path,"/processed_data/individual_behaviour/pre_treatment/network_position_vs_time_outside.dat",sep="")
           pre_treatment_behav      <- read.table(pre_treatment_behav_file,header=T,stringsAsFactors = F)
-          pre_treatment_behav      <- merge(pre_treatment_behav,summary_individual[which(summary_individual$period=="before"),c("colony","tag","time_hours","degree","aggregated_distance_to_queen")],all.x=T,all.y=T)
+          pre_treatment_behav      <- merge(pre_treatment_behav,summary_individual[which(summary_individual$period=="pre"),c("colony","tag","time_hours","degree","aggregated_distance_to_queen")],all.x=T,all.y=T)
           pre_treatment_behav      <- pre_treatment_behav[order(pre_treatment_behav$colony,pre_treatment_behav$tag,pre_treatment_behav$time_hours),]
           write.table(pre_treatment_behav, file=pre_treatment_behav_file,col.names=T,row.names=F,quote=F,append=F)
         }
       }else{
         outputfolder3 <- paste(outputfolder,"random_vs_observed",sep="/")
         if(!file.exists(outputfolder3)){dir.create(outputfolder3,recursive=T)}
-        write.table(summary_collective[which(summary_collective$period=="before"),],file=paste(outputfolder3,"/network_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
-        write.table(summary_individual[which(summary_individual$period=="before"),],file=paste(outputfolder3,"/node_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
+        write.table(summary_collective[which(summary_collective$period=="pre"),],file=paste(outputfolder3,"/network_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
+        write.table(summary_individual[which(summary_individual$period=="pre"),],file=paste(outputfolder3,"/node_properties_",input_folder,".txt",sep=""),col.names = T,row.names=F,append=F,quote=F)
       }
     }
     ###Get characteristics of queen community vs. other communities (worker age, prop. of foragers)
     if (!grepl("survival",data_path)&option=="all_workers"){
-      summary_individual_before <- read.table(paste(outputfolder,"/random_vs_observed/node_properties_",input_folder,".txt",sep=""),header = T,stringsAsFactors = F)
-      summary_individual_before <- summary_individual_before[which(summary_individual_before$period=="before"),]
+      #print progress AW
+      print(" End of writing >> Get characteristics of queen community vs. other communities")
+      
+      summary_individual_pre <- read.table(paste(outputfolder,"/random_vs_observed/node_properties_",input_folder,".txt",sep=""),header = T,stringsAsFactors = F)
+      summary_individual_pre <- summary_individual_pre[which(summary_individual_pre$period=="pre"),]
       ####if necessary: add age
       if (grepl("age",data_path)){
-        summary_individual_before <- merge(summary_individual_before[,which(names(summary_individual_before)!="age")],ages,all.x=T,all.y=F)
+        summary_individual_pre <- merge(summary_individual_pre[,which(names(summary_individual_pre)!="age")],ages,all.x=T,all.y=F)
       }else{
-        summary_individual_before$age <- NA
+        summary_individual_pre$age <- NA
       }
       ####add task_group
-      summary_individual_before <- merge(summary_individual_before,task_groups,all.x=T,all.y=F)
+      summary_individual_pre <- merge(summary_individual_pre,task_groups,all.x=T,all.y=F)
       ###remove queen
-      summary_individual_before <- summary_individual_before[which(summary_individual_before$tag!=queenid),]
+      summary_individual_pre <- summary_individual_pre[which(summary_individual_pre$tag!=queenid),]
       
       ###1. calculate mean proportion of foragers depending on with vs without queen
-      summary_individual_before["forager"] <- 0
-      summary_individual_before[which(summary_individual_before$task_group=="forager"),"forager"] <- 1
-      prop_foragers <- aggregate(na.rm=T,na.action="na.pass",forager~colony+randy+colony_size+treatment+period+time_hours+same_community_as_queen,FUN=mean,data=summary_individual_before)
+      summary_individual_pre["forager"] <- 0
+      summary_individual_pre[which(summary_individual_pre$task_group=="forager"),"forager"] <- 1
+      prop_foragers <- aggregate(na.rm=T,na.action="na.pass",forager~colony+randy+colony_size+treatment+period+time_hours+same_community_as_queen,FUN=mean,data=summary_individual_pre)
       prop_foragers <- aggregate(na.rm=T,na.action="na.pass",forager~colony+randy+colony_size+treatment+period+same_community_as_queen,FUN=mean,data=prop_foragers)
       names(prop_foragers)[names(prop_foragers)=="same_community_as_queen"] <- "in_queen_comm";names(prop_foragers)[names(prop_foragers)=="forager"] <- "proportion_of_foragers"
       ###2. calculate mean age of workers depending on with vs without queen
       if (grepl("age",data_path)){
-        mean_age <- aggregate(na.rm=T,na.action="na.pass",age~colony+randy+colony_size+treatment+period+time_hours+same_community_as_queen,FUN=mean,data=summary_individual_before)
+        mean_age <- aggregate(na.rm=T,na.action="na.pass",age~colony+randy+colony_size+treatment+period+time_hours+same_community_as_queen,FUN=mean,data=summary_individual_pre)
         mean_age <- aggregate(na.rm=T,na.action="na.pass",age~colony+randy+colony_size+treatment+period+same_community_as_queen,FUN=mean,data=mean_age)
         names(mean_age)[names(mean_age)=="same_community_as_queen"] <- "in_queen_comm"
         prop_foragers <- merge(prop_foragers,mean_age,all.x=T)
