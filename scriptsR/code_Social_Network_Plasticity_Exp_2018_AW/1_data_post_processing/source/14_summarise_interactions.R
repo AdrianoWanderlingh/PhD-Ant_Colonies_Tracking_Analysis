@@ -190,6 +190,8 @@ for (input_folder in input_folders){
   dol <-   inter_intra_caste_interactions[!names(inter_intra_caste_interactions)%in%c("duration_min_within","duration_min_between")]
   
   ###calculate queen contact with nurses vs. workers
+  ## skip queen in grooming interactions
+  if (!grepl("grooming",input_path)) { #AW
   queen_interactions <- all_interactions[which(all_interactions$status_Tag1=="queen"|all_interactions$status_Tag2=="queen"),]
   queen_interactions[which(queen_interactions$status_Tag1=="queen"),"partner"] <- queen_interactions[which(queen_interactions$status_Tag1=="queen"),"Tag2"]
   queen_interactions[which(queen_interactions$status_Tag1=="queen"),"partner_status"] <- queen_interactions[which(queen_interactions$status_Tag1=="queen"),"status_Tag2"]
@@ -203,6 +205,8 @@ for (input_folder in input_folders){
   queen_interac <- merge(interaction_with_nurses,interaction_with_forager,all.x=T,all.y=T)
   queen_interac["QNurse_over_QForager_contact_duration"] <- queen_interac$duration_min_with_nurses/queen_interac$duration_min_with_foragers
   dol <- merge(dol,queen_interac[c("randy","colony","period","QNurse_over_QForager_contact_duration")])
+  }
+  
   ###if necessary: add age
   if (grepl("age",data_path)){
     partner_ages <- ages; names(partner_ages) <- c("colony","partner","partner_age")

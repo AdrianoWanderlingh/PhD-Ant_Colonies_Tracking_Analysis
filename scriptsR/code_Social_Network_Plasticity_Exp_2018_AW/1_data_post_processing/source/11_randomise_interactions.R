@@ -23,7 +23,7 @@ setwd(input_path2)
 interac_list <- c(interac_list,paste(input_path2,list.files(),sep="/"))
 
 to_keep <- c(ls(),"to_keep","i","interac")
-for (i in 1:100){#####perform 100 randomisations
+for (i in 81:100){#####perform 100 randomisations
   print(paste("Performing randomisations",i,"out of 100..."))
   for (interac in interac_list){
     #print(paste("Interaction file",which(interac==interac_list),"out of",length(interac_list)))

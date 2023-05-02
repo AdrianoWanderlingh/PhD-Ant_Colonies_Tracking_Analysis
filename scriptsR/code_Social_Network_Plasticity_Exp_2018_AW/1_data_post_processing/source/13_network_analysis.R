@@ -63,8 +63,6 @@ for (input_folder in input_folders){
       #   warning(paste(input_folder, "has too few interactions to aggregate the cumulated duration of interaction with treated workers
       #                 \nor the queen does not belong to any community"))
       # }else{
-        
-      
       #  has too few interactions to aggregate the cumulated duration of interaction with treated workers: "PreTreatment/observed/colony08BP","PreTreatment/observed/colony06SP"
       #  the queen does not belong to any community: "PreTreatment/observed/colony08BP" , PostTreatment/observed/colony08BS
       
@@ -258,15 +256,20 @@ for (input_folder in input_folders){
                                  same_community_as_queen=NA)
         ##degree
         individual[match(names(degrees),individual$tag),"degree"] <- degrees
-        ##same community as queen
-        queen_comm <- community_membership[which(V(net)$name==queenid)]
-        community_membership <- community_membership==queen_comm
-        individual[match(V(net)$name,individual$tag),"same_community_as_queen"] <- community_membership
-        ##path length to queen
-        if (queenid%in%actors){
-          path_length_to_queen <- t(shortest.paths(net,v=actors,to=queenid,weights=1/E(net)$weight))
-          individual[match(colnames(path_length_to_queen),individual$tag),"aggregated_distance_to_queen"] <- as.numeric(path_length_to_queen )
+        
+        ## skip queen in grooming interactions
+        if (!grepl("grooming",input_path)) {
+          ##same community as queen
+          queen_comm <- community_membership[which(V(net)$name==queenid)]
+          community_membership <- community_membership==queen_comm
+          individual[match(V(net)$name,individual$tag),"same_community_as_queen"] <- community_membership
+          ##path length to queen
+          if (queenid%in%actors){
+            path_length_to_queen <- t(shortest.paths(net,v=actors,to=queenid,weights=1/E(net)$weight))
+            individual[match(colnames(path_length_to_queen),individual$tag),"aggregated_distance_to_queen"] <- as.numeric(path_length_to_queen )
+          }
         }
+       
         ########Mean path length to treated; aggregated_network
         if(option!="untreated_only"){
           path_length_to_treated                             <- as.data.frame(as.matrix(shortest.paths(net,v=actors,to=as.character(colony_treated)[as.character(colony_treated)%in%V(net)$name],weights=1/E(net)$weight)))
@@ -322,7 +325,7 @@ for (input_folder in input_folders){
       }
     }
     ###Get characteristics of queen community vs. other communities (worker age, prop. of foragers)
-    if (!grepl("survival",data_path)&option=="all_workers"){
+    if (!grepl("survival",data_path)&option=="all_workers"){ 
       #print progress AW
       print(" End of writing >> Get characteristics of queen community vs. other communities")
       
@@ -342,9 +345,16 @@ for (input_folder in input_folders){
       ###1. calculate mean proportion of foragers depending on with vs without queen
       summary_individual_pre["forager"] <- 0
       summary_individual_pre[which(summary_individual_pre$task_group=="forager"),"forager"] <- 1
+      ## skip queen in grooming interactions
+      if (!grepl("grooming",input_path)) { #AW
       prop_foragers <- aggregate(na.rm=T,na.action="na.pass",forager~colony+randy+colony_size+treatment+period+time_hours+same_community_as_queen,FUN=mean,data=summary_individual_pre)
       prop_foragers <- aggregate(na.rm=T,na.action="na.pass",forager~colony+randy+colony_size+treatment+period+same_community_as_queen,FUN=mean,data=prop_foragers)
       names(prop_foragers)[names(prop_foragers)=="same_community_as_queen"] <- "in_queen_comm";names(prop_foragers)[names(prop_foragers)=="forager"] <- "proportion_of_foragers"
+      }else{
+        prop_foragers <- aggregate(na.rm=T,na.action="na.pass",forager~colony+randy+colony_size+treatment+period+time_hours,FUN=mean,data=summary_individual_pre)
+        prop_foragers$in_queen_comm <- NA
+        names(prop_foragers)[names(prop_foragers)=="forager"] <- "proportion_of_foragers"
+        }
       ###2. calculate mean age of workers depending on with vs without queen
       if (grepl("age",data_path)){
         mean_age <- aggregate(na.rm=T,na.action="na.pass",age~colony+randy+colony_size+treatment+period+time_hours+same_community_as_queen,FUN=mean,data=summary_individual_pre)
@@ -354,6 +364,10 @@ for (input_folder in input_folders){
       }else{
         prop_foragers$age <- NA
       }
+      
+      
+      
+      
       prop_foragers[which(prop_foragers$in_queen_comm=="FALSE"),"in_queen_comm"] <- "not_with_queen"
       prop_foragers[which(prop_foragers$in_queen_comm=="TRUE"),"in_queen_comm"] <- "with_queen"
       if (grepl("random",input_folder)){
