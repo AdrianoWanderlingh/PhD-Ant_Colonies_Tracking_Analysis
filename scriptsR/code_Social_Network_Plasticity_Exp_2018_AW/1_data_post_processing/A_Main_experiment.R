@@ -3,7 +3,26 @@ rm(list=ls())
 ########################################################################
 ###  INPUT TO DEFINE BY USER############################################
 ####Please fill in the path to the data folder, the code folder, and the c++ executables folder, as in the exemple below
-data_path  <- "/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment"
+# Define a function to choose the data path
+choose_data_path <- function() {
+  # Ask user which data they would like to process
+  choice <- as.character(readline(prompt = "Which data would you like to process?\nAll interactions (1)\nGrooming interactions (2)\n"))
+  # Set data_path depending on user's choice
+  if (choice == "1") {
+    data_path <- "/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment"
+    print("ALL INTERACTIONS")
+  } else if (choice == "2") {
+    data_path <- "/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment_grooming"
+    print("GROOMING INTERACTIONS")
+  } else {
+    stop("Invalid choice entered. Please choose either '1' or '2'.")
+  }
+  return(data_path)
+}
+
+# Call the function to choose the data path
+data_path <- choose_data_path()
+
 code_path  <- "/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/code_Social_Network_Plasticity_Exp_2018_AW/1_data_post_processing/source"
 executables_path <- "~/executables"
 FRAME_RATE <- 8 #AW
