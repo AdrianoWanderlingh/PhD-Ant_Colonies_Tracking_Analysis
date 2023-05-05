@@ -1,9 +1,12 @@
 ########################################################################
 ##########  ADRIANO EXP1: ANALYSIS AND STYLING FUNCTIONS ###############
 
-require(report)
+
 
 ########## STATS FUNCTIONS ###############
+require(report)
+require(lme4)
+require(car)
 
 # function to test normality of residuals
 test_norm <- function(resids) {
@@ -24,7 +27,8 @@ approach")
 }
 
 # function to report a model output
-output_lmer <- function(model) {
+output_lmer <- function(model,show_report = F) {
+  print(paste("############### MODEL :",deparse(substitute(m1)),"###############",sep = " "))
   print("------------RESIDUALS NORMALITY------------")
   test_norm(residuals(model))
   print("------------SUMMARY------------")
@@ -34,8 +38,38 @@ output_lmer <- function(model) {
   print("------------RSQUARED------------")
   print(r.squaredGLMM(model))
   print("------------REPORT------------")
-  print(report(model))
+  if (show_report) {
+    print(report(model))
+  }else{ cat("Set show_report to TRUE to obtain a human readable model report")}
   #tab_model(model)
+}
+
+# function to simplify a model if the interaction is not significant
+simplify_model <- function(model) {
+  # Extract the model formula
+  model_formula <- formula(model)
+  # Check the significance of the interaction using anova()
+  anova_m1 <- as.data.frame(Anova(model))
+  print(anova_m1)
+  # Find the interaction term in the model formula
+  # define a regular expression pattern to match the desired substring
+  pattern <- "\\b\\w+\\s*\\*\\s*\\w+\\b"
+  # use the sub() function to extract the first match of the pattern
+  interaction_term <- sub(paste0(".*(", pattern, ").*"), "\\1", as.character(model_formula)[3])
+  interaction_vars <- unlist(strsplit(interaction_term, " * "))
+  anova_term <- gsub("\\s*\\*\\s*", ":", interaction_term)
+  # If the Anova of the interaction is not significant, simplify the model by removing the interaction
+  if (anova_m1[which(rownames(anova_m1)== anova_term),"Pr(>Chisq)"] > 0.05) {
+    cat("\n#\nModel interaction NOT significant, simplify\n#\n")
+    model_no_interaction_formula <-  as.formula(gsub("\\*", "+", deparse(model_formula)))
+    model_no_interaction <- update(model, formula = model_no_interaction_formula)
+    #print(summary(m1_no_interaction))
+    print(anova(model_no_interaction))
+    return(model_no_interaction)
+  } else {
+    cat("Model interaction significant, don't simplify\n")
+    return(model)
+  }
 }
 
 
@@ -88,24 +122,24 @@ compute_posthocs <- function(model) {
 }
 
 
-# The calculate_weights function takes as input a categorical variable group and an optional argument ratio, which specifies the desired ratio between the weights of the largest and smallest groups
-calculate_weights <- function(group) {
-  print("function to calculate_weights for imbalanced datasets")
-  #make sure that group is a factor
-  group <- as.factor(group)
-  # Calculate the proportions of each group
-  proportions <- table(group) / length(group)
-  print(proportions)
-  # Calculate the weights for each group
-  weights <- numeric(length(group))
-  
-  for (g in levels(group)) {
-    weights[group == g] <- 1 / proportions[g]
-  }
-  # Normalize the weights so that they sum up to 1
-  weights <- weights / sum(unique(weights))
-  return(weights)
-}
+# # The calculate_weights function takes as input a categorical variable group and an optional argument ratio, which specifies the desired ratio between the weights of the largest and smallest groups
+# calculate_weights <- function(group) {
+#   print("function to calculate_weights for imbalanced datasets")
+#   #make sure that group is a factor
+#   group <- as.factor(group)
+#   # Calculate the proportions of each group
+#   proportions <- table(group) / length(group)
+#   print(proportions)
+#   # Calculate the weights for each group
+#   weights <- numeric(length(group))
+#   
+#   for (g in levels(group)) {
+#     weights[group == g] <- 1 / proportions[g]
+#   }
+#   # Normalize the weights so that they sum up to 1
+#   weights <- weights / sum(unique(weights))
+#   return(weights)
+# }
 
 ## pretty print the model selection output
 nice_print_model_sel <- function(model_output) {
@@ -119,7 +153,6 @@ nice_print_model_sel <- function(model_output) {
   for (i in 1:nrow(sel.table)) sel.table$formula[i] <- as.character(formula(get(sel.table$Model[i])))[3]
   return(sel.table)
 }
-
 
 # convert significance levels to stars
 add_star <- function(p) {
@@ -136,11 +169,38 @@ add_star <- function(p) {
 
 #Box-cox transformation
 Box_Cox <- function(x) {
-  library(MASS)
+  require(MASS)
   bc <- boxcox(x ~ 1, plotit = FALSE)
   #computes the log-likelihood for a range of lambda values and returns the lambda that maximizes the log-likelihood
   lambda <- bc$x[which.max(bc$y)]
   (x^lambda - 1) / lambda
+}
+
+
+# Define transformations
+transformations <- list(
+  "Original" = function(x) x,
+  "Log" = function(x) log(x - min(x) + 1),
+  "Square_Root" = function(x) sqrt(x - min(x)),
+  "Box_Cox" = function(x) {
+    require(MASS)
+    bc <- boxcox(x ~ 1, plotit = FALSE)
+    lambda <- bc$x[which.max(bc$y)]
+    (x^lambda - 1) / lambda
+  }
+)
+
+# Loop through transformations
+for (trans_name in names(transformations)) {
+  # Apply transformation
+  trans_func <- transformations[[trans_name]]
+  transformed_data <- trans_func(sample_data)
+  
+
+  # Test normality using Shapiro-Wilk test
+  shapiro_test <- shapiro.test(transformed_data)
+  cat(trans_name, "Transformation:\n")
+  cat("Shapiro-Wilk Test p-value:", shapiro_test$p.value, "\n\n")
 }
 
 ####################################################
@@ -148,43 +208,35 @@ Box_Cox <- function(x) {
 ####################################################
 
 ###########    PLOT SAVING    ###############
-
-library(ggplot2)
-
-  SavePrint_plot <- function(plot_obj, plot_name, dataset_name, save_dir, plot_size = c(4.63, 2.59), dpi = 100, print_plot=F) {
-    save_dir_plots <- paste0(save_dir,"/Grooming_plots/")
-    
-    # Create the directory if it doesn't exist
-    if (!dir.exists(save_dir_plots)) {
-      dir.create(save_dir_plots, recursive = TRUE)
-    }
-    
-    # Check if the directory is writable
-    if (!file.access(save_dir_plots, 2)) {
-      # Save plot as png
-      ggsave(paste0(save_dir_plots,dataset_name, "_", plot_name,"_", Sys.Date(), ".png"), plot = plot_obj, width = plot_size[1], height = plot_size[2], dpi = dpi)
-      # Save plot as pdf
-      ggsave(paste0(save_dir_plots,dataset_name, "_", plot_name,"_", Sys.Date(),".pdf"), plot = plot_obj, width = plot_size[1], height = plot_size[2])
-      # Add plot to cumulative pdf file
-      pdf(paste0(save_dir_plots,"all_plots.pdf"), onefile = TRUE, paper = "a4") #  width = plot_size[1], height = plot_size[2])
-      dev.off()
-      if (print_plot) {
-        print(plot_obj)
-      }
-      
-    } else {
-      cat("Error: The directory is not writable.")
-    }
+require(ggplot2)
+SavePrint_plot <- function(plot_obj, plot_name, dataset_name, save_dir, plot_size = c(7, 4), dpi = 300, font_size = 30) {
+  save_dir_plots <- paste0(save_dir,"/Grooming_plots/")
+  # Create the directory if it doesn't exist
+  if (!dir.exists(save_dir_plots)) {
+    dir.create(save_dir_plots, recursive = TRUE)
   }
-
+  # Modify the plot object to adjust the font size for jpg
+  plot_obj_jpg <- plot_obj + theme(text = element_text(size = font_size, lineheight = .3))
+  # Check if the directory is writable
+  if (!file.access(save_dir_plots, 2)) {
+    # Save plot as png
+    ggsave(paste0(save_dir_plots, dataset_name, "_", plot_name, "_", Sys.Date(), ".png"), plot = plot_obj_jpg, width = plot_size[1], height = plot_size[2], dpi = dpi)
+    # Save plot as pdf
+    ggsave(paste0(save_dir_plots, dataset_name, "_", plot_name, "_", Sys.Date(), ".pdf"), plot = plot_obj, width = plot_size[1], height = plot_size[2])
+    # Print the plot to the currently open device (the cumulative PDF file)
+    print(plot_obj)
+  } else {
+    cat("Error: The directory is not writable.")
+  }
+}
 
 ########## STYLING FUNCTIONS ###############
-library(RColorBrewer)
-library(shades)
-library(colorspace)
-library(plotwidgets)
-library(ggplot2)
-library(ggnewscale)
+require(RColorBrewer)
+require(shades)
+require(colorspace)
+require(plotwidgets)
+require(ggplot2)
+require(ggnewscale)
 
 # #Create a custom color scale FOR COLONIES + treatments
 # FullPal <- scales::viridis_pal(option = "D")(20)
@@ -317,7 +369,7 @@ colScale_Colony <- scale_colour_manual(name = "Colony", values = myColors_Colony
 #new_scale_fill() +
 # geom_line(aes(color = Sample)) +
 colScale_Treatment <- scale_color_manual(name = "Treatment", values = myColors_Treatment) #for lines
-
+colScale_TREATMENT <- scale_color_manual(name = "TREATMENT", values = myColors_Treatment) #for lines
 ####FILL
 # geom_point(aes(color = Sample)) +
 colFill_Colony <- scale_fill_manual(name = "Colony", values = myColors_Colony, drop = TRUE)
@@ -325,6 +377,7 @@ colFill_Colony <- scale_fill_manual(name = "Colony", values = myColors_Colony, d
 #new_scale_fill() +
 # geom_line(aes(color = Sample)) +
 colFill_Treatment <- scale_fill_manual(name = "Treatment", values = myColors_Treatment) #for lines
+colFill_TREATMENT <- scale_fill_manual(name = "TREATMENT", values = myColors_Treatment) #for lines
 
 #### DEFINE REMAINING PLOT STYLE
 # ggplot PLOT STYLE
@@ -353,12 +406,8 @@ remove <- c("color_ramp", "color_shades", "color_subsets", "colors_full",
 rm(list = ls()[which(ls() %in% remove)])
 gc()
 
-
 # #COLOUR SCALES TAKE NAMED VECTORS AS INPUTS
 # myColors <- c(Treat_colors$Shades,colour_palette$Shades)
 # names(myColors) <- c(Treat_colors$Treatment,colour_palette$Cols)
 # colScale <- scale_colour_manual(values = myColors, drop = TRUE) #name = "Colony", 
 # fillScale <- scale_fill_manual(values = myColors, drop = TRUE)
-
-
-
