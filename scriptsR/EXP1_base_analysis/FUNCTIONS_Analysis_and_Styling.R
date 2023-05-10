@@ -64,12 +64,19 @@ simplify_model <- function(model) {
     model_no_interaction_formula <-  as.formula(gsub("\\*", "+", deparse(model_formula)))
     model_no_interaction <- update(model, formula = model_no_interaction_formula)
     #print(summary(m1_no_interaction))
-    print(anova(model_no_interaction))
+    print(Anova(model_no_interaction))
     return(model_no_interaction)
   } else {
-    cat("Model interaction significant, don't simplify\n")
+    cat("\n#\nModel interaction significant, don't simplify\n#\n")
     return(model)
   }
+}
+
+
+#check if model has interaction
+has_interaction <- function(model) {
+  formula_str <- as.character(formula(model))
+  return(any(grepl(":", formula_str) | grepl("\\*", formula_str)))
 }
 
 
@@ -77,15 +84,20 @@ simplify_model <- function(model) {
 posthoc_list <- list()
 interactions_to_explore <- list()
 compute_posthocs <- function(model) {
-  warning("this function has only been tested with lmer()")
-  # check taht there are significant outputs
+  #warning("this function has only been tested with lmer()")
+  warning("How to use: \nA.Run on models without interactions. If interaction is present, run 'simplify_model' first. 
+          \nB.If has_interaction= T, paste your variables naming the new var in this format 'VAR1_VAR2'
+          \nC. assign the output of this function to 'posthoc_list'
+          \nD.Optional: provide an ID_model [i.e. formatted as paste(GROUP,VAR,sep='-')] to later recall the posthoc.\n\n")
+  print(paste("model predictor:", paste0(row.names(Anova(model))), sep = " "))
+  # check that there are significant outputs
   if (length(row.names(Anova(model)[Anova(model)$"Pr(>Chisq)" < 0.05, ])) == 0) {
     print("there are no significant vars.")
   } else {
     for (SIG.VAR in row.names(Anova(model)[Anova(model)$"Pr(>Chisq)" < 0.05, ])) {
       if (grepl(":", SIG.VAR)) {
-        warning(paste0(SIG.VAR, "is an interaction, currently this situation is not handled by the function."))
-        interactions_to_explore <- c(interactions_to_explore, list(paste(GENE,GROUP,SIG.VAR,deparse(substitute(model)), sep = "-") ))
+        warning(paste0(SIG.VAR, "is an interaction, currently this situation is not handled by the function. Re-run model using pasted variables"))
+        #interactions_to_explore <- c(interactions_to_explore, list(paste(GENE,GROUP,SIG.VAR,deparse(substitute(model)), sep = "-") ))
         } else {
         # check if the variable is not numeric . to do so, we need to access the dataframe from the model
         if (!is.numeric(get(gsub("\\[.*", "", as.character(model@call)[3]))[, SIG.VAR])) {
@@ -102,13 +114,21 @@ compute_posthocs <- function(model) {
           # add column name
           model_means_cld$newcol <- NA
           colnames(model_means_cld)[which(names(model_means_cld) == "newcol")] <- SIG.VAR
+          colnames(model_means_cld)[which(names(model_means_cld) == "V1")] <- "letters"
           model_means_cld[, SIG.VAR] <- row.names(model_means_cld)
           rownames(model_means_cld) <- NULL
+          # if interaction term, split columns
+          if (grepl("_", SIG.VAR)) {
+            # Split the column into two new columns using "_"
+            #SIG.VAR.STRIP <- names(model_means_cld[grep( "_",model_means_cld)])
+            model_means_cld[, strsplit(SIG.VAR, "_")[[1]]] <- t(sapply(model_means_cld[,SIG.VAR], function(x) strsplit(x, "_")[[1]]))
+          }
           # add to list
           posthoc_list <- c(posthoc_list, list(model_means_cld))
           if (exists("ID_model")) {
             names(posthoc_list)[length(posthoc_list)] <- paste(ID_model,SIG.VAR,  deparse(substitute(model)),sep = "-")
           } else {
+            warning("if you provide an ID_model [i.e. formatted as paste(GROUP,VAR,sep='-')] before running the function, it will be easier to later call the posthoc output for plotting")
             names(posthoc_list)[length(posthoc_list)] <- paste(SIG.VAR,deparse(substitute(model)), sep = "-")
           }
           print(paste(deparse(substitute(model)), SIG.VAR, sep = "_"))
@@ -116,7 +136,7 @@ compute_posthocs <- function(model) {
         } # SIG.VAR LOOP
       } # check if is an interaction
     } # check if numeric
-    print("call posthoc_list to get posthocs")
+    warning("call 'posthoc_list' to get posthocs")
   } # if significant vars exist
   return(posthoc_list)
 }
@@ -190,18 +210,18 @@ transformations <- list(
   }
 )
 
-# Loop through transformations
-for (trans_name in names(transformations)) {
-  # Apply transformation
-  trans_func <- transformations[[trans_name]]
-  transformed_data <- trans_func(sample_data)
-  
-
-  # Test normality using Shapiro-Wilk test
-  shapiro_test <- shapiro.test(transformed_data)
-  cat(trans_name, "Transformation:\n")
-  cat("Shapiro-Wilk Test p-value:", shapiro_test$p.value, "\n\n")
-}
+# # Loop through transformations
+# for (trans_name in names(transformations)) {
+#   # Apply transformation
+#   trans_func <- transformations[[trans_name]]
+#   transformed_data <- trans_func(sample_data)
+#   
+# 
+#   # Test normality using Shapiro-Wilk test
+#   shapiro_test <- shapiro.test(transformed_data)
+#   cat(trans_name, "Transformation:\n")
+#   cat("Shapiro-Wilk Test p-value:", shapiro_test$p.value, "\n\n")
+# }
 
 ####################################################
 ####################################################
