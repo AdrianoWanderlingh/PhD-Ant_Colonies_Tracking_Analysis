@@ -104,6 +104,10 @@ METADATADIR <- paste(WORKDIR,"EXP_summary_data",sep="/")
 # Base files
 metadata <- read.table(paste(METADATADIR, "/Metadata_Exp1_2021_2023-02-27.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
 
+### TURN stats report on/off
+REPORT <- TRUE
+Report_stats <- list()
+
 ### EXTRAS
 Presentation_plots             <- FALSE #script for single interactions heatmaps
 
@@ -751,21 +755,57 @@ inferred_ByAnt$REP_treat<- as.factor(inferred_ByAnt$REP_treat)
 inferred_ByAnt$Rec_Name<- as.factor(inferred_ByAnt$Rec_Name)
 
 # Select variables for analysis
-numeric_variable_list  <- names(inferred_ByAnt) [ which (!names(inferred_ByAnt) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
+#numeric_variable_list  <- names(inferred_ByAnt) [ which (!names(inferred_ByAnt) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
+numeric_variable_list <- c("Count_byAnt","duration" , "SUM_duration")
 
-VAR <- "Count_byAnt"
-hist(sqrt(inferred_ByAnt[,VAR]))
+for (VAR in numeric_variable_list){
 
-m1 <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
+    #create Variable of interest, as bracket subsetting -inferred_ByAnt[,VAR]- is not liked by report()
+    inferred_ByAnt$VARIABLE <- inferred_ByAnt[,VAR]
+      
+    print(paste0("########## DEPENDANT VAR:",VAR," ##########"))
+#VAR <- "Count_byAnt"
+#hist(sqrt(VARIABLE))
+m1 <- lmer(sqrt(VARIABLE) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
 # simplify model if the interaction is not significant
 m1 <- simplify_model(m1)
 
 output_lmer(m1)
 
+qqnorm(residuals(m1))
+qqline(residuals(m1))
+hist(residuals(m1))
 
-warning("put stuff in loop for various VAR as done below. \nCalculate post-hocs (how did I do it for interactions?)")
+
+ID_model <- paste(deparse(substitute(inferred_ByAnt)),VAR,sep="-")
+
+if (has_interaction(m1)==T) {
+  # if model has interaction, create a pasted variable, rerun model on it and compute posthocs
+  print("significant interaction of predictors: make new var in this format 'VAR1_VAR2' ")
+  inferred_ByAnt$PERIOD_TREATMENT <- with (inferred_ByAnt, PERIOD_TREATMENT <- paste(PERIOD,TREATMENT,sep="_"))
+  m1 <- lmer(sqrt(VARIABLE) ~ PERIOD_TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt)
+  # ID_model
+  posthoc_list <- compute_posthocs(m1)
+}else if (has_interaction(m1)==F) {
+  print("No significant interaction of predictors")
+  # if model has been simplified, run compute_posthocs (looks at the modle to see if there are interactions)
+  posthoc_list <- compute_posthocs(m1)
+}
+
+if (REPORT) {
+  Report_stats <- c(Report_stats, list(paste(
+    deparse(substitute(inferred_ByAnt)),
+    VAR,
+    "Skewness:",  print(round(skewness(residuals(m1)),2)),
+    "Kurtosis:",  print(round(kurtosis(residuals(m1)),2)),
+    m1 %>% report()
+    , sep= " - ")))
+}
+  }
 
 
+
+# when there is interaction use type 3 anova Anova(model, type"III")
 
 # Load required packages
 library(lme4)
@@ -773,9 +813,6 @@ library(performance)
 library(DHARMa)
 library(sjPlot)
 library(stargazer)
-
-# Fit an lmer model
-model <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
 
 
 # ########################## count data
@@ -787,86 +824,27 @@ model <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec
 # report(model_focal)
 # hist(residuals(model_focal))
 # r.squaredGLMM(model_focal)
-# 
-# 
-# # POST-HOCs for TREATMENT pre-post
-# print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
-# posthoc_Treatment <- emmeans(model_focal, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-# posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
-# print(posthoc_Treatment_summary)
-# 
-# 
-# # POST-HOCs for PERIOD by treatment
-# print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
-# posthoc_Period <- emmeans(model_focal, specs = pairwise ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-# posthoc_Period_summary<-summary(posthoc_Period$contrasts)
-# print(posthoc_Period_summary)
-# 
-# par(mfrow=c(1,2))
-# plot(model_focal)
-# qqnorm(residuals(model_focal))
-# qqline(residuals(model_focal))
-# hist(residuals(model_focal))
-# 
-# 
-# # add letters to each mean
-# model_means_cld <- cld(object = posthoc_Period,
-#                        adjust = "Tukey",
-#                        Letters = letters,
-#                        alpha = 0.05)
-# 
-# # show output
-# model_means_cld
-
-# #interaction significant
-# model_focal_interac <- glmer(Count_byAnt ~ interac_size_treat  + (1|REP_treat/Rec_Name), family="poisson",
-#                              data=inferred_ByAnt)
-# post_hoc_focal_interac_tukey<- summary(glht(model_focal_interac, linfct=mcp(interac_size_treat="Tukey")), test=adjusted("BH"))
-# post_hoc_focal_interac <- summary(glht(model_focal_interac, linfct=matrix_contrasts), test=adjusted("BH"))
-# 
-# print(cld(post_hoc_focal_interac_tukey))
-##not matching graphs
-# 
-# ###nestmate poisson
-# model_nestmate <- glmer(Count_byAnt ~ PERIOD*TREATMENT  + (1|REP_treat/Rec_Name) + (1|rep_set) + (1|Petri_dish),
-#                         family="poisson", data=inferred_ByAnt[which(inferred_ByAnt$ant_status=="NESTMATE"),])
-# check_zeroinflation(model_nestmate)
-# check_overdispersion(model_nestmate)
-# Anova(model_nestmate)
-# # hist(residuals(model_nestmate))
-# # r.squaredGLMM(model_nestmate)
-# 
-# #interaction non significant
-# model_nestmate_ni <- glmer(Count_byAnt ~ PERIOD + TREATMENT  + (1|REP_treat/Rec_Name) + (1|rep_set) + (1|Petri_dish),
-#                            family="poisson", data=inferred_ByAnt[which(inferred_ByAnt$ant_status=="NESTMATE") ,])
-# Anova(model_nestmate_ni)
-# 
-# post_hoc_nestmate_treat<- summary(glht(model_nestmate_ni, linfct=mcp(TREATMENT="Tukey")), test=adjusted("BH"))
-# print(cld(post_hoc_nestmate_treat))
-# 
-# post_hoc_nestmate_group<- summary(glht(model_nestmate_ni, linfct=mcp(PERIOD="Tukey")), test=adjusted("BH"))
-# print(cld(post_hoc_nestmate_group))
 
 
+# # Check assumptions
+# #performance::check_model(model)
+# # Create standardized residuals
+# res <- DHARMa::simulateResiduals(model)
+# 
+# # Test assumptions using DHARMa
+# DHARMa::testUniformity(res)
+# DHARMa::testOutliers(res)
+# DHARMa::testDispersion(res)
+# DHARMa::testZeroInflation(res)
+# 
+# # Create plots
+# sjPlot::plot_model(model, type = "pred", terms = c(" PERIOD", "TREATMENT"))
+# 
+# # Create tables
+# sjPlot::tab_model(model)
+# stargazer::stargazer(model, type = "text")
 
 
-# Check assumptions
-#performance::check_model(model)
-# Create standardized residuals
-res <- DHARMa::simulateResiduals(model)
-
-# Test assumptions using DHARMa
-DHARMa::testUniformity(res)
-DHARMa::testOutliers(res)
-DHARMa::testDispersion(res)
-DHARMa::testZeroInflation(res)
-
-# Create plots
-sjPlot::plot_model(model, type = "pred", terms = c(" PERIOD", "TREATMENT"))
-
-# Create tables
-sjPlot::tab_model(model)
-stargazer::stargazer(model, type = "text")
 
 
 
@@ -874,132 +852,56 @@ stargazer::stargazer(model, type = "text")
 ###############################################
 ###############################################
 ###############################################
+ 
 
 
-
-
-
-###### VALUES FOR PRE.POST: FULL DATASET #####
-### TO THE LEVEL OF ANT
-
-mod_VAR_list <- list()
-
-for (VAR in colnames(inferred_ByAnt)){
-  if (VAR %in% numeric_variable_list) {
-    
-    print( ggplot(inferred_ByAnt, aes(x = sqrt(inferred_ByAnt[,VAR]))) +
-      geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT)  +
-     xlab(VAR) ) 
-   
-   #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
-   print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
-   #  + (1|time_of_day) is non relevant for both trimmed 4h blocks and full time
-   m1 <- lmer(sqrt(inferred_ByAnt[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), data = inferred_ByAnt) # the "/" is for the nesting #  + (1|time_of_day) 
-   output_lmer(m1)
-   
-   
-   # Create the pairwise comparisons of treatments and ant status:
-   contrasts <- emmeans(m1, pairwise ~ PERIOD * TREATMENT, adjust = "tukey")
-   lt <- as.data.frame(cld(contrasts, Letters = letters, decreasing = TRUE))
-   # Give the rows meaningful names:
-   mod_VAR_list <- c(mod_VAR_list,list(lt))
-   names(mod_VAR_list)[length(mod_VAR_list)] <- paste(summary(m1)$call$data,VAR,sep = "-")
-
-   warning("RESIDS ARE ALL GOOD BUT POSTHOCS ARE ALWAYS NON SIG FOR THE INTERACTION. ASSIGN LETTERS AS IN IMMUNE GENES STUFF EVENTUALLY
-")
-   
-   
-   
-   
-   # random effect tobit model
-   # #https://stats.stackexchange.com/questions/544652/how-to-write-a-random-effect-in-tobit-models-in-r-using-the-censreg-package
-   # inferred_ByAnt$randomcode <- paste0(inferred_ByAnt$REP_treat, inferred_ByAnt$Rec_Name)
-   # pData <- pdata.frame(inferred_ByAnt, "randomcode" )
-   # fit <- censReg(pData[,VAR] ~ PERIOD * TREATMENT, data = pData, method = "BHHH", left=0, right=Inf)
-   
-   #Two-Part Mixed Effects Model for Semi-Continuous Data 
-   # see https://mran.microsoft.com/snapshot/2018-12-01/web/packages/GLMMadaptive/vignettes/ZeroInflated_and_TwoPart_Models.html
-   # m1 <- mixed_model(inferred_ByAnt[,VAR] ~ PERIOD * TREATMENT, random= ~ 1|REP_treat,data = inferred_ByAnt,
-   #            family = hurdle.lognormal(), n_phis = 1, # argument n_phis which lets the function know how many extra parameters does the distribution of the outcome have
-   #            zi_fixed = ~ PERIOD) #, zi_random = ~ 1|REP_treat)
-   # 
-   #summary(m <- VGAM::vglm(inferred_ByAnt[,VAR] ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name), tobit(Lower = 0), data = inferred_ByAnt))
-
-   # # POST-HOCs for TREATMENT pre-post
-   # print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
-   # posthoc_Treatment <- emmeans(m1, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-   # posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
-   # print(posthoc_Treatment_summary)
-   # 
-   # # POST-HOCs for PERIOD by treatment
-   # print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
-   # posthoc_Period <- emmeans(m1, specs = pairwise ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-   # posthoc_Period_summary<-summary(posthoc_Period$contrasts)
-   # print(posthoc_Period_summary)
-   
-   # par(mfrow=c(1,2))
-   # plot(m1)
-   # qqnorm(residuals(m1))
-   # qqline(residuals(m1))
-   # hist(residuals(m1))
-   #anova(m1)
-}}
-
-
-###### VALUES FOR PRE.POST: TIME BINS #####
-### TO THE LEVEL OF ANT
-
-inferred_bin_h4_ByAnt_trim$TREATMENT <- as.factor(inferred_bin_h4_ByAnt_trim$TREATMENT)
-inferred_bin_h4_ByAnt_trim$PERIOD <- as.factor(inferred_bin_h4_ByAnt_trim$PERIOD)
-inferred_bin_h4_ByAnt_trim$REP_treat<- as.factor(inferred_bin_h4_ByAnt_trim$REP_treat)
-inferred_bin_h4_ByAnt_trim$Rec_Name<- as.factor(inferred_bin_h4_ByAnt_trim$Rec_Name)
-inferred_bin_h4_ByAnt_trim$time_of_day<- as.factor(inferred_bin_h4_ByAnt_trim$time_of_day)
-inferred_bin_h4_ByAnt_trim$timespan<- as.factor(inferred_bin_h4_ByAnt_trim$timespan)
-
-# Select variables for analysis
-numeric_variable_list1  <- names(inferred_bin_h4_ByAnt_trim) [ which (!names(inferred_bin_h4_ByAnt_trim) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
-
-for (VAR in colnames(inferred_bin_h4_ByAnt_trim)){
-  if (VAR %in% numeric_variable_list1) {
-    
-    print(ggplot(inferred_bin_h4_ByAnt_trim, aes(x = sqrt(inferred_bin_h4_ByAnt_trim[,VAR]))) +
-      geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT) +
-      xlab(VAR) )
-    
-    #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
-    print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
-    m1 <- lmer(sqrt(inferred_bin_h4_ByAnt_trim[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name) , data = inferred_bin_h4_ByAnt_trim) # the "/" is for the nesting #  + (1|time_of_day) 
-    
-    print(paste("###################### TEST NORMALITY OF",VAR," RESIDUALS ######################"),sep=" ")
-    print(summary(m1))
-    test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
-    
-    # POST-HOCs for TREATMENT pre-post
-    print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
-    posthoc_Treatment <- emmeans(m1, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-    posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
-    print(posthoc_Treatment_summary)
-    
-    # POST-HOCs for PERIOD by treatment
-    print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
-    posthoc_Period <- emmeans(m1, specs = pairwise ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
-    posthoc_Period_summary<-summary(posthoc_Period$contrasts)
-    print(posthoc_Period_summary)
-    
-    par(mfrow=c(1,2))
-    plot(m1)
-    qqnorm(residuals(m1))
-    qqline(residuals(m1))
-    hist(residuals(m1))
-    #anova(m1)
-  }}
-
-##or
-#emmeans(m5, list(pairwise ~ period | Behaviour), adjust = "tukey")
-##or
-# contrast(emmeans(m5,~period|Behaviour, type="response"),
-#          method="pairwise", adjust="Tukey")  #method = "trt.vs.ctrl"
-
+# ###### VALUES FOR PRE.POST: TIME BINS #####
+# ### TO THE LEVEL OF ANT
+# 
+# inferred_bin_h4_ByAnt_trim$TREATMENT <- as.factor(inferred_bin_h4_ByAnt_trim$TREATMENT)
+# inferred_bin_h4_ByAnt_trim$PERIOD <- as.factor(inferred_bin_h4_ByAnt_trim$PERIOD)
+# inferred_bin_h4_ByAnt_trim$REP_treat<- as.factor(inferred_bin_h4_ByAnt_trim$REP_treat)
+# inferred_bin_h4_ByAnt_trim$Rec_Name<- as.factor(inferred_bin_h4_ByAnt_trim$Rec_Name)
+# inferred_bin_h4_ByAnt_trim$time_of_day<- as.factor(inferred_bin_h4_ByAnt_trim$time_of_day)
+# inferred_bin_h4_ByAnt_trim$timespan<- as.factor(inferred_bin_h4_ByAnt_trim$timespan)
+# 
+# # Select variables for analysis
+# numeric_variable_list1  <- names(inferred_bin_h4_ByAnt_trim) [ which (!names(inferred_bin_h4_ByAnt_trim) %in% c( "PERIOD","TREATMENT","REP_treat","Rec_Name" ) )]
+# 
+# for (VAR in colnames(inferred_bin_h4_ByAnt_trim)){
+#   if (VAR %in% numeric_variable_list1) {
+#     
+#     print(ggplot(inferred_bin_h4_ByAnt_trim, aes(x = sqrt(inferred_bin_h4_ByAnt_trim[,VAR]))) +
+#       geom_histogram(position = "identity", bins = 30) + facet_wrap(~TREATMENT) +
+#       xlab(VAR) )
+#     
+#     #Counts_by_Behaviour_AllCombos1$period = relevel(Counts_by_Behaviour_AllCombos1$period, ref="pre")
+#     print(paste("###################### LMER OF",VAR,"######################"),sep=" ")
+#     m1 <- lmer(sqrt(inferred_bin_h4_ByAnt_trim[,VAR]) ~ PERIOD * TREATMENT + (1|REP_treat/Rec_Name) , data = inferred_bin_h4_ByAnt_trim) # the "/" is for the nesting #  + (1|time_of_day) 
+#     
+#     print(paste("###################### TEST NORMALITY OF",VAR," RESIDUALS ######################"),sep=" ")
+#     print(summary(m1))
+#     test_norm(residuals(m1)) #test residuals' normality. null hypothesis for the Shapiro-Wilk test is that a variable is normally distributed
+#     
+#     # POST-HOCs for TREATMENT pre-post
+#     print(paste("###################### POST-HOCs for TREATMENT pre-post of ",VAR,"######################"),sep=" ")
+#     posthoc_Treatment <- emmeans(m1, specs = trt.vs.ctrlk ~ PERIOD | TREATMENT) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+#     posthoc_Treatment_summary<-summary(posthoc_Treatment$contrasts)
+#     print(posthoc_Treatment_summary)
+#     
+#     # POST-HOCs for PERIOD by treatment
+#     print(paste("###################### POST-HOCs for PERIOD by treatment of ",VAR,"######################"),sep=" ")
+#     posthoc_Period <- emmeans(m1, specs = pairwise ~ TREATMENT | PERIOD) #When the control group is the last group in emmeans we can use trt.vs.ctrlk to get the correct set of comparisons # f1|f2 translates to “compare levels of f1 within each level of f2” 
+#     posthoc_Period_summary<-summary(posthoc_Period$contrasts)
+#     print(posthoc_Period_summary)
+#     
+#     par(mfrow=c(1,2))
+#     plot(m1)
+#     qqnorm(residuals(m1))
+#     qqline(residuals(m1))
+#     hist(residuals(m1))
+#     #anova(m1)
+#   }}
 
 
 
@@ -1043,6 +945,20 @@ SavePrint_plot(plot_obj = Groom_location_plot,
 ############################################################
 #####  BARPLOTS FOR PRE-POST #####
 
+
+warning("implement fixed bars!")
+
+ggplot(infer_full, aes_string(x = "PERIOD", y = MEAN, fill = "TREATMENT")) +
+  geom_errorbar(aes_string(ymin = paste0(MEAN,"-",SE), ymax = paste0(MEAN,"+",SE)),
+                width=.6, position=position_dodge(0.9), size=1) +
+  geom_bar(position = position_dodge(0.9), stat="identity", width=0.8)+
+  STYLE +
+  colFill_TREATMENT +
+  labs(title = "Grooming in Sham and Pathogen treated colonies",
+       subtitle = paste("Mean",  "\u00b1", "SE by replicate (full period) "),
+       y = paste("Mean", suffix,"(sec) by ant",sep = " "))
+
+
 # Open the cumulative PDF file
 pdf(paste0(DATADIR, "/Grooming_plots/all_plots_", Sys.Date(), ".pdf"), onefile = TRUE, width = 7, height = 4)
 # Create a list of variable suffixes
@@ -1056,6 +972,14 @@ for (suffix in suffixes) {
   ## MEAN FREQUENCY,  MEAN DURATION & TOTAL DURATION
   plot_N <- paste0(MEAN, "_plot")
   
+  #subset the posthoc list element
+  posthoc_df <- posthoc_list[[grep(paste0("-",suffix,"-"),names(posthoc_list))]]
+  #assign NA treatment to comply withh ggplot requirements for plotting geom_text in the case of no interaction present.
+  # this solution is not generalisable
+  if (!("TREATMENT" %in% names(posthoc_df))) {
+    posthoc_df$TREATMENT <- NA
+  }
+  
   assign(plot_N,
          ggplot(infer_full, aes_string(x = "PERIOD", y = MEAN, fill = "TREATMENT")) +
     geom_errorbar(aes_string(ymin = paste0(MEAN,"-",SE), ymax = paste0(MEAN,"+",SE)),
@@ -1065,7 +989,14 @@ for (suffix in suffixes) {
     colFill_TREATMENT +
     labs(title = "Grooming in Sham and Pathogen treated colonies",
          subtitle = paste("Mean",  "\u00b1", "SE by replicate (full period) "),
-         y = paste("Mean", suffix,"(sec) by ant",sep = " ")))
+         y = paste("Mean", suffix,"(sec) by ant",sep = " ")) +
+      if("PERIOD_TREATMENT" %in% names(posthoc_df)){
+        geom_text(data = posthoc_df, aes(x = PERIOD, y = 70, group = TREATMENT, label = letters, fontface = "bold"), position = position_dodge2(width = 0.9, preserve = "single")) 
+      }else{
+        geom_text(data = posthoc_df, aes(x = PERIOD, y = 70, group = 1,         label = letters, fontface = "bold"), position = position_dodge2(width = 0.9, preserve = "single")) 
+        
+        }
+  )
   
   #save plot
   SavePrint_plot(plot_obj = get(plot_N), 
