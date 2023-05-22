@@ -161,10 +161,7 @@ individual_data <- individual_data[which(!is.na(individual_data$AntTask) & indiv
 individual_data$Ant_status <- paste(individual_data$status, individual_data$AntTask  ,sep=" ")
 
 #aggregate per time_of_day
-individual_data <- individual_data[which(!grepl("NA",individual_data$Ant_status)),]
-individual_data <- individual_data[which(!grepl("queen",individual_data$Ant_status)),]
-
-individual_data <- aggregate(prop_time_outside ~ REP_treat + Ant_status + tag + treatment + period , FUN=mean, na.rm=T, na.action=na.pass, individual_data)
+individual_data <- aggregate(prop_time_outside ~ REP_treat + Ant_status + tag + treatment + period + time_hour, FUN=mean, na.rm=T, na.action=na.pass, individual_data)
 
 library(dplyr)
 library(tidyr)
@@ -178,7 +175,6 @@ levels(individual_data$treatment)[levels(individual_data$treatment)=="control.sm
 levels(individual_data$treatment)[levels(individual_data$treatment)=="pathogen.small"] <- "Small Pathogen"
 individual_data$treatment <- factor(individual_data$treatment, levels = sort(levels(individual_data$treatment)))
 
-
 individual_data$Ant_status <- factor(individual_data$Ant_status, levels = c("untreated nurse" ,"untreated forager","treated nurse" ))
 
 
@@ -186,12 +182,12 @@ individual_data$Ant_status <- factor(individual_data$Ant_status, levels = c("unt
 individual_data_diff  <- individual_data %>%
   pivot_wider(names_from = period, values_from = prop_time_outside) %>%
   mutate(diff_prop_time_outside = post - pre) %>%
-  dplyr::select(REP_treat, Ant_status, treatment, diff_prop_time_outside,tag)
+  select(REP_treat, Ant_status, treatment, diff_prop_time_outside,tag)
 
 #aggregg for boxplot - ants means, by colony
 #mean by colony, AntTask, exposed, size_treat
 Mean_data_diff <- aggregate(diff_prop_time_outside ~ REP_treat + Ant_status  + treatment, FUN=mean, na.rm=T, na.action=na.pass, individual_data_diff)
-SD_data_diff <- aggregate(diff_prop_time_outside ~ REP_treat + Ant_status  + treatment, FUN=sd, na.rm=T, na.action=na.pass, individual_data_diff); colnames(SD_data_diff) [match("diff_prop_time_outside",colnames(SD_data_diff))] <- "SD_delta_time_outside"
+SD_data_diff <- aggregate(diff_prop_time_outside ~ REP_treat + Ant_status  + treatment, FUN=sd, na.rm=T, na.action=na.pass, individual_data_diff); colnames(SD_data_diff) [match("delta_time_outside",colnames(SD_data_diff))] <- "SD_delta_time_outside"
 #merge dfs
 Mean_data_diff <- plyr::join (x = Mean_data_diff , y=SD_data_diff, type = "right", match = "all")
 
@@ -227,3 +223,45 @@ ggplot(Mean_data_diff_Rep, aes(x = treatment, y = diff_prop_time_outside, fill =
 #+
 #labs(title= "Space Use, colony means w/ SE",
 #     subtitle=paste("N",N_exp[1,1],":",N_exp[1,2],";","N",N_exp[2,1],":",N_exp[2,2]))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+library(dplyr)
+
+
+min_sample <- individual_data
+# min_sample$time_hours <- NULL
+# min_sample$time_of_day <- NULL
+# Create a minimal reproducible sample
+min_sample <- min_sample %>%
+  group_by(Ant_status, treatment,period) %>%
+  slice_sample(n = 1) %>%
+  ungroup()
+dput(as.data.frame(min_sample[,c("Ant_status", "treatment", "period","prop_time_outside", "REP_treat")]))
+
+
+
+
+
+min_sample <- iterations_data %>%
+  group_by(i,x0,k,L,IMPUTATION) %>% #"x0","k","L","IMPUTATION"
+  slice_sample(n = 1) %>%
+  ungroup()
+min_sample$rel_conc <- round(min_sample$rel_conc,1)
+min_sample$rel_conc_imputed <- round(min_sample$rel_conc_imputed,1)
+min_sample$x0 <- round(min_sample$x0,1)
+
+
+dput(as.data.frame(min_sample[,c("i","Ant_status", "Treatment","rel_conc","rel_conc_imputed","LogFun_Category","propNA","x0","k","L","IMPUTATION")]))

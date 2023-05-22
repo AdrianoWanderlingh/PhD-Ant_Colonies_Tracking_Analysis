@@ -5,6 +5,7 @@
 
 ########## STATS FUNCTIONS ###############
 require(report)
+require(sjPlot)
 require(lme4)
 require(car)
 
@@ -230,7 +231,6 @@ transformations <- list(
 ###########    PLOT SAVING    ###############
 require(ggplot2)
 SavePrint_plot <- function(plot_obj, plot_name, dataset_name, save_dir, plot_size = c(7, 4), dpi = 300, font_size = 30) {
-  save_dir_plots <- paste0(save_dir,"/Grooming_plots/")
   # Create the directory if it doesn't exist
   if (!dir.exists(save_dir_plots)) {
     dir.create(save_dir_plots, recursive = TRUE)
@@ -257,6 +257,21 @@ require(colorspace)
 require(plotwidgets)
 require(ggplot2)
 require(ggnewscale)
+require(extrafont)
+#library(Cairo) # to ensure working export to pdf with non-standard fonts
+library(showtext)
+font_add_google("Crimson Text", "crimson", db_cache = FALSE)
+showtext_auto()#must be called to indicate that showtext is going to be automatically invoked to draw text whenever a plot is created.
+
+
+# Import system fonts
+#font_import()
+# font_import(paths = "/usr/share/texmf/fonts/opentype/public/tex-gyre", pattern = "texgyretermes")
+# # Set the default font family
+# loadfonts()
+
+#font_import(pattern = "Liberation", prompt= FALSE)
+#loadfonts(device = "pdf", quiet = TRUE)
 
 # #Create a custom color scale FOR COLONIES + treatments
 # FullPal <- scales::viridis_pal(option = "D")(20)
@@ -403,15 +418,15 @@ colFill_TREATMENT <- scale_fill_manual(name = "TREATMENT", values = myColors_Tre
 # ggplot PLOT STYLE
 STYLE <- list(
   #colScale, fillScale,
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
   theme_bw(),
+  theme( panel.grid.minor = element_blank(),text=element_text(family="Liberation Serif")),
   scale_x_discrete(labels = function(x) str_wrap(x, width = 4)) # wrap lables when long
 )
 
 STYLE_CONT <- list(
   #colScale, fillScale,
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()),
-  theme_bw()
+  theme_bw(),
+  theme(panel.grid.minor = element_blank(),text=element_text(family="Liberation Serif"))
 )
 
 
