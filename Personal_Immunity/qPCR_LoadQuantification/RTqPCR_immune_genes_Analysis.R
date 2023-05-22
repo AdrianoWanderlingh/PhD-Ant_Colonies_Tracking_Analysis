@@ -88,7 +88,7 @@ assign_CTDiff_15PipErr <- function(mean_Ct) {
 
 ### TURN plots on/off
 EXPLORE_PLOT <- FALSE # exploratory plots
-PLOT          <- FALSE # stats plots
+PLOT         <- FALSE # stats plots
 
 ### TURN stats report on/off
 REPORT <- TRUE
@@ -104,6 +104,10 @@ PipelineTesting <- data.frame(gene = character(), P.Status = numeric(), P.Treatm
 WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Adriano_RTqPCR_immune_genes"
 DATADIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP_summary_data"
 IMMUNITY_DATA <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/Personal_Immunity/Pathogen_Quantification_Data"
+
+#plot saving folder
+save_dir_plots <- paste0(WORKDIR,"/RTqPCR_immune_genes_plots/")
+
 
 #### define to_keep variables to keep clearing memory between runs
 to_keep <- c(ls(), c("to_keep"))
@@ -220,7 +224,7 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   summarised_data$Ori_Well <- sub(".*\\-", "", summarised_data$Code)
   summarised_data$Ori_Plate <- sub("\\-.*", "", summarised_data$Code)
 
-  # ADD EXTRA QUEENS
+  # ADD EXTRA QUEENS from 14th of Feb 2023 to have more data 
   ExtraQueens <- read.csv(paste(WORKDIR, "230214_ExtraShamQueens_AW.csv", sep = "/"), header = T, stringsAsFactors = F, sep = ",")
   ExtraQueens$Ct <- as.numeric(ExtraQueens$Ct)
   # uniform names to main dataset
@@ -245,7 +249,79 @@ if (!file.exists(paste(WORKDIR, "Adriano_RTqPCR_immune_genes_MASTER_REPORT.csv",
   
   #add extra Q
   summarised_data <- rbind(as.data.frame(summarised_data), as.data.frame(ExtraQueens))
+  # 
+  # 
+  # warning("FIX!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  #         IT IS ACTUALLY REMOVING GOOD QUEENS, THERE IS SOME MAJOR FLAW SOMEWHERE.
+  #         MAYBE INSTEAD OF MERGING THE FILE BACK,
+  #         CUT AND KEEP ASIDE THE TRIMMED QUEEN DATA, 
+  #         REPLACE THE CT VALUES IN THE ORIGINAL QUEEN DATA WITH THE NEW QUEEN RUN
+  #         REMERGE THE UPDATED STUFF TO THE GNERAL FILE")
+  # 
+  # 
+  ########################################################################
+  #####  INTERLUDE: READ NEW RUN OF QUEENS THAT DIDN'T MAKE THE CUT #####
+  ########################################################################
+  # after the pipeline is run, some queens have been discarded and re-run.
+  # replace the failed queen samples run with the re-run.
+
+  RerunQueens <- read.csv(paste(WORKDIR, "230427_queens_qPCR_rerun_AW.csv", sep = "/"), header = T, stringsAsFactors = F, sep = ",")
+  # strip Colony	and Duplicate
+  RerunQueens$Duplicate <- NULL;   #RerunQueens$Colony <- NULL
+  RerunQueens$Ct <- as.numeric(RerunQueens$Ct)
+  # uniform names to main dataset
+  #RerunQueens$Threshold <- NA
+  RerunQueens$Tm <- NULL #names(RerunQueens)[which(names(RerunQueens)=="Tm")] <- "Tm_Product"
+  RerunQueens$machine_num <- NA
+
+  #### use RT coords to look at the original sample position
+  #make dictionary to match RT_Code of RerunQueens to Sample_Well+Sample_Plate of summarised_data to copy Code(Ori_Well+Ori_Plate) to RerunQueens
+  summarised_data_DICT <- summarised_data[,c("Sample_Well","Sample_Plate","Code")]
+  summarised_data_DICT <- summarised_data_DICT %>% distinct()
+  summarised_data_DICT$RT_Code <- paste(summarised_data_DICT$Sample_Plate,summarised_data_DICT$Sample_Well, sep="-")
+  summarised_data_DICT$Sample_Plate <- NULL; summarised_data_DICT$Sample_Well <- NULL
+  # Merge the data frames using the common "RTCode" column
+  RerunQueens <- merge(RerunQueens, summarised_data_DICT, by = "RT_Code", all.x = TRUE)
+  RerunQueens <- RerunQueens[,c("gene","Ct","Code")]
+  # Add the new column N with values c(1, 2) for each combination of gene, Colony, and Code
+  RerunQueens <- RerunQueens %>%
+    group_by(gene, Code) %>%
+    mutate(machine_num = rep(c(1, 2), length.out = n())) %>%
+    ungroup()
+  # for all the "Code" identities in dataframe RerunQueens that match in dataframe summarised_data, replace the "Ct" values by "gene" , "machine_num" and "Code"
+  summarised_data <- merge(summarised_data, RerunQueens, by = c("machine_num", "gene", "Code"), all.x = TRUE)
+  # If the "Ct" value is not missing (NA) in the RerunQueens dataframe (which will be named "Ct.y" in the merged dataframe), replace the corresponding "Ct" value from the genes_data dataframe
+  summarised_data$Ct.x <- ifelse(is.na(summarised_data$Ct.y), summarised_data$Ct.x, summarised_data$Ct.y)
+  summarised_data <- summarised_data[, !names(summarised_data) %in% "Ct.y"]
+  names(summarised_data)[names(summarised_data) == "Ct.x"] <- "Ct"
   
+  # RerunQueens$gene_rep <- paste(RerunQueens$Code,RerunQueens$gene, sep="-")
+  # RerunQueens$name <- paste(RerunQueens$gene_rep,RerunQueens$RT_Plate, sep="-") # note: RT_Plate is used here as it corresponds to the original sample plate (but not to the OriPlate)
+  # # create a new "name" var with the same format and use the new Queens codes to remove data from summerised data, then merge
+  # RerunQueens$MERGEname     <- RerunQueens$name
+  # summarised_data$MERGEname <- paste(summarised_data$Code,summarised_data$gene,summarised_data$Sample_Plate, sep="-")
+  # 
+  # # REMOVE THE SAMPLES THAT HAVE BEEN RERUN
+  # ToReplace <- unique(RerunQueens$MERGEname)
+  # summarised_data <- summarised_data[!summarised_data$MERGEname %in% ToReplace,]
+  # #rename for merge
+  # summarised_data$MERGEname <- NULL
+  # RerunQueens$MERGEname <- NULL
+  # RerunQueens$Sample_Well <- NULL
+  # RerunQueens$Sample_Plate <- NULL
+  # RerunQueens$RT_Code <- NULL
+  # names(RerunQueens)[which(names(RerunQueens)=="RT_Plate")] <- "Sample_Plate"
+  # names(RerunQueens)[which(names(RerunQueens)=="RT_Well")] <- "Sample_Well"
+  # 
+  # RerunQueens$Code1 <- RerunQueens$Code
+  # RerunQueens <- RerunQueens %>%
+  #   separate(Code1, into = c( "Ori_Well","Ori_Plate"), sep = "-")
+  # 
+  # # replace immediately after the samples are loaded according to the sample Code as we know that these samples are going to be replaced.
+  # 
+  # #add extra Q
+  # summarised_data<- rbind(as.data.frame(summarised_data), as.data.frame(RerunQueens))
+
   ### CHECK THE WELLS POSITIONS TO ADD THE ANT IDENTITY
   plate_positions_list <- list.files(path = file.path(IMMUNITY_DATA, "QPCR_SAMPLING_TAGSCANNER"), pattern = "PLAQUE", full.names = T)
 
@@ -327,10 +403,7 @@ for (Technical_error in c(2,3)) {
 for (IMPUTATION in c("QRILC","HM")) {
 
   for (ALWAYS_DISCARD in c(T)){ #,F ## we want to discard invalid datapoints
-    # Limit_of_Detection <- 37
-    # Technical_error <- 3
-    # IMPUTATION <- "HM"
-    # ALWAYS_DISCARD <- T
+    # Limit_of_Detection <- 37; Technical_error <- 3; IMPUTATION <- "HM"; ALWAYS_DISCARD <- T
     
     ##### READ STARTING FILE
     # read the csv file
@@ -454,16 +527,28 @@ for (IMPUTATION in c("QRILC","HM")) {
         sum_NA = ifelse(all(is.na(Ct)), NA, sum(is.na(Ct))),
         mean_Ct =  ifelse(all(is.na(Ct)), NA, mean(Ct, na.rm = TRUE)))
     
+    if (PLOT) {
+   
     # Plot the distribution of NA by mean Ct per group
-    ggplot(mean_data, aes(x = mean_Ct, y = propNA, label= gene)) +
+    missing_vs_Ct_plot <- ggplot(mean_data, aes(x = mean_Ct, y = propNA, label= gene)) +
       geom_smooth(colour="grey") +
       geom_point() +
       geom_text(nudge_y = 0.05,size=3) +
       xlab("Mean Ct") +
-      ylab("% of missing values") +
-      ggtitle("NA by mean Ct per gene") +
+      ylab("% of missing data") +
+      #ggtitle("NA by mean Ct per gene") +
       xlim(27.2, 34) +
-      theme_bw()
+      STYLE_CONT
+    
+    SavePrint_plot(plot_obj = missing_vs_Ct_plot, 
+                   plot_name= "missing_vs_Ct_plot",
+                   plot_size = c(3, 2),
+                   #font_size_factor = 4,
+                   dataset_name=deparse(substitute(genes_data)), 
+                   save_dir = save_dir_plots)
+    
+    
+    }
     # it seems that genes with lower average expression are far more likely to be non-detects.
     # From this we can conclude that the non-detects do not occur completely at random.
     
@@ -594,6 +679,11 @@ for (IMPUTATION in c("QRILC","HM")) {
     
     table(EF1_discards$Ant_status,EF1_discards$Category)
     
+    
+    #produce table of samples to reprocess
+    Reprocess_table_EF1 <- EF1_discards[which(EF1_discards$gene=="EF1"),c("Sample_Well","Sample_Plate","gene","Code","Treatment","Ant_status")]
+    Reprocess_table_EF1 <- Reprocess_table_EF1 %>% distinct()
+    
     if (EXPLORE_PLOT) {
       # create a frequency table of Code and sort it by frequency
       freq_table <- table(EF1_discards$Code)
@@ -716,7 +806,7 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
       ## explore all data distribution
       ggplot(genes_sub , aes(x = gene, fill = Category)) +
         geom_bar(position = "stack") +
-        geom_text(position = position_stack(vjust = 0.5), aes(label =after_stat(count)), stat='count',size=2.5) +
+        geom_text(position = position_stack(vjust = 0.5), aes(label =after_stat(count)), stat='count',size=3) +
         facet_wrap(~Ant_status, nrow=4)+
         scale_fill_brewer(palette = "Set2") +
         labs(title = "Frequency of Category by Ant_status by gene", x = "Gene", y = "Frequency") +
@@ -727,7 +817,7 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
               legend.key.size = unit(0.5, "cm"),
               legend.text = element_text(size = 10),
               legend.title = element_text(size = 12, face = "bold"))+
-        scale_y_continuous(limits = c(0, 380), expand = c(0, 0))
+        scale_y_continuous(limits = c(0, 450), expand = c(0, 0))
       
       ## explore the invalid data distribution
       freq_table <- table(genes_data[which(genes_data$Category=="invalid"),"Code"])
@@ -758,6 +848,11 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
     }
     
     
+
+    
+    
+    
+    
     ###########################################################
     #######     STEP 4: RE-ASSING VALUES BY CATEGORY    #######
     ###########################################################
@@ -785,6 +880,13 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
       mutate(mean_Ct = ifelse(grepl("impute", Category), NA, mean_Ct))
     
     # "invalid":              either discard, use mean (already calculated) or re-run sample (810, 405 duplicates. 336 unique samples)
+    
+    #CHECK n OF DISCARDS
+    DISCARD_LIST <- genes_data[which(genes_data$Category=="invalid"),]
+    length(unique(DISCARD_LIST$Code))
+    # N of discards including EF1 invalids
+    length(unique(c(EF1_discards,DISCARD_LIST$Code)))
+    
     ## DISCARD DATASET
     genes_data_invDiscard <- genes_data[which(genes_data$Category!="invalid"),]
     #MEAN DATASET IS genes_data
@@ -1143,22 +1245,96 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
       #        facet_grid(. ~ gene)
       }
       
+      ####################################################################################
+      ##################              SUMMARY TABLES      ################################
+      ####################################################################################
+      
+      #table of invalid files for Florent
+      #produce table of samples to reprocess
+      Reprocess_table_GOI <- genes_data[which(genes_data$Category=="invalid" & genes_data$Ant_status!="queen" & genes_data$gene!="PO"),
+                                        c("Sample_Well","Sample_Plate","gene","Code","Treatment","Ant_status")]
+      Reprocess_table_GOI <- Reprocess_table_GOI %>% distinct()
+      # make sure table matches plot: table(Reprocess_table_GOI$gene,Reprocess_table_GOI$Ant_status)
+      Reprocess_table <- rbind(Reprocess_table_EF1,Reprocess_table_GOI)
+      Reprocess_table$gene <- as.character(Reprocess_table$gene)
+      #tranform this table from long to wide, having one column per "gene" indicating the N of rows per "Code"
+      # Group, summarize, and spread the data
+      Reprocess_table_wide <- Reprocess_table %>%
+        group_by(Code, Sample_Plate, Sample_Well, Treatment, Ant_status, gene) %>%
+        summarise(N = n(), .groups = 'drop') %>%
+        spread(key = gene, value = N, fill = 0)
+
+      #add missing information:
+      # if EF1 needs to be processed, same goes for remaining genes
+      # Add 1 to columns "DEF" and "HYM" if column "EF1" has a 1
+      Reprocess_table_wide <- Reprocess_table_wide %>%
+        mutate(DEF = if_else(EF1 == 1, 1, DEF),
+               HYM = if_else(EF1 == 1, 1, HYM))
+      # Ef1 should then be turned to all 1s as it has to be always done
+      Reprocess_table_wide$EF1 <- 1
+      Reprocess_table_wide$N_reads_obtained <- Reprocess_table_wide$EF1 + Reprocess_table_wide$HYM + Reprocess_table_wide$DEF
+      
+      write.csv(Reprocess_table_wide, paste(WORKDIR, "Adriano_RTqPCR_immune_genes_INVALID_SAMPLES.csv", sep = "/"), row.names = FALSE)
+      
+      
+      #report_tab_categories <- genes_data[,c("rel_conc_imputed","GROUP","gene","Category")]
+      library(flextable)
+      library(officer)
+
+      ### TABLE OF POST-PROCESSED DATA: SUMMARY STATS
+      report_tab_df <- as.data.frame(
+        CLEAN_DATA[,c("rel_conc_imputed","Ant_status","gene","Treatment","status")] %>%
+          group_by(gene, Ant_status) %>%
+          summarise(
+            count = n(),
+            mean = mean(rel_conc_imputed, na.rm = TRUE),
+            median = median(rel_conc_imputed, na.rm = TRUE),
+            sd = sd(rel_conc_imputed, na.rm = TRUE)
+          )%>%
+          arrange(gene)
+      )
+      
+      #remove extra rows
+      report_tab_df <- report_tab_df[which(report_tab_df$Ant_status!="treated nurse"),]
+      #round numerical vars
+      report_tab_df <- data.frame(lapply(report_tab_df, function(x) if(is.numeric(x)) round(x, 4) else x))
+      
+      #renaming
+      #names(report_tab_df)[which(names(report_tab_df)=="GROUP")] <- "Ant status"
+ 
+      # Create a flextable object
+      ft <- flextable(report_tab_df)
+      # Create a Word document
+      doc <- read_docx()
+      # Insert the flextable into the document
+      doc <- body_add_flextable(doc, value = ft)
+      # Save the document
+      print(doc, target = paste0(save_dir_plots,"rel_conc_imputed_",Sys.Date(),".docx"))
+      
+      ### TABLE OF POST-PROCESSED PROCESS: FREQUENCy OF CASES
+      
+      report_tab_CAT <- as.data.frame(
+        genes_data[which(genes_data$Ant_status!="treated nurse")
+          ,c("Ant_status","gene","Treatment","status","Category")] %>%
+          group_by(gene, Category) %>%
+          summarise(
+            count = n()
+          )%>%
+          arrange(gene)
+      )
+      
+      report_tab_CAT$count <- report_tab_CAT$count/2
+      
+      # Create a flextable object
+      ft <- flextable(report_tab_CAT)
+      # Insert the flextable into the document
+      doc <- body_add_flextable(doc, value = ft)
+      # Save the document
+      print(doc, target = paste0(save_dir_plots,"rel_conc_imputed_",Sys.Date(),".docx"))
+      
       #####################################################################################
       ##################              STATS & PLOTS        ################################
       #####################################################################################
-      
-      
-     report_tab <- CLEAN_DATA[,c("rel_conc_imputed","GROUP","gene")]
-      
-      ### Analysed data
-      report_sample(report_tab, group_by ="gene")
-      
-      
-      
-      CLEAN_DATA[,c("rel_conc_imputed","GROUP","gene")] %>%
-        group_by(gene,GROUP) %>%
-        report_table()
-      
       
       
       #####################################################################################
@@ -1518,7 +1694,7 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
             
             if (QUEEN_data_OK) {
               # separated from the above as the label is assigned differently!
-              print(
+              queen_plot <-(
                 # ggplot(
                 #   data = CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),],
                 #   aes(x = gene, y = rel_conc_imputed, color = Treatment)
@@ -1537,13 +1713,15 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
                 ) +
                   #geom_violin(aes(fill= Treatment), trim = FALSE,width =1.1, alpha = 0.6) +
                   #geom_boxplot(aes(fill= Treatment),colour ="black", width = 0.1, alpha = 0.6, position = position_dodge(width = 1.1) )+
-                  geom_boxplot(aes(fill = Treatment),colour ="black", alpha = 0) +
-                  geom_point(position=position_jitterdodge(),aes(fill = Treatment,color="black"), shape=21,size = 1, show.legend = FALSE) +
+                  geom_boxplot(size = 0.8) + #aes(fill = Treatment),colour ="black", alpha = 0
+                  geom_point(position=position_jitterdodge()) + #,aes(fill = Treatment,color="black"), shape=21,size = 1, show.legend = FALSE
                   colFill_Treatment +
                   colScale_Treatment +
                   STYLE +
                   #ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
-                  scale_y_continuous(labels = scales::percent, trans = "log10") +
+                  #scale_y_continuous(labels = scales::percent, trans = "log10") +
+                  scale_y_continuous(labels = function(x) format(x*100, digits=2, nsmall=2), trans = "log10") +
+                  ylab("% relative gene expression") +
                   geom_text(data = mod_Q[which(mod_Q$GROUP==GROUP),], aes(x = gene, y = 0.2, label = P.stars, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
               )
               
@@ -1606,7 +1784,7 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
             # ## plot by Treatment (size)
             
             #base model params
-            base_model <- PipelineTesting[which(PipelineTesting$T.E.==3 & PipelineTesting$LOD==37 & PipelineTesting$imputation=="QRILC"& PipelineTesting$Invalids=="Invalids_DISCARD" &PipelineTesting$ALWAYS_DISCARD==T),]
+            base_model <- PipelineTesting[which(PipelineTesting$T.E.==3 & PipelineTesting$LOD==37 & PipelineTesting$imputation=="HM"& PipelineTesting$Invalids=="Invalids_DISCARD" &PipelineTesting$ALWAYS_DISCARD==T),]
             base_model$P.Status.stars <- sapply(base_model$P.Status, add_star)
             base_model$P.Treatment.stars <- sapply(base_model$P.Treatment, add_star)
             
@@ -1639,8 +1817,8 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
                   colScale_Treatment +
                   STYLE +
                   #ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) +
-                  scale_y_continuous(labels = scales::percent, trans = "log10") +
-                #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
+              scale_y_continuous(labels = function(x) format(x*100, digits=2, nsmall=2), trans = "log10") +
+              ylab("% relative gene expression") +                #geom_text(data = label_treatment[which(label_treatment$GROUP==GROUP),], aes(x = gene, y = 10, group = Treatment, label = V1, fontface = "bold"), position = position_jitterdodge(seed = 2)) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
             geom_text(data = base_model, aes(x = gene, y = 0.35, label = P.Treatment.stars, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
             
             
@@ -1667,19 +1845,28 @@ genes_data$Category[genes_data$Category=="evaluate_abs_diff_Ct" & (genes_data$ab
               colScale_Treatment +
               STYLE +
               #ggtitle(paste(unique(CLEAN_DATA[which(CLEAN_DATA$GROUP==GROUP),"Ant_status"]), collapse = ", ")) + #,subtitle = "95% C.I."
-              scale_y_continuous(labels = scales::percent, trans = "log10") +
-              facet_grid(. ~ gene)+
+              scale_y_continuous(labels = function(x) format(x*100, digits=2, nsmall=2), trans = "log10") +
+              ylab("% relative gene expression") +              facet_grid(. ~ gene)+
               geom_text(data = base_model, aes(x = 1.5, y = 0.35, label = P.Status.stars, fontface = "bold") , color = "black") #, position = position_jitterdodge(seed = 2) # jitterdodge in geom_text will need the grouping aesthetic (eg, colour) to be defined inside ggplot() +
             
 
             # arrange plots side by side
-            grid.arrange(p1, p2, ncol = 2)
+            #immune_genes_plots <- grid.arrange(queen_plot ,p1, p2, ncol = 1)
             
+            immune_genes_plots <- cowplot::plot_grid(queen_plot ,p1, p2, labels=c("A", "B","C"), ncol =  1)
+            
+            SavePrint_plot(plot_obj = immune_genes_plots,
+                           plot_name= "immune_genes_plots",
+                           plot_size = c(7, 9),
+                           #font_size_factor = 4,
+                           dataset_name=deparse(substitute(genes_data)),
+                           save_dir = save_dir_plots)
+            # 
           }
         }
       } #PLOT?
       
-      print(mod_UN_list)
+      #print(mod_UN_list)
       
       
       #}) ### LOOP BETWEEN THE TWO VARIANTS OF HOW TO TREAT THE INVALIDS (KEEP MEAN OR DISCARD VALUES)
@@ -1723,15 +1910,15 @@ for (suffix in suffixes) {
   
   # Create scatterplot of model estimates VS p-values
   sp <- ggplot(data = PipelineTesting, aes_string(x = ESTIMATE, y = PVAL)) +
-    geom_point(aes(color = gene, shape=imputation), alpha = 0.9,size =2,position = position_jitter(width = 0.05, height = 0))  + # CAREFUL: there is a tiny amount of jitter for readability
+    geom_point(aes(color = gene, shape=imputation), alpha = 0.9,size =2,position = position_jitter(width = 0.005, height = 0))  + # CAREFUL: there is a tiny amount of jitter for readability
     geom_point(data =  base_model, aes_string(x = ESTIMATE, y = PVAL), shape = 4, size = 3) +
     #geom_rug(aes(color = gene))+
-    geom_text(data = base_model, aes_string(x = ESTIMATE, y = PVAL, label = "gene"), vjust = -2,hjust= +1 ) +
+    geom_hline(yintercept = 0.05, linetype = "dashed", color = "red")+
+    geom_text(data = base_model, aes_string(x = ESTIMATE, y = PVAL, label = "gene"), vjust = -0.1,hjust= +1.2 ) +
     geom_vline(xintercept = 0) +
     #labs(x = "Model Estimates", y = "p-value") + #, title = "Model Estimates vs. P-values"
     theme_classic()  +
     scale_shape_manual(values = c(21, 24)) +
-    geom_hline(yintercept = 0.05, linetype = "dashed", color = "red")+
     scale_color_jco() +
     #theme(aspect.ratio=1) +
     border()  
@@ -1762,7 +1949,24 @@ for (suffix in suffixes) {
   # ggsave(filename = paste0("plot_", suffix, ".png"), plot = my_plot)
 }
 
-cowplot::plot_grid(eff_plot_list[[1]],eff_plot_list[[2]], ncol = 2,rel_widths = c(1, 1.5))
+#cowplot::plot_grid(eff_plot_list[[1]],eff_plot_list[[2]], ncol = 2,rel_widths = c(1, 1.5))
+
+
+# Create an empty plot with a white background to use as a spacer
+spacer <- ggplot() + theme_void() + theme(plot.background = element_rect(fill = "white",colour = "white"))
+# Arrange the plots with the spacer in between
+immune_pipeline_stability <- cowplot::plot_grid(eff_plot_list[[1]], spacer, eff_plot_list[[2]],
+                                               labels=c("A", "","B"),
+                                               ncol = 3, rel_widths = c(1.15, 0.1, 1.72))
+
+SavePrint_plot(plot_obj = immune_pipeline_stability,
+               plot_name= "immune_pipeline_stability",
+               plot_size = c(6.7, 2.4), #THUS RATIO KEEPS THE SCATTER SQUARE!
+               #font_size_factor = 4,
+               dataset_name=deparse(substitute(genes_data)),
+               save_dir = save_dir_plots)
+
+
 
 ############
 
@@ -2039,16 +2243,18 @@ for (IMPUTATION in c("HM","QRILC","zero")) {
   # # Print the combined boxplot
   # print(combined_boxplot)
 
-  
-  grid.arrange(grobs = plot_list, ncol = 3,
-               bottom = paste("simulated left-censoring with varying parameters of the logistic function")) ## display plot
-  
-  grid.arrange(grobs = plot_list_QRILC, ncol = 3,
-               bottom = paste("QRILC imputed simulated left-censored data")) ## display plot
-  
-  grid.arrange(grobs = plot_list_HM, ncol = 3,
-               bottom = paste("HM imputed simulated left-censored data")) ## display plot
-  
+  if (EXPLORE_PLOT) {
+    grid.arrange(grobs = plot_list, ncol = 3,
+                 bottom = paste("simulated left-censoring with varying parameters of the logistic function")) ## display plot
+    
+    grid.arrange(grobs = plot_list_QRILC, ncol = 3,
+                 bottom = paste("QRILC imputed simulated left-censored data")) ## display plot
+    
+    grid.arrange(grobs = plot_list_HM, ncol = 3,
+                 bottom = paste("HM imputed simulated left-censored data")) ## display plot
+    
+  }
+
 
 ### SCATTERPLOT of model estimates VS p-values 
 # Create a list of variable suffixes
@@ -2100,9 +2306,19 @@ for (suffix in suffixes) {
   # ggsave(filename = paste0("plot_", suffix, ".png"), plot = my_plot)
 }
 
-cowplot::plot_grid(eff_plot_list[[1]],eff_plot_list[[2]], ncol = 2,rel_widths = c(1, 1.5))
+# Create an empty plot with a white background to use as a spacer
+spacer <- ggplot() + theme_void() + theme(plot.background = element_rect(fill = "white",colour = "white"))
+# Arrange the plots with the spacer in between
+immune_imputation_method <- cowplot::plot_grid(eff_plot_list[[1]], spacer, eff_plot_list[[2]],
+                                               labels=c("A", "","B"),
+                                               ncol = 3, rel_widths = c(1.1, 0.1, 1.7))
 
-
+SavePrint_plot(plot_obj = immune_imputation_method,
+               plot_name= "immune_imputation_method",
+               plot_size = c(6.7, 2.5), #THUS RATIO KEEPS THE SCATTER SQUARE!
+               #font_size_factor = 4,
+               dataset_name=deparse(substitute(genes_data)),
+               save_dir = save_dir_plots)
 
 
 
@@ -2177,19 +2393,6 @@ error_summary_stats <- error_summary_long %>%
 
 # Define a color palette
 color_palette <- RColorBrewer::brewer.pal(3, "Set1")
-# Create a plot with geom_line and geom_ribbon
-ggplot(error_summary_stats, aes(x = propNA, y = mean_error, color = IMPUTATION, group = IMPUTATION)) +
-  geom_line(alpha= 0.6) +
-  geom_ribbon(aes(ymin = mean_error - sd_error, ymax = mean_error + sd_error, fill = IMPUTATION), alpha = 0.2) +
-  labs(x = "Proportion of missing data",
-       y = "RMSD",
-       color = "imputation",
-       fill = "imputation" ) +
-  theme_minimal() +
-  scale_color_manual(values = color_palette) + 
-  scale_fill_manual(values = color_palette) # +
-  #facet_wrap(~error_type, scales = "free_y", ncol = 2)
-
 
 #get position for prop missing data of relevant vars
 missing_data <- CLEAN_DATA[which(CLEAN_DATA$gene!="DEF" & CLEAN_DATA$GROUP=="UNTREATED_W"),
@@ -2206,24 +2409,34 @@ missing_data <- missing_data %>%
 missing_data <- missing_data %>% distinct()
 
 error_summary_stats$propNA <- as.numeric(as.character(error_summary_stats$propNA))
+#transform prop in percent
+error_summary_stats$propNA <- error_summary_stats$propNA*100
+missing_data$propNA        <- missing_data$propNA*100
 # Create a plot with geom_line and geom_ribbon using the new color palette
-plot_with_stats_new_colors <- ggplot(error_summary_stats, aes(x = propNA, y = mean_error, color = IMPUTATION, group = IMPUTATION)) +
+imputation_comparison <- ggplot(error_summary_stats, aes(x = propNA, y = mean_error, color = IMPUTATION, group = IMPUTATION)) +
   geom_vline(xintercept = missing_data$propNA, colour="grey60",linetype="dashed") +
   geom_text(data = missing_data, aes(x = propNA, y = Inf, label = gene), hjust = -0.5, vjust = 1.4, size = 4,colour="grey30") +
   geom_line() +
   geom_ribbon(aes(ymin = mean_error - sd_error, ymax = mean_error + sd_error, fill = IMPUTATION), alpha = 0.2) +
-  labs(title = "Comparison of QRILC and HM Imputation Methods",
-       x = "Proportion of NAs",
-       y = "Error Value",
+  labs(#title = "Comparison of QRILC and HM Imputation Methods",
+       x = "% of missing data",
+       y = "RMSD",
        shape = "steepness (k)") +
-  theme_minimal() +
+  STYLE_CONT +
+  #theme_minimal() +
   #facet_wrap(~error_type, ncol = 2) +
   scale_color_manual(values = color_palette) + # Apply the new color palette for lines
-  scale_fill_manual(values = color_palette)    # Apply the new color palette for ribbon
+  scale_fill_manual(values = color_palette)+    # Apply the new color palette for ribbon
+  scale_x_continuous(limits = c(40, 80), expand = c(0, 0))
 
-# Print the plot with the new color palette
-print(plot_with_stats_new_colors)
 
+
+SavePrint_plot(plot_obj = imputation_comparison,
+               plot_name= "imputation_comparison",
+               plot_size = c( 4,3), 
+               #font_size_factor = 4,
+               dataset_name=deparse(substitute(genes_data)),
+               save_dir = save_dir_plots)
 
 
 }

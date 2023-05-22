@@ -26,11 +26,12 @@ digraph immune_genes_data_cleaning_pipeline {    # 'digraph' means 'directional 
        width = 1.3,
       style='filled',
       fillcolor='WhiteSmoke',
+      bgcolor='WhiteSmoke',
       color='DimGray'
 ]                      
   
 A   [label = 'Housekeeping\ngene', fillcolor ='Gray70'] 
-B1   [label = 'gene by gene\nmean(Ct)', fillcolor ='Gray70']
+B1   [label = 'gene by gene\nmean Ct', fillcolor ='Gray70']
 B2  [label = 'discard\nall genes',
 fontcolor = red] 
 
@@ -42,7 +43,7 @@ D1   [label = '2 NA']
 D2  [label = '1 NA']
 #D3   [label = 'impute',
 #fontcolor = red]
-D4   [label = 'ΔCt', fillcolor ='Gray70']
+D4   [label = 'Diff.Ct', fillcolor ='Gray70']
 #E1   [label = 'impute',
 #fontcolor = red]
 E2   [label = 'remaining Ct\n<(LOD - T.E.)',
@@ -116,17 +117,3 @@ IMP -> J3 [color = white]
 
 
 #############################
-
-DiagrammeR::grViz("     
-digraph G { 
-  rankdir = TB;
-  subgraph {
-    A -> B
-    A -> C
-    C -> D
-    X -> Y
-    // note that rank is used in the subgraph
-    {rank = same; A; X;}
-    {rank = same; B; D; Y;}
-  } /* closing subgraph */
-}")
