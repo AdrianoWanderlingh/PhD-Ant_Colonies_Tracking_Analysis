@@ -7,6 +7,8 @@ library(reshape2)
 library(dplyr)
 library(ggplot2)
 library(gridExtra)
+library(clipr) # if Error: Clipboard on X11 requires 'xclip': sudo apt-get install xclip
+
 
 USER <- "supercompAdriano"
 
@@ -18,6 +20,58 @@ if (USER=="supercompAdriano") {
 
 ###### LOAD METADATA
 metadata_present <- read.table(file.path(DATADIR,"Metadata_Exp1_2021_2023-02-27.txt"),header=T,stringsAsFactors = F, sep=",")
+
+
+##################################################################
+################## N of ants experiment   ########################
+##################################################################
+
+# tot ants
+Nants <- nrow(metadata_present)
+#N  tagfalls
+tagfalls <- (nrow(metadata_present[which(metadata_present$Comment=="TagFall"),])/nrow(metadata_present))*100
+
+# N deaths
+deaths <- (nrow(metadata_present[which(metadata_present$Comment=="death"|metadata_present$Comment=="accident"),])/nrow(metadata_present))*100
+# N deaths by accident only
+byaccident <- (nrow(metadata_present[which(metadata_present$Comment=="accident"),])/nrow(metadata_present))*100
+
+
+cat("Of the",Nants, "individuals involved in the experiment,"
+      ,round(deaths,2),"% died during the experiment, of which"
+      ,round(byaccident,2),"% of the total died by accident during the experimental manipulation."
+      ,"over the 6 days of experiment per replicate, only",round(tagfalls,2),"% of the ants lost their fiducial marker, which allowed for a robust observation of the ants behaviours throughout the experiment."
+      ,sep =" ")
+
+
+
+#Treatment group, Mean exposed N, Sd exposed N, Mean colony size, sd colony size, N colonies 
+
+
+### METADATA TABLE : SUMMARY STATS
+mTable <- as.data.frame(metadata_present %>%
+  group_by(REP_treat, size_treat) %>%
+  summarise(
+    N_REP = sum(n(), na.rm = TRUE),
+    N_REP_Exposed = sum(Exposed == "TRUE"),
+    ) %>%
+  group_by(size_treat) %>%
+  summarise(
+    mean_N = mean(N_REP),
+    sd_N = sd(N_REP, na.rm = TRUE),
+    mean_N_Exposed = mean(N_REP_Exposed),
+    sd_N_Exposed = sd(N_REP_Exposed, na.rm = TRUE),
+    N_cols = n_distinct(REP_treat)
+  ) %>%
+  arrange(size_treat)
+)
+
+#round numerical vars
+mTable <- data.frame(lapply(mTable, function(x) if(is.numeric(x)) round(x, 3) else x))
+
+write_clip(mTable)
+
+
 
 ##################################################################
 ################## THRESHOLD FOR ANT_TASK ########################
