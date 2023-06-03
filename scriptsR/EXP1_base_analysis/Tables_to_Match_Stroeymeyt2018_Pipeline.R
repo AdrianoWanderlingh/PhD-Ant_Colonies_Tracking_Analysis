@@ -94,9 +94,65 @@ treated_worker_list <- data.frame(colony = metadata_treated$colony,
                                   tag =  metadata_treated$antID,
                                   survived_treatment = T,
                                   treatment = metadata_treated$treatment_code,
-                                  REP_treat= metadata_treated$REP_treat)
+                                  REP_treat= metadata_treated$REP_treat,
+                                  AntTask= metadata_treated$AntTask)
 
 write.table(treated_worker_list, file = file.path(SAVEDIR,"treated_worker_list.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+
+##################################################################
+##############           seed files           ####################
+##################################################################
+
+# flag to determine if selecting 10% of the colony size (T) or the same N as the real exposed ants (F)
+select_fixed_N <- F
+
+# same as above : treated_workers.txt
+# treated workers simulation is to compare effects with the observed post-exposure changes
+write.table(treated_worker_list, file = file.path(SAVEDIR,"seeds/treated_workers.txt"), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+
+# simulation of transmission
+# simulations on pre- and post-networks 
+#
+# Pre networks:
+# - compare how transmission is compared to observed post (seed: treated workers). simulation shows what is the expected in the post-networks and it can be compared with the actual post-net qPCR data
+# - what would have happened if the exposed where the foragers/nurses/random_workers. This simulation is to study the effects in the pre-period (constitutive properties)
+
+
+# For simulations, ants where randomly selected from the pool of nurses, foragers or all of the workers, matching the number of exposed nurses in each colony.
+
+# select the N of EXPOSED ants that where alive (present in metadata_present
+# Calculate N_exposed_alive as the number of Exposed per colony = TRUE
+metadata_present$N_exposed_alive <- ave(metadata_present$Exposed, metadata_present$colony, FUN = function(x) sum(x))
+
+# Randomly select X rows per colony
+selected_rows <- dataset[ave(seq_len(nrow(dataset)), dataset$colony, FUN = function(x) sample(x, size = unique(x$X))), ]
+
+for (GROUP in c("nurse","forager","random_worker")) {
+  if (!(GROUP %in% c("nurse","forager"))) {
+    metadata_GROUP <- metadata_present[which(metadata_present$AntTask!="queen"),]
+  }else{
+    metadata_GROUP <- metadata_present[which(metadata_present$AntTask==GROUP),]
+  }
+  if (select_fixed_N) {
+    # nurses.txt
+    # Group the dataset by "colony" and sample rows based on "status"
+    metadata_GROUPs_seed <- metadata_GROUP %>%
+      group_by(colony) %>%
+      sample_n(ifelse(status == "Big", 18, 3)) %>% # replace FALSE means do not resample rows if threre are less than N to be sliced
+      ungroup()
+  }else{
+    metadata_GROUPs_seed <- metadata_GROUP %>%
+      group_by(colony) %>%
+      sample_n(first(N_exposed_alive)) %>%
+      ungroup()
+      }
+
+  metadata_GROUPs_seed <- metadata_GROUPs_seed[,c("colony","antID","treatment_code","REP_treat","AntTask")]
+  names(metadata_GROUPs_seed)[which(names(metadata_GROUPs_seed)=="treatment_code")] <- "treatment"
+  names(metadata_GROUPs_seed)[which(names(metadata_GROUPs_seed)=="antID")] <- "tag"
+
+  write.table(metadata_GROUPs_seed, file = file.path(SAVEDIR,paste0("seeds/",GROUP,"s.txt")), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
+}
 
 ##################################################################
 #######################    info.txt    ###########################
@@ -244,5 +300,71 @@ for (REP.n in 1:length(files_list)) {
         # }
   } # REP folders
 } # REP by REP
+
+
+
+##################################################################
+#################    time_aggregation_info    ####################
+##################################################################
+
+# needed by the simulations
+
+# file format: colony020_pathogen_PostTreatment.txt
+
+# time frames time_since_start time_hours date_GMT time_of_day_exact time_of_day
+# 1415277843.35 800219 111.14 0 2014-11-06.12:44:03.34 12.73 12
+# 1415288643.47 821820 114.14 3 2014-11-06.15:44:03.47 15.73 15
+# 1415299443.11 843420 117.14 6 2014-11-06.18:44:03.10 18.73 18
+# 1415310243.24 865021 120.14 9 2014-11-06.21:44:03.24 21.73 21
+# 1415321043.37 886622 123.14 12 2014-11-07.00:44:03.36 0.73 0
+# 1415331843.48 908223 126.14 15 2014-11-07.03:44:03.48 3.73 3
+# 1415342643.11 929823 129.14 18 2014-11-07.06:44:03.10 6.73 6
+# 1415353443.25 951424 132.14 21 2014-11-07.09:44:03.25 9.73 9
+
+# keep cols: time, time_hours, time_of_day
+
+source_folders <- c(
+"/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/intermediary_analysis_steps/full_interaction_lists/PostTreatment/observed",
+"/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/intermediary_analysis_steps/full_interaction_lists/PreTreatment/observed")
+
+for (SOURCE in source_folders){
+  # Get a list of all .txt Interaction files in SOURCE
+  interaction_files <- list.files(SOURCE, pattern = "\\.txt$", full.names = TRUE)
+  
+  for (INT in interaction_files){
+    # read each .txt Interaction file in SOURCE
+    Interaction <- read.table(INT, header = TRUE, sep = "\t")
+    
+  # select, per each Interaction$time_hours, the min(Interaction$Starttime) and return a table of Interaction$Starttime, Interaction$time_hours and Interaction$time_of_day
+  aggregated_table <- aggregate(Interaction$Starttime, by = list(Interaction$time_hours, Interaction$time_of_day), FUN = min)
+  
+  # rename Interaction$Starttime to Interaction$time
+  colnames(aggregated_table) <- c("time_hours", "time_of_day", "time")
+  aggregated_table <- aggregated_table[order(aggregated_table$time),]
+  
+  # Save the table in /media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/original_data/time_aggregation_info using the Interaction file name but trimming the chars "_interactions"
+  # example name:colony09SS_control.small_PreTreatment.txt
+  output_filename <- gsub("_interactions", "", basename(INT))
+  write.table(aggregated_table, file = paste0("/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/original_data/time_aggregation_info/", output_filename), sep = "\t", row.names = FALSE)
+}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
