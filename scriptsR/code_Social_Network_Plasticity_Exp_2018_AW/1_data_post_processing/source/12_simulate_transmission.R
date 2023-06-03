@@ -6,7 +6,6 @@
 
 ###Created by Nathalie Stroeymeyt
 
-####################################
 to_keep_ori <- to_keep
 
 Sys.setenv("PKG_CXXFLAGS"="-std=c++11")
@@ -23,7 +22,7 @@ input_files        <- paste(input_path,"/",list.files(recursive=T,pattern="colon
 #### arguments 
 N_SIM  <- 500
 if (!grepl("survival",data_path)){
-  seed_files <- c("treated_workers.txt","random_workers.txt","frequent_foragers.txt","occasional_foragers.txt","nurses.txt","low_degree.txt","high_degree.txt")
+  seed_files <- c("treated_workers.txt","random_workers.txt","foragers.txt","nurses.txt")
 }else{
   seed_files <- c("treated_workers.txt")
 }
@@ -60,7 +59,7 @@ for (seed_file in seed_files ){
         ####get colony info
         root_name          <- gsub("_interactions.txt","",unlist(strsplit(interac,split="/"))[grepl("colony",unlist(strsplit(interac,split="/")))])
         colony             <- unlist(strsplit(root_name,split="_"))[grepl("colony",unlist(strsplit(root_name,split="_")))]
-        colony_number      <- as.numeric(gsub("colony","",colony))
+        #colony_number      <- gsub("colony","",colony) #AW
 
         ####get period info
         if (grepl("PreTreatment",root_name)){period="before"}else{period="after"}
@@ -69,9 +68,15 @@ for (seed_file in seed_files ){
         interaction_table <- read.table(interac,header=T,stringsAsFactors=F)
         interaction_table <- interaction_table[order(interaction_table$Starttime),]
 
+        ####get appropriate task_group list #AW
+        colony_task_group  <- task_groups[which(task_groups$colony==colony),]
+        queenid            <- as.character(colony_task_group[which(colony_task_group$task_group=="queen"),"tag"]) #AW: call specific queen tag instead of fixed 665. it has to be a character to work with igraph
+        
         ####read tag list to define list of live ants
-        tagfile             <- tag_list[grepl(colony,tag_list)]
-        tag        <- read.tag(tagfile)$tag; names(tag)[names(tag)=="#tag"] <- "tag"; tag <- tag[which(tag$tag!="#tag"),]
+        #tagfile             <- tag_list[grepl(colony,tag_list)]
+        #tag        <- read.tag(tagfile)$tag; names(tag)[names(tag)=="#tag"] <- "tag"; tag <- tag[which(tag$tag!="#tag"),]
+        tag <- read.tag(tag_list) #AW
+        
         if (!grepl("survival",data_path)){
           alive      <- tag[which(tag$final_status=="alive"),"tag"]
         }else{
@@ -80,7 +85,7 @@ for (seed_file in seed_files ){
 
         ###read seeds
         seeds              <- read.table(paste(data_path,"/original_data/seeds/",seed_file,sep=""),header=T,stringsAsFactors = F)
-        seeds              <- seeds[which(seeds$colony==colony_number),"tag"]
+        seeds              <- seeds[which(seeds$colony==colony),"tag"] #AW
         seeds              <- seeds[which(seeds%in%alive)]
 
 
@@ -102,7 +107,7 @@ for (seed_file in seed_files ){
         if (reorder & period=="before") {
           ####start time must be the same time of day as start time of after.
           time_start <- min(splitinfo_Post$time,na.rm=T) - (24*3600)
-          ####get the corresonding row number in the interaction table
+          ####get the corresponding row number in the interaction table
           start_index <- min(which(interaction_table$Starttime>=time_start))
           ####split the interaction table into two halves
           interactions_unchanged <- interaction_table[start_index:nrow(interaction_table),]
@@ -220,7 +225,7 @@ for (seed_file in seed_files ){
         #########Step 4.5: Take average over all simulations
         colony_level         <- colMeans(colony_level[names(colony_level)!="sim_number"],na.rm=T)
         #########Step 4.6: Store
-        summary_collective   <- rbind(summary_collective,cbind(data.frame(colony=colony,colony_size=info[which(info$colony==colony_number),"colony_size"],treatment=info[which(info$colony==colony_number),"treatment"],period=period,time_hours=interaction_table[1,"time_hours"],time_of_day=interaction_table[1,"time_of_day"],stringsAsFactors = F),t(colony_level)))
+        summary_collective   <- rbind(summary_collective,cbind(data.frame(colony=colony,colony_size=info[which(info$colony==colony),"colony_size"],treatment=info[which(info$colony==colony),"treatment"],period=period,time_hours=interaction_table[1,"time_hours"],time_of_day=interaction_table[1,"time_of_day"],stringsAsFactors = F),t(colony_level)))
 
         ##Step5: summarise simulations - individual-level data
         #########Step 5.1: Final_load, Prob. contamination, Prob. high level, Prob. low level
@@ -248,8 +253,8 @@ for (seed_file in seed_files ){
         individual_level$antid          <- as.character(interaction(colony,individual_level$tag))
         individual_level$status         <- "untreated";individual_level[which(individual_level$tag%in%seeds),"status"] <- "treated"
         individual_level["colony"]      <- colony
-        individual_level["colony_size"] <- info[which(info$colony==colony_number),"colony_size"]
-        individual_level["treatment"]   <- info[which(info$colony==colony_number),"treatment"]
+        individual_level["colony_size"] <- info[which(info$colony==colony),"colony_size"]
+        individual_level["treatment"]   <- info[which(info$colony==colony),"treatment"]
         individual_level["period"]      <- period
         individual_level["time_hours"]  <- interaction_table[1,"time_hours"]
         individual_level["time_of_day"] <- interaction_table[1,"time_of_day"]
