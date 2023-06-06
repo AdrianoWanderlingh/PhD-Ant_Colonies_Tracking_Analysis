@@ -6,6 +6,7 @@
 library(reshape2)
 library(dplyr)
 library(FortMyrmidon)
+library(circular)
 
 #### FUNCTIONS
 #list files recursive up to a certain level (level defined by "n" parameter)
@@ -23,8 +24,8 @@ list.dirs.depth.n <- function(p, n) {
 USER <- "supercompAdriano"
 
 if (USER=="supercompAdriano") {
-  WORKDIR <- "/media/cf19810/DISK4/ADRIANO" # "/media/cf19810/Seagate Portable Drive/ADRIANO"
-  DATADIR <- paste(WORKDIR,"EXPERIMENT_DATA",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA_EXTRAPOLATED",sep="/")
+  WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis" # WORKDIR <- "/media/cf19810/DISK4/ADRIANO"
+  DATADIR <- paste(WORKDIR,"EXP_summary_data",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
   SAVEDIR <- "/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/original_data"
   #SCRIPTDIR <- "/media/cf19810/DISK4/EXP1_base_analysis/EXP1_analysis scripts"
 }
@@ -242,9 +243,14 @@ for (REP.n in 1:length(files_list)) {
     tag_file <- NULL
     
     for (ant in exp.Ants){
+      # FIX
+      #if(all(ant$getValues("IsAlive")["values"])){ # check if there is any false
+      #
+      
+      warning("do check that ants are assigned correctly, final_status will fail as the ant is present 2 rtimes in the metadata")
       for (id in ant$identifications){
         #if the ant died, skip
-        if (capture.output(ant$identifications[[1]]$end)=="+∞") {
+        ### THIS EXCLUDES THE ANTS WITH ROTATED TAGS! if (capture.output(ant$identifications[[1]]$end)=="+∞") { 
         tag_file <- rbind(tag_file,data.frame(tag =  ant$ID,
                                count = tag_stats[which(tag_stats$tagDecimalValue == id$tagValue),"count"], #count considers also the acclimation time, therefore it is always higher than the N of frames
                                last_det = 51*60*60 * 8, #fixed= sll alive, so it is the n of frames for 51 hours.   tag_stats[which(tag_stats$tagDecimalValue == id$tagValue),"lastSeen"], 
@@ -258,12 +264,16 @@ for (REP.n in 1:length(files_list)) {
                                headwidth = 0,
                                death = 0,  #all alive, dead not included
                                age = 0,
-                               final_status = "alive", #ifelse(metadata_present[which(metadata_present$tagIDdecimal == id$tagValue & metadata_present$REP_treat==REP_treat),"IsAlive"]==T,"alive","dead"),
+                               final_status = ifelse(metadata_present[which(metadata_present$tagIDdecimal == id$tagValue & metadata_present$REP_treat==REP_treat),"IsAlive"]==T,"alive","dead"),
                                group = metadata_present[which(metadata_present$tagIDdecimal == id$tagValue & metadata_present$REP_treat==REP_treat),"AntTask"],
                                REP_treat = REP_treat,
                                stringsAsFactors = F))
         
         tag_file$rot <- round(tag_file$rot,3)
+        
+        #remove dead (none should be there anyway)
+        tag_file <- tag_file[which(tag_file$final_status=="alive"),]
+        
         #identifEnd <- ifelse(capture.output(print(id$end))=="+∞",NA,ifelse(capture.output(print(id$end))))
         #fmQueryGetDataInformations(e)$end - 51*60*60
         
@@ -283,7 +293,8 @@ for (REP.n in 1:length(files_list)) {
           #         metadata[which(metadata$antID==ant$ID),"surviv_time"] <- as.POSIXct( exp_end,format = "%Y-%m-%d %H:%M:%OS",  origin="1970-01-01", tz="GMT" )
           #       }} # IsAlive check
           #   } # ROW
-        }
+        #}
+        #}
     }
     
       
