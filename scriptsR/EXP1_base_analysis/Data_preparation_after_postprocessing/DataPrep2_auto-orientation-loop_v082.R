@@ -445,7 +445,7 @@ for (TS in unique(ref_orient_caps_file$TrackSys_name)){
           for (capsule_name in unlist(ToOrient_data$antShapeTypeNames)) {
             capsule_number <- capsule_number +1
             #MAKE SURE THERE IS CAPSULE MATCHING, TO AVOID MIXING UP SHAPE INDEXES
-            capsule_ratios <- capsule_list[[capsule_name]]; names(capsule_ratios) <- gsub("_ratio","",names(capsule_ratios))
+            capsule_ratios <- capsule_list[[capsule_number]]; names(capsule_ratios) <- gsub("_ratio","",names(capsule_ratios))
             capsule_coords <- ant_length_px*capsule_ratios
             
             ToOrient_data$ants[[ant_INDEX]]$addCapsule(capsule_number, fmCapsuleCreate(c1 = c(capsule_coords["c1_x"],capsule_coords["c1_y"]), c2 = c(capsule_coords["c2_x"],capsule_coords["c2_y"]), r1 = capsule_coords["r1"], r2 = capsule_coords["r2"] ) )
