@@ -11,6 +11,7 @@ SpaceUse <- function(e, start, end){
   require(data.table)
   
   # parameters (from Sceince2018)
+  warning("the parameters (from Sceince2018) may need moficiation, discuss with Nathalie" )
   options(digits=16) ; options(digits.secs=6) ; options("scipen" = 10)
   max_time <- 1.5 # max time in sec, for which it is acceptable to calculate a distance moved (e.g. 1.5 sec: allows for up to 2 missing points between two successive detections and still calculates distance moved)
   min_segment_duration_sec <- 120; Lmin <- FRAME_RATE*min_segment_duration_sec #minimum duration of a bout, in frames
@@ -68,6 +69,7 @@ SpaceUse <- function(e, start, end){
     positions_summaries       <- data.frame(index=1:nrow(positions_summaries),positions_summaries,stringsAsFactors = F)
     positions_list            <- positions$trajectories
     
+  warning("order the interactions to ensure that the following calculations are correct" )
     
     # loop through each dataframe and check for duplicated rows
     for (i in seq_along(positions_list)) {
