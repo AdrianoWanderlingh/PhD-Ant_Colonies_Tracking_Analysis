@@ -118,9 +118,9 @@ interaction_detection <- function (e
     frame_end   <-   IF_frames[ match.closest(x = as.numeric(as.POSIXct(capture.output(print(end)), format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" )), table = as.numeric(IF_frames$time)),"frame_num"]
     
     ###test if remaining time is superior to 12 hours
-    if (as.numeric(as.POSIXct(capture.output(print(end)), format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" ) ) -   as.numeric(as.POSIXct(capture.output(print(start)), format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" ) ) > 12 * 60 * 60){
+    if (as.numeric(as.POSIXct(capture.output(print(end)), format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" ) ) -   as.numeric(as.POSIXct(capture.output(print(start)), format = "%Y-%m-%dT%H:%M:%OSZ",  origin="1970-01-01", tz="GMT" ) ) > 13 * 60 * 60){
       ###if superior, define new end time as equal to start + 12 hours
-      frame_end <- IF_frames[ match.closest(x = IF_frames[which(IF_frames$frame_num==frame_start),"time"]+12*60*60,table = as.numeric(IF_frames$time)),"frame_num"]
+      frame_end <- IF_frames[ match.closest(x = IF_frames[which(IF_frames$frame_num==frame_start),"time"]+13*60*60,table = as.numeric(IF_frames$time)),"frame_num"]
       end <- fmTimeCreate(offset=IF_frames[which(IF_frames$frame_num==frame_end) ,"time"   ])
     }else{
       ###otherwise, keep end time and declare extraction to be complete
@@ -159,9 +159,18 @@ interaction_detection <- function (e
     collisions <- collapse_collisions(collisions)
     print("Collisions collapsed.")
     
+    #################################################################################################################################################
+    ###remove duplicates between collisions and all_coliisions (as there are a few frames overlapping between successive queries ) ##################
+    #################################################################################################################################################
     if (!is.null(all_collisions)){
       collisions <- collisions[which(as.numeric(collisions$time)>max(as.numeric(all_collisions$time),na.rm=T)),]
     }
+    
+    ##########################################################################################################################################
+    ###apply correct offset to frames_row_index to correct frame number (automatically restarts at 1 in fmQueryCollideFrames) ################
+    ##########################################################################################################################################
+    collisions$frame_number <- IF_frames[match.closest(x = collisions[,"time"],table = as.numeric(IF_frames$time)),"frame_num"]
+    
     
     all_collisions          <-  rbind(all_collisions,collisions)
     
@@ -204,7 +213,8 @@ interaction_detection <- function (e
   ###prepare collisions to be loaded into cpp function
   collisions$time_second <- round(as.numeric(collisions$time),3)
  
-  collisions$pair <- apply(collisions[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
+   ##SLOW!!! :-( collisions$pair <- apply(collisions[,c("ant1","ant2")],1,function(x){paste(sort(x),collapse = "_") })
+  collisions <- within(collisions,pair <- paste(ant1,ant2,sep="_")) ###FAST :-)
   collisions$pair <- match(collisions$pair,sort(unique(collisions$pair)))-1 ###necessary for c++
   pair_list <- sort(unique(collisions$pair))
   

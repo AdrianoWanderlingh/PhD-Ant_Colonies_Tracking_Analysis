@@ -231,7 +231,7 @@ DataFrame  merge_interactions(DataFrame collisions, NumericVector pair_list, dou
   all_collisions.ant1   = collisions["ant1"];
   all_collisions.ant2   = collisions["ant2"];
   all_collisions.type   = collisions["types"];
-  all_collisions.frame  = collisions["frames_row_index"];
+  all_collisions.frame  = collisions["frame_number"];
   all_collisions.time   = collisions["time_second"];
   all_collisions.space  = collisions["space"];
   all_collisions.x1     = collisions["x1"];
