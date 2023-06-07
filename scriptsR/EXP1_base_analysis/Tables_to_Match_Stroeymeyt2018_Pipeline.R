@@ -27,6 +27,7 @@ if (USER=="supercompAdriano") {
   WORKDIR <- "/home/cf19810/Documents/scriptsR/EXP1_base_analysis" # WORKDIR <- "/media/cf19810/DISK4/ADRIANO"
   DATADIR <- paste(WORKDIR,"EXP_summary_data",sep="/") # paste(WORKDIR,"EXPERIMENT_DATA",sep="/")
   SAVEDIR <- "/media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/original_data"
+  EXP_DATA <- "/media/cf19810/DISK4/ADRIANO/EXPERIMENT_DATA"
   #SCRIPTDIR <- "/media/cf19810/DISK4/EXP1_base_analysis/EXP1_analysis scripts"
 }
 
@@ -36,6 +37,11 @@ pathogen_load <- read.csv("/media/cf19810/DISK4/EXP1_base_analysis/Personal_Immu
 
 #remove dead ants
 metadata_present <- metadata_present[which(metadata_present$IsAlive==TRUE),]
+#remove duplicates (the tag rotated ant duplicates have a different stop-start so they have to be eliminated before dups removal)
+metadata_present$identifStart <- NULL
+metadata_present$identifEnd <- NULL
+metadata_present <- metadata_present %>% distinct()
+
 metadata_present$colony <- NA
 
 ##### ADD EXTRA COLS TO METADATA
@@ -126,7 +132,7 @@ write.table(treated_worker_list, file = file.path(SAVEDIR,"seeds/treated_workers
 metadata_present$N_exposed_alive <- ave(metadata_present$Exposed, metadata_present$colony, FUN = function(x) sum(x))
 
 # Randomly select X rows per colony
-selected_rows <- dataset[ave(seq_len(nrow(dataset)), dataset$colony, FUN = function(x) sample(x, size = unique(x$X))), ]
+#selected_rows <- dataset[ave(seq_len(nrow(dataset)), dataset$colony, FUN = function(x) sample(x, size = unique(x$X))), ]
 
 for (GROUP in c("nurse","forager","random_worker")) {
   if (!(GROUP %in% c("nurse","forager"))) {
@@ -200,7 +206,7 @@ write.table(qPCR_file, file = file.path(SAVEDIR,"qPCR","qPCR_file.txt"), append 
 
 ### GET EXP END TIME FOR EACH REP AND ASSIGN PRE-POST TIME!
 #list subdirectories in parent folder EXPERIMENT_DATA
-files_list <- list.dirs.depth.n(DATADIR, n = 1)
+files_list <- list.dirs.depth.n(EXP_DATA, n = 1)
 #select REP folders
 files_list <- files_list[grep("REP",files_list)]
 
@@ -214,7 +220,7 @@ for (REP.n in 1:length(files_list)) {
   #replicate file
   for (REP.FILES in REP.filefolder) {
     #get substring in variable until R9BS_
-    # REP.FILES <- REP.filefolder[2]
+    # REP.FILES <- REP.filefolder[1]
     REP_treat <- sub("\\_.*", "", basename(REP.FILES))
     
     
@@ -244,10 +250,8 @@ for (REP.n in 1:length(files_list)) {
     
     for (ant in exp.Ants){
       # FIX
-      #if(all(ant$getValues("IsAlive")["values"])){ # check if there is any false
-      #
-      
-      warning("do check that ants are assigned correctly, final_status will fail as the ant is present 2 rtimes in the metadata")
+      if(all(ant$getValues("IsAlive")["values"]$values)){ # check if there is any false
+      #warning("do check that ants are assigned correctly, final_status will fail as the ant is present 2 rtimes in the metadata")
       for (id in ant$identifications){
         #if the ant died, skip
         ### THIS EXCLUDES THE ANTS WITH ROTATED TAGS! if (capture.output(ant$identifications[[1]]$end)=="+∞") { 
@@ -271,9 +275,7 @@ for (REP.n in 1:length(files_list)) {
         
         tag_file$rot <- round(tag_file$rot,3)
         
-        #remove dead (none should be there anyway)
-        tag_file <- tag_file[which(tag_file$final_status=="alive"),]
-        
+
         #identifEnd <- ifelse(capture.output(print(id$end))=="+∞",NA,ifelse(capture.output(print(id$end))))
         #fmQueryGetDataInformations(e)$end - 51*60*60
         
@@ -294,16 +296,22 @@ for (REP.n in 1:length(files_list)) {
           #       }} # IsAlive check
           #   } # ROW
         #}
-        #}
+        }
     }
-    
-      
     }#ant is dead
  
     # #check if the tag_file file exists
     # if(file.exists(file.path(SAVEDIR,"tag_files",paste(colony,treatment_code,".txt")))){
     #     print(paste0(REP_treat," already present in tag_file, skip"))
     #   } else {
+    
+    
+    #remove dead (none should be there anyway)
+    tag_file <- tag_file[which(tag_file$final_status=="alive"),]
+    # remove duplicated tag ant rows and keep single one (first row)
+    tag_file <- tag_file[!duplicated(tag_file$tag),]
+    
+    
 
         write.table(tag_file, file = file.path(SAVEDIR,"tag_files",paste0(colony,"_",treatment_code,".txt")), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
         
