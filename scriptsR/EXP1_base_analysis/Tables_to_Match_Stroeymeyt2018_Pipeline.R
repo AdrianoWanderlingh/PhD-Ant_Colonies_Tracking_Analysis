@@ -41,6 +41,11 @@ metadata_present <- metadata_present[which(metadata_present$IsAlive==TRUE),]
 metadata_present$identifStart <- NULL
 metadata_present$identifEnd <- NULL
 metadata_present <- metadata_present %>% distinct()
+# for ants which are alive but because of the loss of the tag they did not get assigned a Task,
+# assign task "nurse" (total of 8 ants). NOT DOING SO causes issues with assortativity_nominal in 13_network_measures.
+# Excluding them altogether causes issues with the 11_transmission_simulation as interactions will be in the interactions lists but not in the tag_list
+metadata_present[which(is.na(metadata_present$group)),"group"] <- "nurse"
+
 
 metadata_present$colony <- NA
 
@@ -310,8 +315,10 @@ for (REP.n in 1:length(files_list)) {
     tag_file <- tag_file[which(tag_file$final_status=="alive"),]
     # remove duplicated tag ant rows and keep single one (first row)
     tag_file <- tag_file[!duplicated(tag_file$tag),]
-    
-    
+    # for ants which are alive but because of the loss of the tag they did not get assigned a Task,
+    # assign task "nurse" (total of 8 ants). NOT DOING SO causes issues with assortativity_nominal in 13_network_measures.
+    # Excluding them altogether causes issues with the 11_transmission_simulation as interactions will be in the interactions lists but not in the tag_list
+    tag_file[which(is.na(tag_file$group)),"group"] <- "nurse"
 
         write.table(tag_file, file = file.path(SAVEDIR,"tag_files",paste0(colony,"_",treatment_code,".txt")), append = F, col.names = T, row.names = F, quote = F, sep = "\t")
         
