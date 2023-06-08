@@ -44,7 +44,7 @@ metadata_present <- metadata_present %>% distinct()
 # for ants which are alive but because of the loss of the tag they did not get assigned a Task,
 # assign task "nurse" (total of 8 ants). NOT DOING SO causes issues with assortativity_nominal in 13_network_measures.
 # Excluding them altogether causes issues with the 11_transmission_simulation as interactions will be in the interactions lists but not in the tag_list
-metadata_present[which(is.na(metadata_present$group)),"group"] <- "nurse"
+metadata_present[which(is.na(metadata_present$AntTask)),"AntTask"] <- "nurse"
 
 
 metadata_present$colony <- NA
