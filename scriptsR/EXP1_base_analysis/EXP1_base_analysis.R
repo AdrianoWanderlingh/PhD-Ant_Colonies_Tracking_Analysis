@@ -432,7 +432,8 @@ for (REP.n in 1:length(files_list)) {
       # extras not present in Science files: (added at the end of the file output)
       #"REP_treat","period","ant1.zones","ant2.zones","duration"
       Interactions <- Interactions[,c("Tag1","Tag2","Startframe","Stopframe","Starttime","Stoptime","Box","Xcoor1","Ycoor1","Angle1","Xcoor2","Ycoor2","Angle2","Direction","Detections","time_hours","time_of_day","colony","treatment","REP_treat","period","ant1.zones","ant2.zones","duration")]
-      
+      # remove extra -3h gap leftovers (few mins)
+      Interactions <- Interactions[which(Interactions$time_hours!=-3),] 
       ## Interactions save (saved INSIDE the Network_analysis folder)
       #if (file.exists(INTERACTIONS_FULL)) {
       #  write.table(Interactions, file = INTERACTIONS_FULL, append = T, col.names = F, row.names = F, quote = F, sep = ",")
