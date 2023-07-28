@@ -6,10 +6,11 @@ library(datasets)
 library(data.table)
 library(ggplot2)
 library(viridis)
+library(stringr)
 
 #if (USER=="Supercomputer1") {
-  WORKDIR <- "/home/cf19810/Documents"
-  DATADIR <- paste(WORKDIR,"MachineLearning_outcomes_12-11-22",sep="/")
+  WORKDIR <- "/home/cf19810/Desktop/Final_Classifier_&_Scripts"
+  DATADIR <- paste(WORKDIR,"MachineLearning_outcomes_FINAL",sep="/")
   #SCRIPTDIR <- paste(WORKDIR,"ScriptsR",sep="/")
   #EXPDATADIR <- "/media/bzniks/DISK4/ADRIANO/EXPERIMENT_DATA" #"/home/cf19810/Documents/Ants_behaviour_analysis/Data"
 #}
@@ -17,8 +18,29 @@ library(viridis)
 ###############################################################################
 #### READ CHOSEN METHOD #######################################################
 ###############################################################################
-chosen <- read.table(paste(DATADIR,"/quality_scores_CHOSEN.txt",sep=""),header=T,stringsAsFactors = F)
-all_methods <- read.table(paste(DATADIR,"/quality_scores.txt",sep=""),header=T,stringsAsFactors = F)
+chosen <- read.table(paste(DATADIR,"/quality_scores_Fbeta_1_priorityoverall_CHOSEN.txt",sep=""),header=T,stringsAsFactors = F)
+
+
+  # Get the list of files in the directory
+  file_list <- list.files(DATADIR, full.names = TRUE)
+  
+  # Initialize an empty data frame to store the combined data
+  all_methods <- data.frame()
+  
+  # Loop through each file
+  for (file in file_list) {
+    # Check if the file name contains the text "Fbeta"
+    if (!grepl("Fbeta", file)) {
+      print(file)
+      # Read the file and bind it to the combined data frame
+      data <- read.table(file, header = TRUE, stringsAsFactors = FALSE)
+      all_methods <- rbind(all_methods, data)
+    }
+  }
+  
+  
+    
+#all_methods <- read.table(paste(DATADIR,"/quality_scores.txt",sep=""),header=T,stringsAsFactors = F)
   
 ###############################################################################
 ###### EXTRACT CHOSEN PARAMETERS FROM CHOSEN ##################################
@@ -29,11 +51,11 @@ rf_model        <- readRDS (file.path(DATADIR,subDir,"fits",paste(chosen[,"class
 rf_model_LIST       <- list(readRDS (file.path(DATADIR,subDir,"fits",paste(chosen[,"classifier"],".rds",sep=""))))
 names(rf_model_LIST) <- chosen[,"classifier"]
 
-#plot model using randomforest package tools
-###Error plot
-rf_model.legend <- if (is.null(rf_model$test$err.rate)) {colnames(rf_model$err.rate)} else {colnames(rf_model$test$err.rate)}
-plot(rf_model, log="y", main = "log of error rate", )
-legend("top", cex =1, legend=rf_model.legend, lty=c(1,2,3), col=c(1,2,3), horiz=T)
+# #plot model using randomforest package tools
+# ###Error plot
+# rf_model.legend <- if (is.null(rf_model$test$err.rate)) {colnames(rf_model$err.rate)} else {colnames(rf_model$test$err.rate)}
+# plot(rf_model, log="y", main = "log of error rate" )
+# legend("top", cex =1, legend=rf_model.legend, lty=c(1,2,3), col=c(1,2,3), horiz=T)
 
 #####error plot in ggplot
 # Get OOB data from plot and coerce to data.table
@@ -54,7 +76,7 @@ ggplot(data = oobData2, aes(x = trees, y = error, color = variable)) +
 
 ### Variables importance plot
 #measure of the Mean decrease Gini
-imp <- varImpPlot(rf_model) # let's save the varImp object
+#imp <- varImpPlot(rf_model) # let's save the varImp object
 
 # this part just creates the data.frame for the plot part
 imp <- as.data.frame(imp)
@@ -79,25 +101,55 @@ ggplot(imp, aes(x=reorder(varnames, MeanDecreaseGini), y=MeanDecreaseGini, color
 varUsed(rf_model, by.tree=FALSE, count=TRUE)
 
 
-##### precision vs sensitivity
-ggplot(all_methods$precision_test,all_methods$sensitivity_test)
 
-  ggplot(all_methods, aes(x=precision_test, y=sensitivity_test)) + 
-    geom_point(aes(colour = classifier)) +
-    scale_colour_viridis_d(option = "plasma") + #inferno
-    geom_point(data=chosen,
-               aes(x=precision_test, y=sensitivity_test), 
-               color='green3',
-               size=3) +
-    theme_bw() +
-    #stat_ellipse(aes(color = classifier), geom="polygon",level=0.95,alpha=0) +
-    geom_text(data=chosen,
-              aes(x=precision_test, y=sensitivity_test,label=paste(chosen$precision_test,chosen$sensitivity_test,sep=", ")),
-              hjust=-0.3, vjust=-0.3, color="green3") +
-    labs(caption = paste0("N=",nrow(all_methods)))
+##### precision vs sensitivity
+#ggplot(all_methods$precision_test,all_methods$sensitivity_test)
+
+
+min_x <- min(all_methods$precision_test * 100)
+min_y <- min(all_methods$sensitivity_test * 100)
+
+# Create a new column with modified classifier names
+# Create a new column with modified classifier names
+# Create new columns for classifier name and class balance technique
+all_methods$CLASSIFNAME <- sapply(strsplit(as.character(all_methods$classifier), "_"), function(x) x[2])
+all_methods$CLASSBALANCE <- sapply(strsplit(as.character(all_methods$classifier), "_"), function(x) {
+  class_balance <- paste(gsub("_", " ", x[3:length(x)]), collapse = " ")
+  class_balance <- gsub("\\bsmote\\b", "SMOTE", class_balance, ignore.case = TRUE)
+  class_balance <- gsub("\\bros\\b", "ROS", class_balance, ignore.case = TRUE)
+  class_balance <- gsub("\\brus\\b", "RUS", class_balance, ignore.case = TRUE)
+  class_balance <- gsub("\\bsbc\\b", "SBC", class_balance, ignore.case = TRUE)
+  class_balance
+})
+
+# Now use these new columns for the colour and shape aesthetics in your ggplot call
+ggplot(all_methods, aes(x = precision_test * 100, y = sensitivity_test * 100)) + 
+  geom_point(aes(shape = CLASSIFNAME, colour = CLASSBALANCE)) +
+  scale_colour_viridis_d(option = "plasma", name = "Class balancing technique") + # Set legend title here and number of columns
+  scale_shape_discrete(name = "Classifier") +
+  geom_segment(data = chosen,
+               aes(x = precision_test * 100, y = min_y, xend = precision_test * 100, yend = sensitivity_test * 100),
+               linetype = "dashed", color = "green3") +
+  geom_segment(data = chosen,
+               aes(x = min_x, y = sensitivity_test * 100, xend = precision_test * 100, yend = sensitivity_test * 100),
+               linetype = "dashed", color = "green3") +
+  theme_bw() +
+  geom_point(data = chosen,
+             aes(x = precision_test * 100, y = sensitivity_test * 100), 
+             fill = NA, 
+             color = 'green3',
+             size = 3,
+             shape = 21) + # Shape 21 is a circle with a border +# Shape 21 is a circle with a border
+  geom_text(data = chosen,
+            aes(x = precision_test * 100, y = sensitivity_test * 100, 
+                label = paste0(round(chosen$precision_test * 100), ", ", round(chosen$sensitivity_test * 100))),
+            hjust = 0.5, vjust = -3, color = "green3") +
+  labs(caption = paste0("N=", nrow(all_methods)),
+       x ="Precision (%)",
+       y ="Sensitivity (%)") +
+  coord_fixed(ratio = 1)  # Set aspect ratio to 1:1
+    #coord_cartesian(expand = T)
   
-  
-  #uncouple classif from balancer to give shapes to balancer
 
 #-------------------------------------
 
