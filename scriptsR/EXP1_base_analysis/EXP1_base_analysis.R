@@ -62,8 +62,13 @@ library(Rcpp)
 library(survival)
 
 # starting params
-# USER <- "2A13_Office" # Nath_office 
+#USER <- "Nath_office" # Nath_office
 USER <- "2A13_Office" # Nath_office 
+
+DISK <- "/Seagate Portable Drive"
+
+# Start the sink to redirect output and messages to a file
+sink("/home/cf19810/Desktop/Adriano_terminal_SpaceUSe_output_LOG_28Jul23.txt")
 
 if (USER == "2A13_Office") {
   usr <- "cf19810"
@@ -71,19 +76,19 @@ if (USER == "2A13_Office") {
   usr <- "bzniks"
 }
   
-SAVEDIR <- paste("/media/",usr,"/DISK4/EXP1_base_analysis/EXP_summary_data",sep="")
+#SAVEDIR <- paste("/media/",usr,"/DISK4/EXP1_base_analysis/EXP_summary_data",sep="")
 #where to save the interactions in the same structure as for Science 2018
 #I copied the folder structure from Nathalie, ideally one should create it via the terminal:
 # use the file /media/cf19810/DISK4/Lasius-Bristol_pathogen_experiment/dirs.txt
 # and in the terminal use: xargs mkdir -p < dirs.txt
-INTDIR <- paste("/media/",usr,"/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/intermediary_analysis_steps",sep="")
-BEHDIR <- paste("/media/",usr,"/DISK4/Lasius-Bristol_pathogen_experiment/main_experiment/processed_data/individual_behaviour",sep="")
+INTDIR <- paste("/media/",usr,DISK,"/Lasius-Bristol_pathogen_experiment/main_experiment/intermediary_analysis_steps",sep="")
+BEHDIR <- paste("/media/",usr,DISK,"/Lasius-Bristol_pathogen_experiment/main_experiment/processed_data/individual_behaviour",sep="")
 
   WORKDIR <- paste("/media",usr,"DISK4/ADRIANO",sep="/")
   DATADIR <- paste(WORKDIR, "EXPERIMENT_DATA", sep = "/")
   SCRIPTDIR <- paste("/media",usr,"DISK4/EXP1_base_analysis/EXP1_analysis scripts",sep="/") # "/home/cf19810/Documents/scriptsR/EXP1_base_analysis/EXP1_analysis scripts"
   metadata <- read.table(paste(DATADIR, "/Metadata_Exp1_2021_2023-02-27.txt", sep = ""), header = T, stringsAsFactors = F, sep = ",")
-  BEH_FUNCTIONS <-  paste("/media",usr,"DISK4/Ants_behaviour_analysis/ScriptsR",sep="/")
+  BEH_FUNCTIONS <-  paste("/home",usr,"Ant_Tracking/Scripts/PhD-Ant_Colonies_Tracking_Analysis/Automated_Behavioural_Inference",sep="/")
   BODYLENGTH_FILE <- paste(BEH_FUNCTIONS,"Mean_ant_length_per_TrackingSystem.txt", sep = "/")
   metadata_info         <- read.csv(paste(DATADIR,"Grooming_Classifier_CrossVal_RETURN_EXP_TIME_ZULU_All_colonies.csv",sep = "/"), sep = ",")
 
@@ -166,8 +171,8 @@ SPACE_USE_PRE <-  file.path(BEHDIR,"pre_treatment","network_position_vs_time_out
 
 
 #### FLAGS
-RUN_INTERACT     <- TRUE
-RUN_SPACEUSE     <- FALSE
+RUN_INTERACT     <- FALSE
+RUN_SPACEUSE     <- TRUE
 RUN_NETWORKS     <- FALSE
 warning(paste("RUN_INTERACT is set to:",RUN_INTERACT,
               "\nRUN_SPACEUSE is set to:",RUN_SPACEUSE,
@@ -432,8 +437,7 @@ for (REP.n in 1:length(files_list)) {
       # extras not present in Science files: (added at the end of the file output)
       #"REP_treat","period","ant1.zones","ant2.zones","duration"
       Interactions <- Interactions[,c("Tag1","Tag2","Startframe","Stopframe","Starttime","Stoptime","Box","Xcoor1","Ycoor1","Angle1","Xcoor2","Ycoor2","Angle2","Direction","Detections","time_hours","time_of_day","colony","treatment","REP_treat","period","ant1.zones","ant2.zones","duration")]
-      # remove extra -3h gap leftovers (few mins)
-      Interactions <- Interactions[which(Interactions$time_hours!=-3),] 
+      
       ## Interactions save (saved INSIDE the Network_analysis folder)
       #if (file.exists(INTERACTIONS_FULL)) {
       #  write.table(Interactions, file = INTERACTIONS_FULL, append = T, col.names = F, row.names = F, quote = F, sep = ",")
@@ -584,3 +588,6 @@ for (REP.n in 1:length(files_list)) {
 
 loop_end_time <- Sys.time()
 print(paste("loop took ", as.numeric(difftime(loop_end_time, loop_start_time, units = "mins")), " minutes to complete"))
+
+# Stop the sink
+sink()
